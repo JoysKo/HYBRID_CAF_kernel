@@ -86,9 +86,6 @@ struct cgroup_subsys_state *cgroup_get_e_css(struct cgroup *cgroup,
 struct cgroup_subsys_state *css_tryget_online_from_dir(struct dentry *dentry,
 						       struct cgroup_subsys *ss);
 
-struct cgroup *cgroup_get_from_path(const char *path);
-struct cgroup *cgroup_get_from_fd(int fd);
-
 int cgroup_attach_task_all(struct task_struct *from, struct task_struct *);
 int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from);
 
@@ -516,20 +513,6 @@ static inline struct cgroup *task_cgroup(struct task_struct *task,
 					 int subsys_id)
 {
 	return task_css(task, subsys_id)->cgroup;
-}
-
-static inline struct cgroup *task_dfl_cgroup(struct task_struct *task)
-{
-	return task_css_set(task)->dfl_cgrp;
-}
-
-static inline struct cgroup *cgroup_parent(struct cgroup *cgrp)
-{
-	struct cgroup_subsys_state *parent_css = cgrp->self.parent;
-
-	if (parent_css)
-		return container_of(parent_css, struct cgroup, self);
-	return NULL;
 }
 
 /**

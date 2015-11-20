@@ -5316,16 +5316,30 @@ err_free_css:
  */
 static struct cgroup *cgroup_create(struct cgroup *parent)
 {
-	struct cgroup_root *root = parent->root;
-	struct cgroup *cgrp, *tcgrp;
-	int level = parent->level + 1;
-	int ret;
+	struct cgroup *parent, *cgrp, *tcgrp;
+	struct cgroup_root *root;
+	struct cgroup_subsys *ss;
+	struct kernfs_node *kn;
+	int level, ssid, ret;
+
+	/* Do not accept '\n' to prevent making /proc/<pid>/cgroup unparsable.
+	 */
+	if (strchr(name, '\n'))
+		return -EINVAL;
+
+	parent = cgroup_kn_lock_live(parent_kn);
+	if (!parent)
+		return -ENODEV;
+	root = parent->root;
+	level = parent->level + 1;
 
 	/* allocate the cgroup and its ID, 0 is reserved for the root */
 	cgrp = kzalloc(sizeof(*cgrp) +
 		       sizeof(cgrp->ancestor_ids[0]) * (level + 1), GFP_KERNEL);
-	if (!cgrp)
-		return ERR_PTR(-ENOMEM);
+	if (!cgrp) {
+		ret = -ENOMEM;
+		goto out_unlock;
+	}
 
 	ret = percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 	if (ret)
@@ -5346,11 +5360,6 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	cgrp->self.parent = &parent->self;
 	cgrp->root = root;
 	cgrp->level = level;
-	ret = cgroup_bpf_inherit(cgrp);
-	if (ret) {
-		cgroup_idr_remove(&root->cgroup_idr, cgrp->id);
-		goto out_cancel_ref;
-	}
 
 	for (tcgrp = cgrp; tcgrp; tcgrp = cgroup_parent(tcgrp))
 		cgrp->ancestor_ids[tcgrp->level] = tcgrp->id;

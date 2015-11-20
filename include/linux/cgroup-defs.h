@@ -302,9 +302,6 @@ struct cgroup {
 	/* used to schedule release agent */
 	struct work_struct release_agent_work;
 
-	/* used to store eBPF programs */
-	struct cgroup_bpf bpf;
-
 	/* ids of the ancestors at each level including self */
 	int ancestor_ids[];
 };
