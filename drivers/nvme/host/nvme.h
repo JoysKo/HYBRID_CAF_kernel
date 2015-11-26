@@ -33,6 +33,18 @@ enum {
 	NVME_NS_LIGHTNVM	= 1,
 };
 
+/*
+ * List of workarounds for devices that required behavior not specified in
+ * the standard.
+ */
+enum nvme_quirks {
+	/*
+	 * Prefers I/O aligned to a stripe size specified in a vendor
+	 * specific Identify field.
+	 */
+	NVME_QUIRK_STRIPE_SIZE			= (1 << 0),
+};
+
 /* The below value is the specific amount of delay needed before checking
  * readiness in case of the PCI_DEVICE(0x1c58, 0x0003), which needs the
  * NVME_QUIRK_DELAY_BEFORE_CHK_RDY quirk enabled. The value (in ms) was
@@ -55,6 +67,7 @@ struct nvme_ctrl {
 	u16 abort_limit;
 	u8 event_limit;
 	u8 vwc;
+	unsigned long quirks;
 };
 
 /*
