@@ -31,6 +31,7 @@
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/mutex.h>
 #include <linux/pci.h>
 #include <linux/poison.h>
 #include <linux/ptrace.h>
@@ -113,6 +114,7 @@ struct nvme_dev {
 	struct work_struct reset_work;
 	struct work_struct probe_work;
 	struct work_struct scan_work;
+	struct mutex shutdown_lock;
 	bool subsystem;
 	void __iomem *cmb;
 	dma_addr_t cmb_dma_addr;
@@ -2379,6 +2381,7 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_WORK(&dev->scan_work, nvme_dev_scan);
 	INIT_WORK(&dev->probe_work, nvme_probe_work);
 	INIT_WORK(&dev->reset_work, nvme_reset_work);
+	mutex_init(&dev->shutdown_lock);
 	
 	result = nvme_dev_map(dev);
 	if (result)
