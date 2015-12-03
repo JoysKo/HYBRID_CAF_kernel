@@ -6050,7 +6050,7 @@ int cgroup_can_fork(struct task_struct *child)
 	struct cgroup_subsys *ss;
 	int i, j, ret;
 
-	do_each_subsys_mask(ss, i, have_canfork_callback) {
+	for_each_subsys_which(ss, i, &have_canfork_callback) {
 		ret = ss->can_fork(child);
 		if (ret)
 			goto out_revert;
@@ -6139,9 +6139,8 @@ void cgroup_post_fork(struct task_struct *child)
 	 * css_set; otherwise, @child might change state between ->fork()
 	 * and addition to css_set.
 	 */
-	do_each_subsys_mask(ss, i, have_fork_callback) {
+	for_each_subsys_which(ss, i, &have_fork_callback)
 		ss->fork(child);
-	} while_each_subsys_mask();
 }
 
 /**
