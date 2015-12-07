@@ -652,7 +652,6 @@ extern spinlock_t cgroup_sk_update_lock;
 
 void cgroup_sk_alloc_disable(void);
 void cgroup_sk_alloc(struct sock_cgroup_data *skcd);
-void cgroup_sk_clone(struct sock_cgroup_data *skcd);
 void cgroup_sk_free(struct sock_cgroup_data *skcd);
 
 static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
@@ -666,7 +665,7 @@ static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
 	 */
 	v = READ_ONCE(skcd->val);
 
-	if (v & 3)
+	if (v & 1)
 		return &cgrp_dfl_root.cgrp;
 
 	return (struct cgroup *)(unsigned long)v ?: &cgrp_dfl_root.cgrp;
@@ -678,53 +677,8 @@ static inline struct cgroup *sock_cgroup_ptr(struct sock_cgroup_data *skcd)
 #else	/* CONFIG_CGROUP_DATA */
 
 static inline void cgroup_sk_alloc(struct sock_cgroup_data *skcd) {}
-static inline void cgroup_sk_clone(struct sock_cgroup_data *skcd) {}
 static inline void cgroup_sk_free(struct sock_cgroup_data *skcd) {}
 
 #endif	/* CONFIG_CGROUP_DATA */
-
-struct cgroup_namespace {
-	atomic_t		count;
-	struct ns_common	ns;
-	struct user_namespace	*user_ns;
-	struct css_set          *root_cset;
-};
-
-extern struct cgroup_namespace init_cgroup_ns;
-
-#ifdef CONFIG_CGROUPS
-
-void free_cgroup_ns(struct cgroup_namespace *ns);
-
-struct cgroup_namespace *copy_cgroup_ns(unsigned long flags,
-					struct user_namespace *user_ns,
-					struct cgroup_namespace *old_ns);
-
-int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
-		   struct cgroup_namespace *ns);
-
-#else /* !CONFIG_CGROUPS */
-
-static inline void free_cgroup_ns(struct cgroup_namespace *ns) { }
-static inline struct cgroup_namespace *
-copy_cgroup_ns(unsigned long flags, struct user_namespace *user_ns,
-	       struct cgroup_namespace *old_ns)
-{
-	return old_ns;
-}
-
-#endif /* !CONFIG_CGROUPS */
-
-static inline void get_cgroup_ns(struct cgroup_namespace *ns)
-{
-	if (ns)
-		atomic_inc(&ns->count);
-}
-
-static inline void put_cgroup_ns(struct cgroup_namespace *ns)
-{
-	if (ns && atomic_dec_and_test(&ns->count))
-		free_cgroup_ns(ns);
-}
 
 #endif /* _LINUX_CGROUP_H */
