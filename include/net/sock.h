@@ -309,7 +309,8 @@ struct cg_proto;
   *	@sk_send_head: front of stuff to transmit
   *	@sk_security: used by security modules
   *	@sk_mark: generic packet mark
-  *	@sk_cgrp_data: cgroup data for this cgroup
+  *	@sk_cgrp_prioidx: socket group's priority map index
+  *	@sk_classid: this socket's cgroup classid
   *	@sk_cgrp: this socket's cgroup-specific proto data
   *	@sk_write_pending: a write to stream socket waits to start
   *	@sk_state_change: callback to indicate change in the state of the sock
@@ -428,10 +429,8 @@ struct sock {
 	u32			sk_ack_backlog;
 	u32			sk_max_ack_backlog;
 	__u32			sk_priority;
-#if IS_ENABLED(CONFIG_CGROUP_NET_PRIO)
-	__u32			sk_cgrp_prioidx;
-#endif
 	spinlock_t		sk_peer_lock;
+	__u32			sk_mark;
 	struct pid		*sk_peer_pid;
 	const struct cred	*sk_peer_cred;
 
@@ -453,9 +452,13 @@ struct sock {
 #ifdef CONFIG_SECURITY
 	void			*sk_security;
 #endif
-	__u32			sk_mark;
 	kuid_t			sk_uid;
-	struct sock_cgroup_data	sk_cgrp_data;
+#if IS_ENABLED(CONFIG_CGROUP_NET_PRIO)
+	u16			sk_cgrp_prioidx;
+#endif
+#ifdef CONFIG_CGROUP_NET_CLASSID
+	u32			sk_classid;
+#endif
 	struct cg_proto		*sk_cgrp;
 	void			(*sk_state_change)(struct sock *sk);
 	void			(*sk_data_ready)(struct sock *sk);
