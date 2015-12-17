@@ -1340,50 +1340,17 @@ int sk_reuseport_attach_bpf(u32 ufd, struct sock *sk)
 	return 0;
 }
 
-struct bpf_scratchpad {
-	union {
-		__be32 diff[MAX_BPF_STACK / sizeof(__be32)];
-		u8     buff[MAX_BPF_STACK];
-	};
-};
-
-static DEFINE_PER_CPU(struct bpf_scratchpad, bpf_sp);
-
-static inline int __bpf_try_make_writable(struct sk_buff *skb,
-					  unsigned int write_len)
-{
-	return skb_ensure_writable(skb, write_len);
-}
-
-static inline int bpf_try_make_writable(struct sk_buff *skb,
-					unsigned int write_len)
-{
-	int err = __bpf_try_make_writable(skb, write_len);
-
-	bpf_compute_data_end(skb);
-	return err;
-}
-
-static int bpf_try_make_head_writable(struct sk_buff *skb)
-{
-	return bpf_try_make_writable(skb, skb_headlen(skb));
-}
-
-static inline void bpf_push_mac_rcsum(struct sk_buff *skb)
-{
-	if (skb_at_tc_ingress(skb))
-		skb_postpush_rcsum(skb, skb_mac_header(skb), skb->mac_len);
-}
-
-static inline void bpf_pull_mac_rcsum(struct sk_buff *skb)
-{
-	if (skb_at_tc_ingress(skb))
-		skb_postpull_rcsum(skb, skb_mac_header(skb), skb->mac_len);
-}
+#define BPF_RECOMPUTE_CSUM(flags)	((flags) & 1)
+#define BPF_LDST_LEN			16U
 
 BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	   const void *, from, u32, len, u64, flags)
 {
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
+	int offset = (int) r2;
+	void *from = (void *) (long) r3;
+	unsigned int len = (unsigned int) r4;
+	char buf[BPF_LDST_LEN];
 	void *ptr;
 
 	if (unlikely(flags & ~(BPF_F_RECOMPUTE_CSUM | BPF_F_INVALIDATE_HASH)))
@@ -1418,57 +1385,38 @@ static const struct bpf_func_proto bpf_skb_store_bytes_proto = {
 	.arg5_type	= ARG_ANYTHING,
 };
 
-BPF_CALL_4(bpf_skb_load_bytes, const struct sk_buff *, skb, u32, offset,
-	   void *, to, u32, len)
+static u64 bpf_skb_load_bytes(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
 {
+	const struct sk_buff *skb = (const struct sk_buff *)(unsigned long) r1;
+	int offset = (int) r2;
+	void *to = (void *)(unsigned long) r3;
+	unsigned int len = (unsigned int) r4;
 	void *ptr;
 
-	if (unlikely(offset > 0xffff))
-		goto err_clear;
+	if (unlikely((u32) offset > 0xffff || len > BPF_LDST_LEN))
+		return -EFAULT;
 
 	ptr = skb_header_pointer(skb, offset, len, to);
 	if (unlikely(!ptr))
-		goto err_clear;
+		return -EFAULT;
 	if (ptr != to)
 		memcpy(to, ptr, len);
 
 	return 0;
-err_clear:
-	memset(to, 0, len);
-	return -EFAULT;
 }
 
-static const struct bpf_func_proto bpf_skb_load_bytes_proto = {
+const struct bpf_func_proto bpf_skb_load_bytes_proto = {
 	.func		= bpf_skb_load_bytes,
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
 	.arg1_type	= ARG_PTR_TO_CTX,
 	.arg2_type	= ARG_ANYTHING,
-	.arg3_type	= ARG_PTR_TO_RAW_STACK,
+	.arg3_type	= ARG_PTR_TO_STACK,
 	.arg4_type	= ARG_CONST_STACK_SIZE,
 };
 
-BPF_CALL_2(bpf_skb_pull_data, struct sk_buff *, skb, u32, len)
-{
-	/* Idea is the following: should the needed direct read/write
-	 * test fail during runtime, we can pull in more data and redo
-	 * again, since implicitly, we invalidate previous checks here.
-	 *
-	 * Or, since we know how much we need to make read/writeable,
-	 * this can be done once at the program beginning for direct
-	 * access case. By this we overcome limitations of only current
-	 * headroom being accessible.
-	 */
-	return bpf_try_make_writable(skb, len ? : skb_headlen(skb));
-}
-
-static const struct bpf_func_proto bpf_skb_pull_data_proto = {
-	.func		= bpf_skb_pull_data,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_ANYTHING,
-};
+#define BPF_HEADER_FIELD_SIZE(flags)	((flags) & 0x0f)
+#define BPF_IS_PSEUDO_HEADER(flags)	((flags) & 0x10)
 
 BPF_CALL_5(bpf_l3_csum_replace, struct sk_buff *, skb, u32, offset,
 	   u64, from, u64, to, u64, flags)
@@ -2548,12 +2496,6 @@ tc_cls_act_func_proto(enum bpf_func_id func_id)
 		return &bpf_skb_store_bytes_proto;
 	case BPF_FUNC_skb_load_bytes:
 		return &bpf_skb_load_bytes_proto;
-	case BPF_FUNC_skb_pull_data:
-		return &bpf_skb_pull_data_proto;
-	case BPF_FUNC_csum_diff:
-		return &bpf_csum_diff_proto;
-	case BPF_FUNC_csum_update:
-		return &bpf_csum_update_proto;
 	case BPF_FUNC_l3_csum_replace:
 		return &bpf_l3_csum_replace_proto;
 	case BPF_FUNC_l4_csum_replace:
