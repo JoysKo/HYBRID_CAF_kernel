@@ -157,9 +157,8 @@ static int build_prologue(struct jit_ctx *ctx)
 	const u8 r8 = bpf2a64[BPF_REG_8];
 	const u8 r9 = bpf2a64[BPF_REG_9];
 	const u8 fp = bpf2a64[BPF_REG_FP];
-	const u8 tcc = bpf2a64[TCALL_CNT];
-	const int idx0 = ctx->idx;
-	int cur_offset;
+	const u8 tmp1 = bpf2a64[TMP_REG_1];
+	const u8 tmp2 = bpf2a64[TMP_REG_2];
 
 	/*
 	 * BPF prog stack layout
@@ -201,77 +200,6 @@ static int build_prologue(struct jit_ctx *ctx)
 
 	/* Set up function call stack */
 	emit(A64_SUB_I(1, A64_SP, A64_SP, STACK_SIZE), ctx);
-
-	cur_offset = ctx->idx - idx0;
-	if (cur_offset != PROLOGUE_OFFSET) {
-		pr_err_once("PROLOGUE_OFFSET = %d, expected %d!\n",
-			    cur_offset, PROLOGUE_OFFSET);
-		return -1;
-	}
-	return 0;
-}
-
-static int out_offset = -1; /* initialized on the first pass of build_body() */
-static int emit_bpf_tail_call(struct jit_ctx *ctx)
-{
-	/* bpf_tail_call(void *prog_ctx, struct bpf_array *array, u64 index) */
-	const u8 r2 = bpf2a64[BPF_REG_2];
-	const u8 r3 = bpf2a64[BPF_REG_3];
-
-	const u8 tmp = bpf2a64[TMP_REG_1];
-	const u8 prg = bpf2a64[TMP_REG_2];
-	const u8 tcc = bpf2a64[TCALL_CNT];
-	const int idx0 = ctx->idx;
-#define cur_offset (ctx->idx - idx0)
-#define jmp_offset (out_offset - (cur_offset))
-	size_t off;
-
-	/* if (index >= array->map.max_entries)
-	 *     goto out;
-	 */
-	off = offsetof(struct bpf_array, map.max_entries);
-	emit_a64_mov_i64(tmp, off, ctx);
-	emit(A64_LDR32(tmp, r2, tmp), ctx);
-	emit(A64_CMP(0, r3, tmp), ctx);
-	emit(A64_B_(A64_COND_GE, jmp_offset), ctx);
-
-	/* if (tail_call_cnt > MAX_TAIL_CALL_CNT)
-	 *     goto out;
-	 * tail_call_cnt++;
-	 */
-	emit_a64_mov_i64(tmp, MAX_TAIL_CALL_CNT, ctx);
-	emit(A64_CMP(1, tcc, tmp), ctx);
-	emit(A64_B_(A64_COND_GT, jmp_offset), ctx);
-	emit(A64_ADD_I(1, tcc, tcc, 1), ctx);
-
-	/* prog = array->ptrs[index];
-	 * if (prog == NULL)
-	 *     goto out;
-	 */
-	off = offsetof(struct bpf_array, ptrs);
-	emit_a64_mov_i64(tmp, off, ctx);
-	emit(A64_LDR64(tmp, r2, tmp), ctx);
-	emit(A64_LDR64(prg, tmp, r3), ctx);
-	emit(A64_CBZ(1, prg, jmp_offset), ctx);
-
-	/* goto *(prog->bpf_func + prologue_size); */
-	off = offsetof(struct bpf_prog, bpf_func);
-	emit_a64_mov_i64(tmp, off, ctx);
-	emit(A64_LDR64(tmp, prg, tmp), ctx);
-	emit(A64_ADD_I(1, tmp, tmp, sizeof(u32) * PROLOGUE_OFFSET), ctx);
-	emit(A64_BR(tmp), ctx);
-
-	/* out: */
-	if (out_offset == -1)
-		out_offset = cur_offset;
-	if (cur_offset != out_offset) {
-		pr_err_once("tail_call out_offset = %d, expected %d!\n",
-			    cur_offset, out_offset);
-		return -1;
-	}
-	return 0;
-#undef cur_offset
-#undef jmp_offset
 }
 
 static void build_epilogue(struct jit_ctx *ctx)
