@@ -557,17 +557,13 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
 
 	hash = htab_map_hash(key, key_size);
 
-	b = __select_bucket(htab, hash);
-	head = &b->head;
+	l_new->hash = htab_map_hash(l_new->key, key_size);
+	head = select_bucket(htab, l_new->hash);
 
 	/* bpf_map_update_elem() can be called in_irq() */
 	raw_spin_lock_irqsave(&b->lock, flags);
 
-	l_old = lookup_elem_raw(head, hash, key, key_size);
-
-	ret = check_flags(htab, l_old, map_flags);
-	if (ret)
-		goto err;
+	l_old = lookup_elem_raw(head, l_new->hash, key, key_size);
 
 	if (!l_old && unlikely(atomic_read(&htab->count) >= map->max_entries)) {
 		/* if elem with this 'key' doesn't exist and we've reached
@@ -673,10 +669,9 @@ static int htab_map_delete_elem(struct bpf_map *map, void *key)
 	key_size = map->key_size;
 
 	hash = htab_map_hash(key, key_size);
-	b = __select_bucket(htab, hash);
-	head = &b->head;
+	head = select_bucket(htab, hash);
 
-	raw_spin_lock_irqsave(&b->lock, flags);
+	raw_spin_lock_irqsave(&htab->lock, flags);
 
 	l = lookup_elem_raw(head, hash, key, key_size);
 
