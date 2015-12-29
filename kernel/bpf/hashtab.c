@@ -25,10 +25,8 @@ struct bucket {
 
 struct bpf_htab {
 	struct bpf_map map;
-	struct bucket *buckets;
-	void *elems;
-	struct pcpu_freelist freelist;
-	void __percpu *extra_elems;
+	struct hlist_head *buckets;
+	raw_spinlock_t lock;
 	atomic_t count;	/* number of elements in this hashtable */
 	u32 n_buckets;	/* number of hash buckets */
 	u32 elem_size;	/* size of each element in bytes */
@@ -239,11 +237,8 @@ static struct bpf_map *htab_map_alloc(union bpf_attr *attr)
 			goto free_buckets;
 	}
 
-	if (!(attr->map_flags & BPF_F_NO_PREALLOC)) {
-		err = prealloc_elems_and_freelist(htab);
-		if (err)
-			goto free_extra_elems;
-	}
+	raw_spin_lock_init(&htab->lock);
+	atomic_set(&htab->count, 0);
 
 	return &htab->map;
 
@@ -574,11 +569,11 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
 	if (ret)
 		goto err;
 
-	l_new = alloc_htab_elem(htab, key, value, key_size, hash, false, false,
-				!!l_old);
-	if (IS_ERR(l_new)) {
-		/* all pre-allocated elements are in use or memory exhausted */
-		ret = PTR_ERR(l_new);
+	if (!l_old && unlikely(atomic_read(&htab->count) >= map->max_entries)) {
+		/* if elem with this 'key' doesn't exist and we've reached
+		 * max_entries limit, fail insertion of new elem
+		 */
+		ret = -E2BIG;
 		goto err;
 	}
 
@@ -648,13 +643,7 @@ static int __htab_percpu_map_update_elem(struct bpf_map *map, void *key,
 			}
 		}
 	} else {
-		l_new = alloc_htab_elem(htab, key, value, key_size,
-					hash, true, onallcpus, false);
-		if (IS_ERR(l_new)) {
-			ret = PTR_ERR(l_new);
-			goto err;
-		}
-		hlist_nulls_add_head_rcu(&l_new->hash_node, head);
+		atomic_inc(&htab->count);
 	}
 	ret = 0;
 err:
@@ -692,8 +681,9 @@ static int htab_map_delete_elem(struct bpf_map *map, void *key)
 	l = lookup_elem_raw(head, hash, key, key_size);
 
 	if (l) {
-		hlist_nulls_del_rcu(&l->hash_node);
-		free_htab_elem(htab, l);
+		hlist_del_rcu(&l->hash_node);
+		atomic_dec(&htab->count);
+		kfree_rcu(l, rcu);
 		ret = 0;
 	}
 
@@ -710,10 +700,10 @@ static void delete_all_elements(struct bpf_htab *htab)
 		struct hlist_nulls_node *n;
 		struct htab_elem *l;
 
-		hlist_nulls_for_each_entry_safe(l, n, head, hash_node) {
-			hlist_nulls_del_rcu(&l->hash_node);
-			if (l->state != HTAB_EXTRA_ELEM_USED)
-				htab_elem_free(htab, l);
+		hlist_for_each_entry_safe(l, n, head, hash_node) {
+			hlist_del_rcu(&l->hash_node);
+			atomic_dec(&htab->count);
+			kfree(l);
 		}
 	}
 }
