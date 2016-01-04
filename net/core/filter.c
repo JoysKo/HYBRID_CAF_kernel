@@ -1263,7 +1263,7 @@ struct bpf_prog *__get_filter(struct sock_fprog *fprog, struct sock *sk)
  * occurs or there is insufficient memory for the filter a negative
  * errno code is returned. On success the return is zero.
  */
-int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk)
+int __sk_attach_filter(struct sock_fprog *fprog, struct sock *sk)
 {
 	struct bpf_prog *prog = __get_filter(fprog, sk);
 	int err;
@@ -1306,6 +1306,43 @@ static struct bpf_prog *__get_bpf(u32 ufd, struct sock *sk)
 	return bpf_prog_get_type(ufd, BPF_PROG_TYPE_SOCKET_FILTER);
 }
 
+int sk_reuseport_attach_filter(struct sock_fprog *fprog, struct sock *sk)
+{
+	struct bpf_prog *prog = __get_filter(fprog, sk);
+	int err;
+
+	if (IS_ERR(prog))
+		return PTR_ERR(prog);
+
+	err = __reuseport_attach_prog(prog, sk);
+	if (err < 0) {
+		__bpf_prog_release(prog);
+		return err;
+	}
+
+	return 0;
+}
+
+static struct bpf_prog *__get_bpf(u32 ufd, struct sock *sk)
+{
+	struct bpf_prog *prog;
+
+	if (sock_flag(sk, SOCK_FILTER_LOCKED))
+		return ERR_PTR(-EPERM);
+
+	prog = bpf_prog_get(ufd);
+	if (IS_ERR(prog))
+		return prog;
+
+	err = __sk_attach_prog(prog, sk);
+	if (err < 0) {
+		bpf_prog_put(prog);
+		return ERR_PTR(-EINVAL);
+	}
+
+	return prog;
+}
+
 int sk_attach_bpf(u32 ufd, struct sock *sk)
 {
 	struct bpf_prog *prog = __get_bpf(ufd, sk);
@@ -1314,7 +1351,7 @@ int sk_attach_bpf(u32 ufd, struct sock *sk)
 	if (IS_ERR(prog))
 		return PTR_ERR(prog);
 
-	err = __sk_attach_prog(prog, sk);
+        err = __sk_attach_prog(prog, sk, sock_owned_by_user(sk));
 	if (err < 0) {
 		bpf_prog_put(prog);
 		return err;
