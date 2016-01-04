@@ -519,7 +519,7 @@ begin:
 				struct sock *sk2;
 				hash = udp_ehashfn(net, daddr, hnum,
 						   saddr, sport);
-				sk2 = reuseport_select_sock(sk, hash, NULL, 0);
+				sk2 = reuseport_select_sock(sk, hash);
 				if (sk2) {
 					result = sk2;
 					goto found;
@@ -607,8 +607,7 @@ begin:
 				struct sock *sk2;
 				hash = udp_ehashfn(net, daddr, hnum,
 						   saddr, sport);
-				sk2 = reuseport_select_sock(sk, hash, skb,
-							sizeof(struct udphdr));
+				sk2 = reuseport_select_sock(sk, hash);
 				if (sk2) {
 					result = sk2;
 					goto found;
@@ -660,7 +659,7 @@ struct sock *udp4_lib_lookup(struct net *net, __be32 saddr, __be16 sport,
 			     __be32 daddr, __be16 dport, int dif)
 {
 	return __udp4_lib_lookup(net, saddr, sport, daddr, dport, dif,
-				 &udp_table, NULL);
+				 &udp_table);
 }
 EXPORT_SYMBOL_GPL(udp4_lib_lookup);
 
