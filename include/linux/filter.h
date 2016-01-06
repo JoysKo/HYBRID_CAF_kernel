@@ -467,6 +467,27 @@ static inline u8 *bpf_skb_cb(struct sk_buff *skb)
 	return qdisc_skb_cb(skb)->data;
 }
 
+#define BPF_SKB_CB_LEN QDISC_CB_PRIV_LEN
+
+static inline u8 *bpf_skb_cb(struct sk_buff *skb)
+{
+	/* eBPF programs may read/write skb->cb[] area to transfer meta
+	 * data between tail calls. Since this also needs to work with
+	 * tc, that scratch memory is mapped to qdisc_skb_cb's data area.
+	 *
+	 * In some socket filter cases, the cb unfortunately needs to be
+	 * saved/restored so that protocol specific skb->cb[] data won't
+	 * be lost. In any case, due to unpriviledged eBPF programs
+	 * attached to sockets, we need to clear the bpf_skb_cb() area
+	 * to not leak previous contents to user space.
+	 */
+	BUILD_BUG_ON(FIELD_SIZEOF(struct __sk_buff, cb) != BPF_SKB_CB_LEN);
+	BUILD_BUG_ON(FIELD_SIZEOF(struct __sk_buff, cb) !=
+		     FIELD_SIZEOF(struct qdisc_skb_cb, data));
+
+	return qdisc_skb_cb(skb)->data;
+}
+
 static inline u32 bpf_prog_run_save_cb(const struct bpf_prog *prog,
 				       struct sk_buff *skb)
 {
