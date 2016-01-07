@@ -1408,6 +1408,9 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	if (flags & BPF_F_INVALIDATE_HASH)
 		skb_clear_hash(skb);
 
+	if (BPF_RECOMPUTE_CSUM(flags))
+		skb_postpush_rcsum(skb, ptr, len);
+
 	return 0;
 }
 
@@ -1651,18 +1654,12 @@ BPF_CALL_3(bpf_clone_redirect, struct sk_buff *, skb, u32, ifindex, u64, flags)
 	if (unlikely(!clone))
 		return -ENOMEM;
 
-	/* For direct write, we need to keep the invariant that the skbs
-	 * we're dealing with need to be uncloned. Should uncloning fail
-	 * here, we need to free the just generated clone to unclone once
-	 * again.
-	 */
-	ret = bpf_try_make_head_writable(skb);
-	if (unlikely(ret)) {
-		kfree_skb(clone);
-		return -ENOMEM;
+	if (BPF_IS_REDIRECT_INGRESS(flags)) {
+		if (skb_at_tc_ingress(skb2))
+			skb_postpush_rcsum(skb2, skb_mac_header(skb2),
+					   skb2->mac_len);
+		return dev_forward_skb(dev, skb2);
 	}
-
-	bpf_push_mac_rcsum(clone);
 
 	return flags & BPF_F_INGRESS ?
 	       __bpf_rx_skb(dev, clone) : __bpf_tx_skb(dev, clone);
@@ -1709,7 +1706,12 @@ int skb_do_redirect(struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	bpf_push_mac_rcsum(skb);
+	if (BPF_IS_REDIRECT_INGRESS(ri->flags)) {
+		if (skb_at_tc_ingress(skb))
+			skb_postpush_rcsum(skb, skb_mac_header(skb),
+					   skb->mac_len);
+		return dev_forward_skb(dev, skb);
+	}
 
 	return ri->flags & BPF_F_INGRESS ?
 	       __bpf_rx_skb(dev, skb) : __bpf_tx_skb(dev, skb);
