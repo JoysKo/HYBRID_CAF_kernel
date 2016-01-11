@@ -1377,8 +1377,7 @@ int sk_reuseport_attach_bpf(u32 ufd, struct sock *sk)
 	return 0;
 }
 
-#define BPF_RECOMPUTE_CSUM(flags)	((flags) & 1)
-#define BPF_LDST_LEN			16U
+#define BPF_LDST_LEN 16U
 
 BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	   const void *, from, u32, len, u64, flags)
@@ -1390,16 +1389,26 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	char buf[BPF_LDST_LEN];
 	void *ptr;
 
-	if (unlikely(flags & ~(BPF_F_RECOMPUTE_CSUM | BPF_F_INVALIDATE_HASH)))
+	if (unlikely(flags & ~(BPF_F_RECOMPUTE_CSUM)))
 		return -EINVAL;
-	if (unlikely(offset > 0xffff))
+
+	/* bpf verifier guarantees that:
+	 * 'from' pointer points to bpf program stack
+	 * 'len' bytes of it were initialized
+	 * 'len' > 0
+	 * 'skb' is a valid pointer to 'struct sk_buff'
+	 *
+	 * so check for invalid 'offset' and too large 'len'
+	 */
+	if (unlikely((u32) offset > 0xffff || len > sizeof(buf)))
+		return -EFAULT;
+	if (unlikely(skb_try_make_writable(skb, offset + len)))
 		return -EFAULT;
 	if (unlikely(bpf_try_make_writable(skb, offset + len)))
 		return -EFAULT;
 
-	ptr = skb->data + offset;
 	if (flags & BPF_F_RECOMPUTE_CSUM)
-		__skb_postpull_rcsum(skb, ptr, len, offset);
+		skb_postpull_rcsum(skb, ptr, len);
 
 	memcpy(ptr, from, len);
 
@@ -1408,7 +1417,7 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	if (flags & BPF_F_INVALIDATE_HASH)
 		skb_clear_hash(skb);
 
-	if (BPF_RECOMPUTE_CSUM(flags))
+	if (flags & BPF_F_RECOMPUTE_CSUM)
 		skb_postpush_rcsum(skb, ptr, len);
 
 	return 0;
@@ -1455,17 +1464,13 @@ const struct bpf_func_proto bpf_skb_load_bytes_proto = {
 	.arg4_type	= ARG_CONST_STACK_SIZE,
 };
 
-#define BPF_HEADER_FIELD_SIZE(flags)	((flags) & 0x0f)
-#define BPF_IS_PSEUDO_HEADER(flags)	((flags) & 0x10)
-
-BPF_CALL_5(bpf_l3_csum_replace, struct sk_buff *, skb, u32, offset,
-	   u64, from, u64, to, u64, flags)
+static u64 bpf_l3_csum_replace(u64 r1, u64 r2, u64 from, u64 to, u64 flags)
 {
 	__sum16 *ptr;
 
 	if (unlikely(flags & ~(BPF_F_HDR_FIELD_MASK)))
 		return -EINVAL;
-	if (unlikely(offset > 0xffff || offset & 1))
+	if (unlikely((u32) offset > 0xffff))
 		return -EFAULT;
 	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(*ptr))))
 		return -EFAULT;
@@ -1476,8 +1481,7 @@ BPF_CALL_5(bpf_l3_csum_replace, struct sk_buff *, skb, u32, offset,
 		if (unlikely(from != 0))
 			return -EINVAL;
 
-		csum_replace_by_diff(ptr, to);
-		break;
+	switch (flags & BPF_F_HDR_FIELD_MASK) {
 	case 2:
 		csum_replace2(ptr, from, to);
 		break;
@@ -1505,14 +1509,14 @@ static const struct bpf_func_proto bpf_l3_csum_replace_proto = {
 BPF_CALL_5(bpf_l4_csum_replace, struct sk_buff *, skb, u32, offset,
 	   u64, from, u64, to, u64, flags)
 {
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
 	bool is_pseudo = flags & BPF_F_PSEUDO_HDR;
-	bool is_mmzero = flags & BPF_F_MARK_MANGLED_0;
-	__sum16 *ptr;
+	int offset = (int) r2;
+	__sum16 sum, *ptr;
 
-	if (unlikely(flags & ~(BPF_F_MARK_MANGLED_0 | BPF_F_PSEUDO_HDR |
-			       BPF_F_HDR_FIELD_MASK)))
+	if (unlikely(flags & ~(BPF_F_PSEUDO_HDR | BPF_F_HDR_FIELD_MASK)))
 		return -EINVAL;
-	if (unlikely(offset > 0xffff || offset & 1))
+	if (unlikely((u32) offset > 0xffff))
 		return -EFAULT;
 	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(*ptr))))
 		return -EFAULT;
@@ -1526,8 +1530,7 @@ BPF_CALL_5(bpf_l4_csum_replace, struct sk_buff *, skb, u32, offset,
 		if (unlikely(from != 0))
 			return -EINVAL;
 
-		inet_proto_csum_replace_by_diff(ptr, skb, to, is_pseudo);
-		break;
+	switch (flags & BPF_F_HDR_FIELD_MASK) {
 	case 2:
 		inet_proto_csum_replace2(ptr, skb, from, to, is_pseudo);
 		break;
@@ -1554,94 +1557,14 @@ static const struct bpf_func_proto bpf_l4_csum_replace_proto = {
 	.arg5_type	= ARG_ANYTHING,
 };
 
-BPF_CALL_5(bpf_csum_diff, __be32 *, from, u32, from_size,
-	   __be32 *, to, u32, to_size, __wsum, seed)
-{
-	struct bpf_scratchpad *sp = this_cpu_ptr(&bpf_sp);
-	u32 diff_size = from_size + to_size;
-	int i, j = 0;
-
-	/* This is quite flexible, some examples:
-	 *
-	 * from_size == 0, to_size > 0,  seed := csum --> pushing data
-	 * from_size > 0,  to_size == 0, seed := csum --> pulling data
-	 * from_size > 0,  to_size > 0,  seed := 0    --> diffing data
-	 *
-	 * Even for diffing, from_size and to_size don't need to be equal.
-	 */
-	if (unlikely(((from_size | to_size) & (sizeof(__be32) - 1)) ||
-		     diff_size > sizeof(sp->diff)))
-		return -EINVAL;
-
-	for (i = 0; i < from_size / sizeof(__be32); i++, j++)
-		sp->diff[j] = ~from[i];
-	for (i = 0; i <   to_size / sizeof(__be32); i++, j++)
-		sp->diff[j] = to[i];
-
-	return csum_partial(sp->diff, diff_size, seed);
-}
-
-static const struct bpf_func_proto bpf_csum_diff_proto = {
-	.func		= bpf_csum_diff,
-	.gpl_only	= false,
-	.pkt_access	= true,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_STACK,
-	.arg2_type	= ARG_CONST_STACK_SIZE_OR_ZERO,
-	.arg3_type	= ARG_PTR_TO_STACK,
-	.arg4_type	= ARG_CONST_STACK_SIZE_OR_ZERO,
-	.arg5_type	= ARG_ANYTHING,
-};
-
-BPF_CALL_2(bpf_csum_update, struct sk_buff *, skb, __wsum, csum)
-{
-	/* The interface is to be used in combination with bpf_csum_diff()
-	 * for direct packet writes. csum rotation for alignment as well
-	 * as emulating csum_sub() can be done from the eBPF program.
-	 */
-	if (skb->ip_summed == CHECKSUM_COMPLETE)
-		return (skb->csum = csum_add(skb->csum, csum));
-
-	return -ENOTSUPP;
-}
-
-static const struct bpf_func_proto bpf_csum_update_proto = {
-	.func		= bpf_csum_update,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_ANYTHING,
-};
-
-static inline int __bpf_rx_skb(struct net_device *dev, struct sk_buff *skb)
-{
-	return dev_forward_skb(dev, skb);
-}
-
-static inline int __bpf_tx_skb(struct net_device *dev, struct sk_buff *skb)
-{
-	int ret;
-
-	if (unlikely(__this_cpu_read(xmit_recursion) > XMIT_RECURSION_LIMIT)) {
-		net_crit_ratelimited("bpf: recursion limit reached on datapath, buggy bpf program?\n");
-		kfree_skb(skb);
-		return -ENETDOWN;
-	}
-
-	skb->dev = dev;
-
-	__this_cpu_inc(xmit_recursion);
-	ret = dev_queue_xmit(skb);
-	__this_cpu_dec(xmit_recursion);
-
-	return ret;
-}
-
-BPF_CALL_3(bpf_clone_redirect, struct sk_buff *, skb, u32, ifindex, u64, flags)
+static u64 bpf_clone_redirect(u64 r1, u64 ifindex, u64 flags, u64 r4, u64 r5)
 {
 	struct net_device *dev;
 	struct sk_buff *clone;
 	int ret;
+
+	if (unlikely(flags & ~(BPF_F_INGRESS)))
+		return -EINVAL;
 
 	if (unlikely(flags & ~(BPF_F_INGRESS)))
 		return -EINVAL;
@@ -1654,7 +1577,7 @@ BPF_CALL_3(bpf_clone_redirect, struct sk_buff *, skb, u32, ifindex, u64, flags)
 	if (unlikely(!clone))
 		return -ENOMEM;
 
-	if (BPF_IS_REDIRECT_INGRESS(flags)) {
+	if (flags & BPF_F_INGRESS) {
 		if (skb_at_tc_ingress(skb2))
 			skb_postpush_rcsum(skb2, skb_mac_header(skb2),
 					   skb2->mac_len);
@@ -1681,7 +1604,7 @@ struct redirect_info {
 
 static DEFINE_PER_CPU(struct redirect_info, redirect_info);
 
-BPF_CALL_2(bpf_redirect, u32, ifindex, u64, flags)
+static u64 bpf_redirect(u64 ifindex, u64 flags, u64 r3, u64 r4, u64 r5)
 {
 	struct redirect_info *ri = this_cpu_ptr(&redirect_info);
 
@@ -1706,7 +1629,7 @@ int skb_do_redirect(struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	if (BPF_IS_REDIRECT_INGRESS(ri->flags)) {
+	if (ri->flags & BPF_F_INGRESS) {
 		if (skb_at_tc_ingress(skb))
 			skb_postpush_rcsum(skb, skb_mac_header(skb),
 					   skb->mac_len);
