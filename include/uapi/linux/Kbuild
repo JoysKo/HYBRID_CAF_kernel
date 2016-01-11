@@ -22,6 +22,7 @@ no-export-headers += keychord.h
 no-export-headers += kfd_ioctl.h
 no-export-headers += lightnvm.h
 no-export-headers += module.h
+no-export-headers += nvme_ioctl.h
 no-export-headers += pr.h
 no-export-headers += stm.h
 no-export-headers += tee.h
