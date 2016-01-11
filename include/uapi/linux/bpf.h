@@ -362,6 +362,9 @@ enum bpf_func_id {
 /* BPF_FUNC_clone_redirect and BPF_FUNC_redirect flags. */
 #define BPF_F_INGRESS			(1ULL << 0)
 
+/* BPF_FUNC_skb_set_tunnel_key and BPF_FUNC_skb_get_tunnel_key flags. */
+#define BPF_F_TUNINFO_IPV6		(1ULL << 0)
+
 /* user accessible mirror of in-kernel sk_buff.
  * new fields can only be added to the end of this structure
  */
@@ -393,27 +396,6 @@ struct bpf_tunnel_key {
 	};
 	__u8 tunnel_tos;
 	__u8 tunnel_ttl;
-	__u16 tunnel_ext;
-	__u32 tunnel_label;
-};
-
-/* User return codes for XDP prog type.
- * A valid XDP program must return one of these defined values. All other
- * return codes are reserved for future use. Unknown return codes will result
- * in packet drop.
- */
-enum xdp_action {
-	XDP_ABORTED = 0,
-	XDP_DROP,
-	XDP_PASS,
-};
-
-/* user accessible metadata for XDP packet hook
- * new fields must be added to the end of this structure
- */
-struct xdp_md {
-	__u32 data;
-	__u32 data_end;
 };
 
 #endif /* _UAPI__LINUX_BPF_H__ */
