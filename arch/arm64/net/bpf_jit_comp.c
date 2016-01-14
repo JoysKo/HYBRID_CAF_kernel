@@ -819,8 +819,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	/* 3. Extra pass to validate JITed code. */
 	if (validate_code(&ctx)) {
 		bpf_jit_binary_free(header);
-		prog = orig_prog;
-		goto out_off;
+		goto out;
 	}
 
 	/* And we're done. */
