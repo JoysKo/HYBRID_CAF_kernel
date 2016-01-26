@@ -248,18 +248,16 @@ BPF_CALL_2(bpf_perf_event_read, struct bpf_map *, map, u64, flags)
 	struct bpf_array *array = container_of(map, struct bpf_array, map);
 	struct bpf_event_entry *ee;
 	struct perf_event *event;
+	struct file *file;
 
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	ee = READ_ONCE(array->ptrs[index]);
-	if (!ee)
+	file = (struct file *)array->ptrs[index];
+	if (unlikely(!file))
 		return -ENOENT;
 
-	event = ee->event;
-	if (unlikely(event->attr.type != PERF_TYPE_HARDWARE &&
-		     event->attr.type != PERF_TYPE_RAW))
-		return -EINVAL;
+	event = file->private_data;
 
 	/* make sure event is local and doesn't have pmu::count */
 	if (event->oncpu != smp_processor_id() ||
@@ -295,17 +293,23 @@ __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 	struct perf_sample_data sample_data;
 	struct bpf_event_entry *ee;
 	struct perf_event *event;
+	struct file *file;
+	struct perf_raw_record raw = {
+		.size = size,
+		.data = data,
+	};
 
 	if (index == BPF_F_CURRENT_CPU)
 		index = raw_smp_processor_id();
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	ee = READ_ONCE(array->ptrs[index]);
-	if (!ee)
+	file = (struct file *)array->ptrs[index];
+	if (unlikely(!file))
 		return -ENOENT;
 
-	event = ee->event;
+	event = file->private_data;
+
 	if (unlikely(event->attr.type != PERF_TYPE_SOFTWARE ||
 		     event->attr.config != PERF_COUNT_SW_BPF_OUTPUT))
 		return -EINVAL;
