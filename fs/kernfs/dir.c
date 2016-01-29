@@ -110,9 +110,8 @@ static struct kernfs_node *kernfs_common_ancestor(struct kernfs_node *a,
  * kn_to:   /n1/n2/n3         [depth=3]
  * result:  /../..
  *
- * Returns the length of the full path.  If the full length is equal to or
- * greater than @buflen, @buf contains the truncated path with the trailing
- * '\0'.  On error, -errno is returned.
+ * return value: length of the string.  If greater than buflen,
+ * then contents of buf are undefined.  On error, -1 is returned.
  */
 static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 					struct kernfs_node *kn_from,
@@ -120,8 +119,9 @@ static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 {
 	struct kernfs_node *kn, *common;
 	const char parent_str[] = "/..";
-	size_t depth_from, depth_to, len = 0;
-	int i, j;
+	size_t depth_from, depth_to, len = 0, nlen = 0;
+	char *p;
+	int i;
 
 	if (!kn_from)
 		kn_from = kernfs_root(kn_to)->kn;
@@ -131,7 +131,7 @@ static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 
 	common = kernfs_common_ancestor(kn_from, kn_to);
 	if (WARN_ON(!common))
-		return -EINVAL;
+		return -1;
 
 	depth_to = kernfs_depth(common, kn_to);
 	depth_from = kernfs_depth(common, kn_from);
@@ -144,16 +144,22 @@ static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 			       len < buflen ? buflen - len : 0);
 
 	/* Calculate how many bytes we need for the rest */
-	for (i = depth_to - 1; i >= 0; i--) {
-		for (kn = kn_to, j = 0; j < i; j++)
-			kn = kn->parent;
-		len += strlcpy(buf + len, "/",
-			       len < buflen ? buflen - len : 0);
-		len += strlcpy(buf + len, kn->name,
-			       len < buflen ? buflen - len : 0);
+	for (kn = kn_to; kn != common; kn = kn->parent)
+		nlen += strlen(kn->name) + 1;
+
+	if (len + nlen >= buflen)
+		return len + nlen;
+
+	p = buf + len + nlen;
+	*p = '\0';
+	for (kn = kn_to; kn != common; kn = kn->parent) {
+		nlen = strlen(kn->name);
+		p -= nlen;
+		memcpy(p, kn->name, nlen);
+		*(--p) = '/';
 	}
 
-	return len;
+	return len + nlen;
 }
 
 /**
@@ -214,9 +220,8 @@ size_t kernfs_path_len(struct kernfs_node *kn)
  * path (which includes '..'s) as needed to reach from @from to @to is
  * returned.
  *
- * Returns the length of the full path.  If the full length is equal to or
- * greater than @buflen, @buf contains the truncated path with the trailing
- * '\0'.  On error, -errno is returned.
+ * If @buf isn't long enough, the return value will be greater than @buflen
+ * and @buf contents are undefined.
  */
 int kernfs_path_from_node(struct kernfs_node *to, struct kernfs_node *from,
 			  char *buf, size_t buflen)
@@ -228,6 +233,33 @@ int kernfs_path_from_node(struct kernfs_node *to, struct kernfs_node *from,
 	ret = kernfs_path_from_node_locked(to, from, buf, buflen);
 	spin_unlock_irqrestore(&kernfs_rename_lock, flags);
 	return ret;
+}
+EXPORT_SYMBOL_GPL(kernfs_path_from_node);
+
+/**
+ * kernfs_path - build full path of a given node
+ * @kn: kernfs_node of interest
+ * @buf: buffer to copy @kn's name into
+ * @buflen: size of @buf
+ *
+ * Builds @to's path relative to @from in @buf. @from and @to must
+ * be on the same kernfs-root. If @from is not parent of @to, then a relative
+ * path (which includes '..'s) as needed to reach from @from to @to is
+ * returned.
+ *
+ * Returns the length of the full path.  If the full length is equal to or
+ * greater than @buflen, @buf contains the truncated path with the trailing
+ * '\0'.  On error, -errno is returned.
+ */
+int kernfs_path_from_node(struct kernfs_node *to, struct kernfs_node *from,
+			  char *buf, size_t buflen)
+{
+	int ret;
+
+	ret = kernfs_path_from_node(kn, NULL, buf, buflen);
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
 }
 EXPORT_SYMBOL_GPL(kernfs_path_from_node);
 
