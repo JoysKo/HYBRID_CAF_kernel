@@ -16,17 +16,12 @@
 #include <linux/filter.h>
 #include <linux/perf_event.h>
 
-#define ARRAY_CREATE_FLAG_MASK \
-	(BPF_F_RDONLY | BPF_F_WRONLY)
-
 static void bpf_array_free_percpu(struct bpf_array *array)
 {
 	int i;
 
-	for (i = 0; i < array->map.max_entries; i++) {
+	for (i = 0; i < array->map.max_entries; i++)
 		free_percpu(array->pptrs[i]);
-		cond_resched();
-	}
 }
 
 static int bpf_array_alloc_percpu(struct bpf_array *array)
@@ -42,7 +37,6 @@ static int bpf_array_alloc_percpu(struct bpf_array *array)
 			return -ENOMEM;
 		}
 		array->pptrs[i] = ptr;
-		cond_resched();
 	}
 
 	return 0;
@@ -51,8 +45,10 @@ static int bpf_array_alloc_percpu(struct bpf_array *array)
 /* Called from syscall */
 static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 {
+	bool percpu = attr->map_type == BPF_MAP_TYPE_PERCPU_ARRAY;
 	struct bpf_array *array;
-	u32 elem_size, array_size;
+	u64 array_size;
+	u32 elem_size;
 
 	/* check sanity of attributes */
 	if (attr->max_entries == 0 || attr->key_size != 4 ||
@@ -68,9 +64,14 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 
 	elem_size = round_up(attr->value_size, 8);
 
-	/* check round_up into zero and u32 overflow */
-	if (elem_size == 0 ||
-	    attr->max_entries > (U32_MAX - PAGE_SIZE - sizeof(*array)) / elem_size)
+	array_size = sizeof(*array);
+	if (percpu)
+		array_size += (u64) attr->max_entries * sizeof(void *);
+	else
+		array_size += (u64) attr->max_entries * elem_size;
+
+	/* make sure there is no u32 overflow later in round_up() */
+	if (array_size >= U32_MAX - PAGE_SIZE)
 		return ERR_PTR(-ENOMEM);
 	if (percpu) {
 		cost += (u64)attr->max_entries * elem_size * num_possible_cpus();
@@ -79,7 +80,6 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	}
 	cost = round_up(cost, PAGE_SIZE) >> PAGE_SHIFT;
 
-	array_size = sizeof(*array) + attr->max_entries * elem_size;
 
 	/* allocate all map elements and zero-initialize them */
 	array = kzalloc(array_size, GFP_USER | __GFP_NOWARN);
@@ -94,16 +94,20 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	array->map.key_size = attr->key_size;
 	array->map.value_size = attr->value_size;
 	array->map.max_entries = attr->max_entries;
-	array->map.map_flags = attr->map_flags;
-	array->map.pages = cost;
 	array->elem_size = elem_size;
 
-	if (percpu &&
-	    (elem_size > PCPU_MIN_UNIT_SIZE ||
-	     bpf_array_alloc_percpu(array))) {
-		bpf_map_area_free(array);
+	if (!percpu)
+		goto out;
+
+	array_size += (u64) attr->max_entries * elem_size * num_possible_cpus();
+
+	if (array_size >= U32_MAX - PAGE_SIZE ||
+	    elem_size > PCPU_MIN_UNIT_SIZE || bpf_array_alloc_percpu(array)) {
+		kvfree(array);
 		return ERR_PTR(-ENOMEM);
 	}
+out:
+	array->map.pages = round_up(array_size, PAGE_SIZE) >> PAGE_SHIFT;
 
 	return &array->map;
 }
@@ -129,33 +133,7 @@ static void *percpu_array_map_lookup_elem(struct bpf_map *map, void *key)
 	if (unlikely(index >= array->map.max_entries))
 		return NULL;
 
-	return this_cpu_ptr(array->pptrs[index & array->index_mask]);
-}
-
-int bpf_percpu_array_copy(struct bpf_map *map, void *key, void *value)
-{
-	struct bpf_array *array = container_of(map, struct bpf_array, map);
-	u32 index = *(u32 *)key;
-	void __percpu *pptr;
-	int cpu, off = 0;
-	u32 size;
-
-	if (unlikely(index >= array->map.max_entries))
-		return -ENOENT;
-
-	/* per_cpu areas are zero-filled and bpf programs can only
-	 * access 'value_size' of them, so copying rounded areas
-	 * will not leak any kernel data
-	 */
-	size = round_up(map->value_size, 8);
-	rcu_read_lock();
-	pptr = array->pptrs[index & array->index_mask];
-	for_each_possible_cpu(cpu) {
-		bpf_long_memcpy(value + off, per_cpu_ptr(pptr, cpu), size);
-		off += size;
-	}
-	rcu_read_unlock();
-	return 0;
+	return this_cpu_ptr(array->pptrs[index]);
 }
 
 /* Called from syscall */
@@ -196,7 +174,12 @@ static int array_map_update_elem(struct bpf_map *map, void *key, void *value,
 		/* all elements already exist */
 		return -EEXIST;
 
-	memcpy(array->value + array->elem_size * index, value, map->value_size);
+	if (array->map.map_type == BPF_MAP_TYPE_PERCPU_ARRAY)
+		memcpy(this_cpu_ptr(array->pptrs[index]),
+		       value, map->value_size);
+	else
+		memcpy(array->value + array->elem_size * index,
+		       value, map->value_size);
 	return 0;
 }
 
@@ -221,7 +204,7 @@ static void array_map_free(struct bpf_map *map)
 	if (array->map.map_type == BPF_MAP_TYPE_PERCPU_ARRAY)
 		bpf_array_free_percpu(array);
 
-	bpf_map_area_free(array);
+	kvfree(array);
 }
 
 static const struct bpf_map_ops array_ops = {
