@@ -103,7 +103,7 @@ static void test_percpu_hashmap_sanity(int task, void *data)
 	int map_fd, i;
 
 	map_fd = bpf_create_map(BPF_MAP_TYPE_PERCPU_HASH, sizeof(key),
-				sizeof(value[0]), 2, map_flags);
+				sizeof(value[0]), 2);
 	if (map_fd < 0) {
 		printf("failed to create hashmap '%s'\n", strerror(errno));
 		exit(1);
