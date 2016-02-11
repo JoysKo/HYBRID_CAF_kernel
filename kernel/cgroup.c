@@ -185,6 +185,9 @@ static bool cgrp_dfl_visible;
 /* Controllers blocked by the commandline in v1 */
 static u16 cgroup_no_v1_mask;
 
+/* Controllers blocked by the commandline in v1 */
+static unsigned long cgroup_no_v1_mask;
+
 /* some controllers are not supported in the default hierarchy */
 static u16 cgrp_dfl_inhibit_ss_mask;
 
@@ -6300,7 +6303,7 @@ static int __init cgroup_no_v1(char *str)
 			continue;
 
 		if (!strcmp(token, "all")) {
-			cgroup_no_v1_mask = U16_MAX;
+			cgroup_no_v1_mask = ~0UL;
 			break;
 		}
 
