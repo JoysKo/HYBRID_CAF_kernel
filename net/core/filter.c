@@ -1494,24 +1494,23 @@ BPF_CALL_5(bpf_l4_csum_replace, struct sk_buff *, skb, u32, offset,
 {
 	struct sk_buff *skb = (struct sk_buff *) (long) r1;
 	bool is_pseudo = flags & BPF_F_PSEUDO_HDR;
+	bool is_mmzero = flags & BPF_F_MARK_MANGLED_0;
 	int offset = (int) r2;
 	__sum16 sum, *ptr;
 
-	if (unlikely(flags & ~(BPF_F_PSEUDO_HDR | BPF_F_HDR_FIELD_MASK)))
+	if (unlikely(flags & ~(BPF_F_MARK_MANGLED_0 | BPF_F_PSEUDO_HDR |
+			       BPF_F_HDR_FIELD_MASK)))
 		return -EINVAL;
 	if (unlikely((u32) offset > 0xffff))
 		return -EFAULT;
 	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(*ptr))))
 		return -EFAULT;
 
-	ptr = (__sum16 *)(skb->data + offset);
+	ptr = skb_header_pointer(skb, offset, sizeof(sum), &sum);
+	if (unlikely(!ptr))
+		return -EFAULT;
 	if (is_mmzero && !*ptr)
 		return 0;
-
-	switch (flags & BPF_F_HDR_FIELD_MASK) {
-	case 0:
-		if (unlikely(from != 0))
-			return -EINVAL;
 
 	switch (flags & BPF_F_HDR_FIELD_MASK) {
 	case 0:
@@ -1532,6 +1531,10 @@ BPF_CALL_5(bpf_l4_csum_replace, struct sk_buff *, skb, u32, offset,
 
 	if (is_mmzero && !*ptr)
 		*ptr = CSUM_MANGLED_0;
+	if (ptr == &sum)
+		/* skb_store_bits guaranteed to not return -EFAULT here */
+		skb_store_bits(skb, offset, ptr, sizeof(sum));
+
 	return 0;
 }
 
