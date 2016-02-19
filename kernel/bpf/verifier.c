@@ -873,9 +873,8 @@ static int check_xadd(struct verifier_env *env, struct bpf_insn *insn)
  * bytes from that pointer, make sure that it's within stack boundary
  * and all elements of stack are initialized
  */
-static int check_stack_boundary(struct bpf_verifier_env *env, int regno,
-				int access_size, bool zero_size_allowed,
-				struct bpf_call_arg_meta *meta)
+static int check_stack_boundary(struct verifier_env *env, int regno,
+				int access_size, bool zero_size_allowed)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
 	struct bpf_reg_state *regs = state->regs;
@@ -941,16 +940,9 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 		return 0;
 	}
 
-	if (type == PTR_TO_PACKET && !may_access_direct_pkt_data(env, meta)) {
-		verbose("helper access to the packet is not allowed\n");
-		return -EACCES;
-	}
-
 	if (arg_type == ARG_PTR_TO_MAP_KEY ||
 	    arg_type == ARG_PTR_TO_MAP_VALUE) {
 		expected_type = PTR_TO_STACK;
-		if (type != PTR_TO_PACKET && type != expected_type)
-			goto err_type;
 	} else if (arg_type == ARG_CONST_STACK_SIZE ||
 		   arg_type == ARG_CONST_STACK_SIZE_OR_ZERO) {
 		expected_type = CONST_IMM;
@@ -962,20 +954,14 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			goto err_type;
 	} else if (arg_type == ARG_PTR_TO_CTX) {
 		expected_type = PTR_TO_CTX;
-		if (type != expected_type)
-			goto err_type;
-	} else if (arg_type == ARG_PTR_TO_STACK ||
-		   arg_type == ARG_PTR_TO_RAW_STACK) {
+	} else if (arg_type == ARG_PTR_TO_STACK) {
 		expected_type = PTR_TO_STACK;
 		/* One exception here. In case function allows for NULL to be
 		 * passed in as argument, it's a CONST_IMM type. Final test
 		 * happens during stack boundary checking.
 		 */
-		if (type == CONST_IMM && reg->imm == 0)
-			/* final test in check_stack_boundary() */;
-		else if (type != PTR_TO_PACKET && type != expected_type)
-			goto err_type;
-		meta->raw_mode = arg_type == ARG_PTR_TO_RAW_STACK;
+		if (reg->type == CONST_IMM && reg->imm == 0)
+			expected_type = CONST_IMM;
 	} else {
 		verbose("unsupported arg_type %d\n", arg_type);
 		return -EFAULT;
@@ -998,13 +984,8 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->key\n");
 			return -EACCES;
 		}
-		if (type == PTR_TO_PACKET)
-			err = check_packet_access(env, regno, 0,
-						  meta->map_ptr->key_size);
-		else
-			err = check_stack_boundary(env, regno,
-						   meta->map_ptr->key_size,
-						   false, NULL);
+		err = check_stack_boundary(env, regno, (*mapp)->key_size,
+					   false);
 	} else if (arg_type == ARG_PTR_TO_MAP_VALUE) {
 		/* bpf_map_xxx(..., map_ptr, ..., value) call:
 		 * check [value, value + map->value_size) validity
@@ -1014,13 +995,8 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->value\n");
 			return -EACCES;
 		}
-		if (type == PTR_TO_PACKET)
-			err = check_packet_access(env, regno, 0,
-						  meta->map_ptr->value_size);
-		else
-			err = check_stack_boundary(env, regno,
-						   meta->map_ptr->value_size,
-						   false, NULL);
+		err = check_stack_boundary(env, regno, (*mapp)->value_size,
+					   false);
 	} else if (arg_type == ARG_CONST_STACK_SIZE ||
 		   arg_type == ARG_CONST_STACK_SIZE_OR_ZERO) {
 		bool zero_size_allowed = (arg_type == ARG_CONST_STACK_SIZE_OR_ZERO);
@@ -1034,11 +1010,8 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			verbose("ARG_CONST_STACK_SIZE cannot be first argument\n");
 			return -EACCES;
 		}
-		if (regs[regno - 1].type == PTR_TO_PACKET)
-			err = check_packet_access(env, regno - 1, 0, reg->imm);
-		else
-			err = check_stack_boundary(env, regno - 1, reg->imm,
-						   zero_size_allowed, meta);
+		err = check_stack_boundary(env, regno - 1, reg->imm,
+					   zero_size_allowed);
 	}
 
 	return err;
