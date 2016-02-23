@@ -438,9 +438,10 @@ static struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
 
 	/*
 	 * This function is used while updating css associations and thus
-	 * can't test the csses directly.  Test ss_mask.
+	 * can't test the csses directly.  Use ->subtree_ss_mask.
 	 */
-	while (!(cgroup_ss_mask(cgrp) & (1 << ss->id))) {
+	while (cgroup_parent(cgrp) &&
+	       !(cgroup_parent(cgrp)->subtree_ss_mask & (1 << ss->id)))
 		cgrp = cgroup_parent(cgrp);
 		if (!cgrp)
 			return NULL;
@@ -1364,6 +1365,7 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
 
 /**
  * cgroup_calc_subtree_ss_mask - calculate subtree_ss_mask
+ * @cgrp: the target cgroup
  * @subtree_control: the new subtree_control mask to consider
  * @this_ss_mask: available subsystems
  *
@@ -1374,7 +1376,8 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
  * This function calculates which subsystems need to be enabled if
  * @subtree_control is to be applied while restricted to @this_ss_mask.
  */
-static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
+static unsigned long cgroup_calc_subtree_ss_mask(struct cgroup *cgrp,
+						 unsigned long subtree_control)
 {
 	u16 cur_ss_mask = subtree_control;
 	struct cgroup_subsys *ss;
@@ -1396,7 +1399,10 @@ static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
 		 * happen only if some depended-upon subsystems were bound
 		 * to non-default hierarchies.
 		 */
-		new_ss_mask &= this_ss_mask;
+		if (parent)
+			new_ss_mask &= parent->subtree_ss_mask;
+		else
+			new_ss_mask &= cgrp->root->subsys_mask;
 
 		if (new_ss_mask == cur_ss_mask)
 			break;
@@ -1404,6 +1410,19 @@ static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
 	}
 
 	return cur_ss_mask;
+}
+
+/**
+ * cgroup_refresh_subtree_ss_mask - update subtree_ss_mask
+ * @cgrp: the target cgroup
+ *
+ * Update @cgrp->subtree_ss_mask according to the current
+ * @cgrp->subtree_control using cgroup_calc_subtree_ss_mask().
+ */
+static void cgroup_refresh_subtree_ss_mask(struct cgroup *cgrp)
+{
+	cgrp->subtree_ss_mask =
+		cgroup_calc_subtree_ss_mask(cgrp, cgrp->subtree_control);
 }
 
 /**
@@ -1608,12 +1627,17 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 				       &dcgrp->e_csets[ss->id]);
 		spin_unlock_irq(&css_set_lock);
 
+		src_root->subsys_mask &= ~(1 << ssid);
+		scgrp->subtree_control &= ~(1 << ssid);
+		cgroup_refresh_subtree_ss_mask(scgrp);
+
 		/* default hierarchy doesn't enable controllers by default */
 		dst_root->subsys_mask |= 1 << ssid;
 		if (dst_root == &cgrp_dfl_root) {
 			static_branch_enable(cgroup_subsys_on_dfl_key[ssid]);
 		} else {
 			dcgrp->subtree_control |= 1 << ssid;
+			cgroup_refresh_subtree_ss_mask(dcgrp);
 			static_branch_disable(cgroup_subsys_on_dfl_key[ssid]);
 		}
 
@@ -2728,6 +2752,14 @@ static int cgroup_migrate_prepare_dst(struct list_head *preloaded_csets)
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	/*
+	 * Except for the root, subtree_ss_mask must be zero for a cgroup
+	 * with tasks so that child cgroups don't compete against tasks.
+	 */
+	if (dst_cgrp && cgroup_on_dfl(dst_cgrp) && cgroup_parent(dst_cgrp) &&
+	    dst_cgrp->subtree_ss_mask)
+		return -EBUSY;
+
 	/* look up the dst cset for each src cset and link it to src */
 	list_for_each_entry_safe(src_cset, tmp_cset, preloaded_csets, mg_preload_node) {
 		struct css_set *dst_cset;
@@ -3141,10 +3173,10 @@ static int cgroup_subtree_control_show(struct seq_file *seq, void *v)
  * cgroup_update_dfl_csses - update css assoc of a subtree in default hierarchy
  * @cgrp: root of the subtree to update csses for
  *
- * @cgrp's control masks have changed and its subtree's css associations
- * need to be updated accordingly.  This function looks up all css_sets
- * which are attached to the subtree, creates the matching updated css_sets
- * and migrates the tasks to the new ones.
+ * @cgrp's subtree_ss_mask has changed and its subtree's (self excluded)
+ * css associations need to be updated accordingly.  This function looks up
+ * all css_sets which are attached to the subtree, creates the matching
+ * updated css_sets and migrates the tasks to the new ones.
  */
 static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 {
@@ -3164,8 +3196,12 @@ static int cgroup_update_dfl_csses(struct cgroup *cgrp)
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		struct cgrp_cset_link *link;
 
-		list_for_each_entry(link, &dsct->cset_links, cset_link)
-			cgroup_migrate_add_src(link->cset, dsct,
+		/* self is not affected by subtree_ss_mask change */
+		if (css->cgroup == cgrp)
+			continue;
+
+		list_for_each_entry(link, &css->cgroup->cset_links, cset_link)
+			cgroup_migrate_add_src(link->cset, cgrp,
 					       &preloaded_csets);
 	}
 	spin_unlock_irq(&css_set_lock);
@@ -3294,10 +3330,15 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	}
 }
 
-static bool css_visible(struct cgroup_subsys_state *css)
-{
-	struct cgroup_subsys *ss = css->ss;
-	struct cgroup *cgrp = css->cgroup;
+	/*
+	 * Update subsys masks and calculate what needs to be done.  More
+	 * subsystems than specified may need to be enabled or disabled
+	 * depending on subsystem dependencies.
+	 */
+	old_sc = cgrp->subtree_control;
+	old_ss = cgrp->subtree_ss_mask;
+	new_sc = (old_sc | enable) & ~disable;
+	new_ss = cgroup_calc_subtree_ss_mask(cgrp, new_sc);
 
 	if (cgroup_control(cgrp) & (1 << ss->id))
 		return true;
@@ -3349,8 +3390,8 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 		}
 	}
 
-	return 0;
-}
+	cgrp->subtree_control = new_sc;
+	cgrp->subtree_ss_mask = new_ss;
 
 /**
  * cgroup_apply_control_disable - kill or hide csses according to control
@@ -3488,9 +3529,15 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 			return -EINVAL;
 	}
 
-	cgrp = cgroup_kn_lock_live(of->kn, true);
-	if (!cgrp)
-		return -ENODEV;
+	kernfs_activate(cgrp->kn);
+	ret = 0;
+out_unlock:
+	cgroup_kn_unlock(of->kn);
+	return ret ?: nbytes;
+
+err_undo_css:
+	cgrp->subtree_control = old_sc;
+	cgrp->subtree_ss_mask = old_ss;
 
 	for_each_subsys(ss, ssid) {
 		if (enable & (1 << ssid)) {
@@ -5367,12 +5414,32 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	 */
 	cgroup_idr_replace(&root->cgroup_idr, cgrp, cgrp->id);
 
+	ret = cgroup_kn_set_ugid(kn);
+	if (ret)
+		goto out_destroy;
+
+	ret = css_populate_dir(&cgrp->self, NULL);
+	if (ret)
+		goto out_destroy;
+
+	/* let's create and online css's */
+	for_each_subsys(ss, ssid) {
+		if (parent->subtree_ss_mask & (1 << ssid)) {
+			ret = create_css(cgrp, ss,
+					 parent->subtree_control & (1 << ssid));
+			if (ret)
+				goto out_destroy;
+		}
+	}
+
 	/*
 	 * On the default hierarchy, a child doesn't automatically inherit
 	 * subtree_control from the parent.  Each is configured manually.
 	 */
-	if (!cgroup_on_dfl(cgrp))
-		cgrp->subtree_control = cgroup_control(cgrp);
+	if (!cgroup_on_dfl(cgrp)) {
+		cgrp->subtree_control = parent->subtree_control;
+		cgroup_refresh_subtree_ss_mask(cgrp);
+	}
 
 	cgroup_propagate_control(cgrp);
 
