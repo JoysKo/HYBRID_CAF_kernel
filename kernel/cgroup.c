@@ -3519,49 +3519,6 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 		}
 	}
 
-	if (!enable && !disable) {
-		ret = 0;
-		goto out_unlock;
-	}
-
-	/*
-	 * Except for the root, subtree_control must be zero for a cgroup
-	 * with tasks so that child cgroups don't compete against tasks.
-	 */
-	if (enable && cgroup_parent(cgrp)) {
-		struct cgrp_cset_link *link;
-
-		/*
-		 * Because namespaces pin csets too, @cgrp->cset_links
-		 * might not be empty even when @cgrp is empty.  Walk and
-		 * verify each cset.
-		 */
-		spin_lock_irq(&css_set_lock);
-
-		ret = 0;
-		list_for_each_entry(link, &cgrp->cset_links, cset_link) {
-			if (css_set_populated(link->cset)) {
-				ret = -EBUSY;
-				break;
-			}
-		}
-
-		spin_unlock_irq(&css_set_lock);
-
-		if (ret)
-			goto out_unlock;
-	}
-
-	/* save and update control masks and prepare csses */
-	cgroup_save_control(cgrp);
-
-	cgrp->subtree_control |= enable;
-	cgrp->subtree_control &= ~disable;
-
-	ret = cgroup_apply_control(cgrp);
-
-	cgroup_finalize_control(cgrp, ret);
-
 	kernfs_activate(cgrp->kn);
 	ret = 0;
 out_unlock:
