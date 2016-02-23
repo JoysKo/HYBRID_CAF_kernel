@@ -188,13 +188,10 @@ static bool cgrp_dfl_visible;
 static u16 cgroup_no_v1_mask;
 
 /* Controllers blocked by the commandline in v1 */
-static unsigned long cgroup_no_v1_mask;
+static u16 cgroup_no_v1_mask;
 
 /* some controllers are not supported in the default hierarchy */
-static u16 cgrp_dfl_inhibit_ss_mask;
-
-/* some controllers are implicitly enabled on the default hierarchy */
-static unsigned long cgrp_dfl_implicit_ss_mask;
+static u16 cgrp_dfl_root_inhibit_ss_mask;
 
 /* The list of hierarchy roots */
 
@@ -231,15 +228,6 @@ struct cgroup_namespace init_cgroup_ns = {
 	.root_cset	= &init_css_set,
 };
 
-/* cgroup namespace for init task */
-struct cgroup_namespace init_cgroup_ns = {
-	.count		= { .counter = 2, },
-	.user_ns	= &init_user_ns,
-	.ns.ops		= &cgroupns_operations,
-	.ns.inum	= PROC_CGROUP_INIT_INO,
-	.root_cset	= &init_css_set,
-};
-
 /* Ditto for the can_fork callback. */
 static u16 have_canfork_callback __read_mostly;
 
@@ -248,9 +236,6 @@ static struct cftype cgroup_dfl_base_files[];
 static struct cftype cgroup_legacy_base_files[];
 
 static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask);
-static void cgroup_lock_and_drain_offline(struct cgroup *cgrp);
-static int cgroup_apply_control(struct cgroup *cgrp);
-static void cgroup_finalize_control(struct cgroup *cgrp, int ret);
 static void css_task_iter_advance(struct css_task_iter *it);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
 static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
@@ -1376,9 +1361,9 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
  * This function calculates which subsystems need to be enabled if
  * @subtree_control is to be applied while restricted to @this_ss_mask.
  */
-static unsigned long cgroup_calc_subtree_ss_mask(struct cgroup *cgrp,
-						 unsigned long subtree_control)
+static u16 cgroup_calc_subtree_ss_mask(struct cgroup *cgrp, u16 subtree_control)
 {
+	struct cgroup *parent = cgroup_parent(cgrp);
 	u16 cur_ss_mask = subtree_control;
 	struct cgroup_subsys *ss;
 	int ssid;
@@ -1583,6 +1568,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
 	struct cgroup_subsys *ss;
+	u16 tmp_ss_mask;
 	int ssid, i, ret;
 
 	lockdep_assert_held(&cgroup_mutex);
@@ -1618,7 +1604,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		 */
 		if (dst_root == &cgrp_dfl_root) {
 			if (cgrp_dfl_root_visible) {
-				pr_warn("failed to create files (%d) while rebinding 0x%lx to default root\n",
+				pr_warn("failed to create files (%d) while rebinding 0x%x to default root\n",
 					ret, ss_mask);
 				pr_warn("you may retry by moving them to a different hierarchy and unbinding\n");
 			}
@@ -3278,8 +3264,9 @@ out_finish:
 static void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
 	__acquires(&cgroup_mutex)
 {
-	struct cgroup *dsct;
-	struct cgroup_subsys_state *d_css;
+	u16 enable = 0, disable = 0;
+	u16 css_enable, css_disable, old_sc, new_sc, old_ss, new_ss;
+	struct cgroup *cgrp, *child;
 	struct cgroup_subsys *ss;
 	int ssid;
 
@@ -6332,7 +6319,7 @@ static int __init cgroup_no_v1(char *str)
 			continue;
 
 		if (!strcmp(token, "all")) {
-			cgroup_no_v1_mask = ~0UL;
+			cgroup_no_v1_mask = U16_MAX;
 			break;
 		}
 
