@@ -3422,46 +3422,24 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	cgrp->subtree_control = new_sc;
 	cgrp->subtree_ss_mask = new_ss;
 
-/**
- * cgroup_apply_control_disable - kill or hide csses according to control
- * @cgrp: root of the target subtree
- *
- * Walk @cgrp's subtree and kill and hide csses so that they match
- * cgroup_ss_mask() and cgroup_visible_mask().
- *
- * A css is hidden when the userland requests it to be disabled while other
- * subsystems are still depending on it.  The css must not actively control
- * resources and be in the vanilla state if it's made visible again later.
- * Controllers which may be depended upon should provide ->css_reset() for
- * this purpose.
- */
-static void cgroup_apply_control_disable(struct cgroup *cgrp)
-{
-	struct cgroup *dsct;
-	struct cgroup_subsys_state *d_css;
-	struct cgroup_subsys *ss;
-	int ssid;
-
-	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
-		for_each_subsys(ss, ssid) {
-			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
-
-			WARN_ON_ONCE(css && percpu_ref_is_dying(&css->refcnt));
-
-			if (!css)
-				continue;
-
-			if (css->parent &&
-			    !(cgroup_ss_mask(dsct) & (1 << ss->id))) {
-				kill_css(css);
-			} else if (!css_visible(css)) {
-				css_clear_dir(css);
-				if (ss->css_reset)
-					ss->css_reset(css);
-			}
+	/*
+	 * Create new csses or make the existing ones visible.  A css is
+	 * created invisible if it's being implicitly enabled through
+	 * dependency.  An invisible css is made visible when the userland
+	 * explicitly enables it.
+	 */
+	do_each_subsys_mask(ss, ssid, enable) {
+		cgroup_for_each_live_child(child, cgrp) {
+			if (css_enable & (1 << ssid))
+				ret = create_css(child, ss,
+					cgrp->subtree_control & (1 << ssid));
+			else
+				ret = css_populate_dir(cgroup_css(child, ss),
+						       NULL);
+			if (ret)
+				goto err_undo_css;
 		}
-	}
-}
+	} while_each_subsys_mask();
 
 /**
  * cgroup_apply_control - apply control mask updates to the subtree
@@ -3534,29 +3512,17 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 	 * Parse input - space separated list of subsystem names prefixed
 	 * with either + or -.
 	 */
-	buf = strstrip(buf);
-	while ((tok = strsep(&buf, " "))) {
-		if (tok[0] == '\0')
-			continue;
-		do_each_subsys_mask(ss, ssid, ~cgrp_dfl_inhibit_ss_mask) {
-			if (!cgroup_ssid_enabled(ssid) ||
-			    strcmp(tok + 1, ss->name))
-				continue;
+	do_each_subsys_mask(ss, ssid, disable) {
+		cgroup_for_each_live_child(child, cgrp) {
+			struct cgroup_subsys_state *css = cgroup_css(child, ss);
 
-			if (*tok == '+') {
-				enable |= 1 << ssid;
-				disable &= ~(1 << ssid);
-			} else if (*tok == '-') {
-				disable |= 1 << ssid;
-				enable &= ~(1 << ssid);
+			if (css_disable & (1 << ssid)) {
+				kill_css(css);
 			} else {
 				return -EINVAL;
 			}
-			break;
-		} while_each_subsys_mask();
-		if (ssid == CGROUP_SUBSYS_COUNT)
-			return -EINVAL;
-	}
+		}
+	} while_each_subsys_mask();
 
 	kernfs_activate(cgrp->kn);
 	ret = 0;
@@ -3568,12 +3534,9 @@ err_undo_css:
 	cgrp->subtree_control = old_sc;
 	cgrp->subtree_ss_mask = old_ss;
 
-	for_each_subsys(ss, ssid) {
-		if (enable & (1 << ssid)) {
-			if (cgrp->subtree_control & (1 << ssid)) {
-				enable &= ~(1 << ssid);
-				continue;
-			}
+	do_each_subsys_mask(ss, ssid, enable) {
+		cgroup_for_each_live_child(child, cgrp) {
+			struct cgroup_subsys_state *css = cgroup_css(child, ss);
 
 			if (!(cgroup_control(cgrp) & (1 << ssid))) {
 				ret = -ENOENT;
@@ -3593,13 +3556,8 @@ err_undo_css:
 				}
 			}
 		}
-	}
-
-	kernfs_activate(cgrp->kn);
-	ret = 0;
-out_unlock:
-	cgroup_kn_unlock(of->kn);
-	return ret ?: nbytes;
+	} while_each_subsys_mask();
+	goto out_unlock;
 }
 
 static int cgroup_events_show(struct seq_file *seq, void *v)
@@ -5452,14 +5410,12 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 		goto out_destroy;
 
 	/* let's create and online css's */
-	for_each_subsys(ss, ssid) {
-		if (parent->subtree_ss_mask & (1 << ssid)) {
-			ret = create_css(cgrp, ss,
-					 parent->subtree_control & (1 << ssid));
-			if (ret)
-				goto out_destroy;
-		}
-	}
+	do_each_subsys_mask(ss, ssid, parent->subtree_ss_mask) {
+		ret = create_css(cgrp, ss,
+				 parent->subtree_control & (1 << ssid));
+		if (ret)
+			goto out_destroy;
+	} while_each_subsys_mask();
 
 	/*
 	 * On the default hierarchy, a child doesn't automatically inherit
