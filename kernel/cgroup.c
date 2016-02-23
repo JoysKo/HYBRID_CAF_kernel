@@ -187,11 +187,8 @@ static bool cgrp_dfl_visible;
 /* Controllers blocked by the commandline in v1 */
 static u16 cgroup_no_v1_mask;
 
-/* Controllers blocked by the commandline in v1 */
-static u16 cgroup_no_v1_mask;
-
 /* some controllers are not supported in the default hierarchy */
-static u16 cgrp_dfl_root_inhibit_ss_mask;
+static u16 cgrp_dfl_inhibit_ss_mask;
 
 /* The list of hierarchy roots */
 
@@ -1586,7 +1583,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 	/* skip creating root files on dfl_root for inhibited subsystems */
 	tmp_ss_mask = ss_mask;
 	if (dst_root == &cgrp_dfl_root)
-		tmp_ss_mask &= ~cgrp_dfl_root_inhibit_ss_mask;
+		tmp_ss_mask &= ~cgrp_dfl_inhibit_ss_mask;
 
 	do_each_subsys_mask(ss, ssid, tmp_ss_mask) {
 		struct cgroup *scgrp = &ss->root->cgrp;
@@ -1603,7 +1600,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		 * Just warn about it and continue.
 		 */
 		if (dst_root == &cgrp_dfl_root) {
-			if (cgrp_dfl_root_visible) {
+			if (cgrp_dfl_visible) {
 				pr_warn("failed to create files (%d) while rebinding 0x%x to default root\n",
 					ret, ss_mask);
 				pr_warn("you may retry by moving them to a different hierarchy and unbinding\n");
@@ -3172,6 +3169,16 @@ static void cgroup_print_ss_mask(struct seq_file *seq, u16 ss_mask)
 		seq_putc(seq, '\n');
 }
 
+/* show controllers which are currently attached to the default hierarchy */
+static int cgroup_root_controllers_show(struct seq_file *seq, void *v)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	cgroup_print_ss_mask(seq, cgrp->root->subsys_mask &
+			     ~cgrp_dfl_inhibit_ss_mask);
+	return 0;
+}
+
 /* show controllers which are enabled from the parent */
 static int cgroup_controllers_show(struct seq_file *seq, void *v)
 {
@@ -3278,7 +3285,7 @@ static void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
 	while ((tok = strsep(&buf, " "))) {
 		if (tok[0] == '\0')
 			continue;
-		do_each_subsys_mask(ss, ssid, ~cgrp_dfl_root_inhibit_ss_mask) {
+		do_each_subsys_mask(ss, ssid, ~cgrp_dfl_inhibit_ss_mask) {
 			if (!cgroup_ssid_enabled(ssid) ||
 			    strcmp(tok + 1, ss->name))
 				continue;
@@ -5825,9 +5832,7 @@ int __init cgroup_init(void)
 
 		cgrp_dfl_root.subsys_mask |= 1 << ss->id;
 
-		if (ss->implicit_on_dfl)
-			cgrp_dfl_implicit_ss_mask |= 1 << ss->id;
-		else if (!ss->dfl_cftypes)
+		if (!ss->dfl_cftypes)
 			cgrp_dfl_inhibit_ss_mask |= 1 << ss->id;
 
 		if (ss->dfl_cftypes == ss->legacy_cftypes) {
