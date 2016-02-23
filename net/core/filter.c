@@ -2199,7 +2199,7 @@ BPF_CALL_4(bpf_skb_set_tunnel_key, struct sk_buff *, skb,
 	u8 compat[sizeof(struct bpf_tunnel_key)];
 	struct ip_tunnel_info *info;
 
-	if (unlikely(flags & ~(BPF_F_TUNINFO_IPV6)))
+	if (unlikely(flags & ~(BPF_F_TUNINFO_IPV6 | BPF_F_ZERO_CSUM_TX)))
 		return -EINVAL;
 	if (unlikely(size != sizeof(struct bpf_tunnel_key))) {
 		switch (size) {
@@ -2223,7 +2223,7 @@ BPF_CALL_4(bpf_skb_set_tunnel_key, struct sk_buff *, skb,
 	info = &md->u.tun_info;
 	info->mode = IP_TUNNEL_INFO_TX;
 
-	info->key.tun_flags = TUNNEL_KEY;
+	info->key.tun_flags = TUNNEL_KEY | TUNNEL_CSUM;
 	info->key.tun_id = cpu_to_be64(from->tunnel_id);
 	info->key.tos = from->tunnel_tos;
 	info->key.ttl = from->tunnel_ttl;
@@ -2234,6 +2234,8 @@ BPF_CALL_4(bpf_skb_set_tunnel_key, struct sk_buff *, skb,
 		       sizeof(from->remote_ipv6));
 	} else {
 		info->key.u.ipv4.dst = cpu_to_be32(from->remote_ipv4);
+		if (flags & BPF_F_ZERO_CSUM_TX)
+			info->key.tun_flags &= ~TUNNEL_CSUM;
 	}
 
 	return 0;
