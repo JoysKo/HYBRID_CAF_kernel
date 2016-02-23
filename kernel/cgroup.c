@@ -1588,13 +1588,8 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 	lockdep_assert_held(&cgroup_mutex);
 
 	do_each_subsys_mask(ss, ssid, ss_mask) {
-		/*
-		 * If @ss has non-root csses attached to it, can't move.
-		 * If @ss is an implicit controller, it is exempt from this
-		 * rule and can be stolen.
-		 */
-		if (css_next_child(NULL, cgroup_css(&ss->root->cgrp, ss)) &&
-		    !ss->implicit_on_dfl)
+		/* if @ss has non-root csses attached to it, can't move */
+		if (css_next_child(NULL, cgroup_css(&ss->root->cgrp, ss)))
 			return -EBUSY;
 
 		/* can't move between two non-dummy roots either */
@@ -1602,6 +1597,46 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 			return -EBUSY;
 	} while_each_subsys_mask();
 
+	/* skip creating root files on dfl_root for inhibited subsystems */
+	tmp_ss_mask = ss_mask;
+	if (dst_root == &cgrp_dfl_root)
+		tmp_ss_mask &= ~cgrp_dfl_root_inhibit_ss_mask;
+
+	do_each_subsys_mask(ss, ssid, tmp_ss_mask) {
+		struct cgroup *scgrp = &ss->root->cgrp;
+		int tssid;
+
+		ret = css_populate_dir(cgroup_css(scgrp, ss), dcgrp);
+		if (!ret)
+			continue;
+
+		/*
+		 * Rebinding back to the default root is not allowed to
+		 * fail.  Using both default and non-default roots should
+		 * be rare.  Moving subsystems back and forth even more so.
+		 * Just warn about it and continue.
+		 */
+		if (dst_root == &cgrp_dfl_root) {
+			if (cgrp_dfl_root_visible) {
+				pr_warn("failed to create files (%d) while rebinding 0x%lx to default root\n",
+					ret, ss_mask);
+				pr_warn("you may retry by moving them to a different hierarchy and unbinding\n");
+			}
+			continue;
+		}
+
+		do_each_subsys_mask(ss, tssid, tmp_ss_mask) {
+			if (tssid == ssid)
+				break;
+			css_clear_dir(cgroup_css(scgrp, ss), dcgrp);
+		} while_each_subsys_mask();
+		return ret;
+	} while_each_subsys_mask();
+
+	/*
+	 * Nothing can fail from this point on.  Remove files for the
+	 * removed subsystems and rebind each subsystem.
+	 */
 	do_each_subsys_mask(ss, ssid, ss_mask) {
 		struct cgroup_root *src_root = ss->root;
 		struct cgroup *scgrp = &src_root->cgrp;
@@ -3248,28 +3283,32 @@ static void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
 	struct cgroup_subsys *ss;
 	int ssid;
 
-restart:
-	mutex_lock(&cgroup_mutex);
-
-	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
-		for_each_subsys(ss, ssid) {
-			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
-			DEFINE_WAIT(wait);
-
-			if (!css || !percpu_ref_is_dying(&css->refcnt))
+	/*
+	 * Parse input - space separated list of subsystem names prefixed
+	 * with either + or -.
+	 */
+	buf = strstrip(buf);
+	while ((tok = strsep(&buf, " "))) {
+		if (tok[0] == '\0')
+			continue;
+		do_each_subsys_mask(ss, ssid, ~cgrp_dfl_root_inhibit_ss_mask) {
+			if (!cgroup_ssid_enabled(ssid) ||
+			    strcmp(tok + 1, ss->name))
 				continue;
 
-			cgroup_get(dsct);
-			prepare_to_wait(&dsct->offline_waitq, &wait,
-					TASK_UNINTERRUPTIBLE);
-
-			mutex_unlock(&cgroup_mutex);
-			schedule();
-			finish_wait(&dsct->offline_waitq, &wait);
-
-			cgroup_put(dsct);
-			goto restart;
-		}
+			if (*tok == '+') {
+				enable |= 1 << ssid;
+				disable &= ~(1 << ssid);
+			} else if (*tok == '-') {
+				disable |= 1 << ssid;
+				enable &= ~(1 << ssid);
+			} else {
+				return -EINVAL;
+			}
+			break;
+		} while_each_subsys_mask();
+		if (ssid == CGROUP_SUBSYS_COUNT)
+			return -EINVAL;
 	}
 }
 
@@ -3347,25 +3386,15 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	return cgroup_on_dfl(cgrp) && ss->implicit_on_dfl;
 }
 
-/**
- * cgroup_apply_control_enable - enable or show csses according to control
- * @cgrp: root of the target subtree
- *
- * Walk @cgrp's subtree and create new csses or make the existing ones
- * visible.  A css is created invisible if it's being implicitly enabled
- * through dependency.  An invisible css is made visible when the userland
- * explicitly enables it.
- *
- * Returns 0 on success, -errno on failure.  On failure, csses which have
- * been processed already aren't cleaned up.  The caller is responsible for
- * cleaning up with cgroup_apply_control_disble().
- */
-static int cgroup_apply_control_enable(struct cgroup *cgrp)
-{
-	struct cgroup *dsct;
-	struct cgroup_subsys_state *d_css;
-	struct cgroup_subsys *ss;
-	int ssid, ret;
+	/*
+	 * Because css offlining is asynchronous, userland might try to
+	 * re-enable the same controller while the previous instance is
+	 * still around.  In such cases, wait till it's gone using
+	 * offline_waitq.
+	 */
+	do_each_subsys_mask(ss, ssid, css_enable) {
+		cgroup_for_each_live_child(child, cgrp) {
+			DEFINE_WAIT(wait);
 
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
@@ -3388,7 +3417,7 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 					return ret;
 			}
 		}
-	}
+	} while_each_subsys_mask();
 
 	cgrp->subtree_control = new_sc;
 	cgrp->subtree_ss_mask = new_ss;
@@ -6090,7 +6119,7 @@ int cgroup_can_fork(struct task_struct *child)
 	struct cgroup_subsys *ss;
 	int i, j, ret;
 
-	for_each_subsys_which(ss, i, &have_canfork_callback) {
+	do_each_subsys_mask(ss, i, have_canfork_callback) {
 		ret = ss->can_fork(child);
 		if (ret)
 			goto out_revert;
@@ -6179,8 +6208,9 @@ void cgroup_post_fork(struct task_struct *child)
 	 * css_set; otherwise, @child might change state between ->fork()
 	 * and addition to css_set.
 	 */
-	for_each_subsys_which(ss, i, &have_fork_callback)
+	do_each_subsys_mask(ss, i, have_fork_callback) {
 		ss->fork(child);
+	} while_each_subsys_mask();
 }
 
 /**
