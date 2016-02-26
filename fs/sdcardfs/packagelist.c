@@ -821,29 +821,27 @@ static struct config_item_type packages_type = {
 	.ct_owner	= THIS_MODULE,
 };
 
-struct config_group *sd_default_groups[] = {
-	&extension_group,
-	NULL,
-};
-
 static struct configfs_subsystem sdcardfs_packages = {
 	.su_group = {
 		.cg_item = {
 			.ci_namebuf = "sdcardfs",
 			.ci_type = &packages_type,
 		},
-		.default_groups = sd_default_groups,
 	},
 };
 
 static int configfs_sdcardfs_init(void)
 {
-	int ret, i;
+	int ret;
 	struct configfs_subsystem *subsys = &sdcardfs_packages;
 
-	for (i = 0; sd_default_groups[i]; i++)
-		config_group_init(sd_default_groups[i]);
+	// Инициализируем основную группу
 	config_group_init(&subsys->su_group);
+	
+	// Инициализируем и добавляем дефолтные группы (если они есть)
+	config_group_init(&extension_group);
+	configfs_add_default_group(&extension_group, &subsys->su_group);
+	
 	mutex_init(&subsys->su_mutex);
 	ret = configfs_register_subsystem(subsys);
 	if (ret) {
