@@ -3272,15 +3272,56 @@ out_finish:
 }
 
 /**
- * cgroup_lock_and_drain_offline - lock cgroup_mutex and drain offlined csses
- * @cgrp: root of the target subtree
+ * cgroup_drain_offline - wait for previously offlined csses to go away
+ * @cgrp: parent of the target cgroups
  *
  * Because css offlining is asynchronous, userland may try to re-enable a
- * controller while the previous css is still around.  This function grabs
- * cgroup_mutex and drains the previous css instances of @cgrp's subtree.
+ * controller while the previous css is still around.  This function drains
+ * the previous css instances of @cgrp's children.
+ *
+ * Must be called with cgroup_mutex held.  Returns %false if there were no
+ * dying css instances.  Returns %true if there were one or more and this
+ * function waited.  On %true return, cgroup_mutex has been dropped and
+ * re-acquired inbetween which anything could have happened.  The caller
+ * typically would have to start over.
  */
-static void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
-	__acquires(&cgroup_mutex)
+static bool cgroup_drain_offline(struct cgroup *cgrp)
+{
+	struct cgroup *dsct;
+	struct cgroup_subsys *ss;
+	int ssid;
+
+	lockdep_assert_held(&cgroup_mutex);
+
+	cgroup_for_each_live_child(dsct, cgrp) {
+		for_each_subsys(ss, ssid) {
+			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
+			DEFINE_WAIT(wait);
+
+			if (!css)
+				continue;
+
+			cgroup_get(dsct);
+			prepare_to_wait(&dsct->offline_waitq, &wait,
+					TASK_UNINTERRUPTIBLE);
+
+			mutex_unlock(&cgroup_mutex);
+			schedule();
+			finish_wait(&dsct->offline_waitq, &wait);
+			mutex_lock(&cgroup_mutex);
+
+			cgroup_put(dsct);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/* change the enabled child controllers for a cgroup in the default hierarchy */
+static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
+					    char *buf, size_t nbytes,
+					    loff_t off)
 {
 	u16 enable = 0, disable = 0;
 	u16 css_enable, css_disable, old_sc, new_sc, old_ss, new_ss;
@@ -3371,6 +3412,11 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	}
 }
 
+	if (cgroup_drain_offline(cgrp)) {
+		cgroup_kn_unlock(of->kn);
+		return restart_syscall();
+	}
+
 	/*
 	 * Update subsys masks and calculate what needs to be done.  More
 	 * subsystems than specified may need to be enabled or disabled
@@ -3387,39 +3433,6 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 		return false;
 	return cgroup_on_dfl(cgrp) && ss->implicit_on_dfl;
 }
-
-	/*
-	 * Because css offlining is asynchronous, userland might try to
-	 * re-enable the same controller while the previous instance is
-	 * still around.  In such cases, wait till it's gone using
-	 * offline_waitq.
-	 */
-	do_each_subsys_mask(ss, ssid, css_enable) {
-		cgroup_for_each_live_child(child, cgrp) {
-			DEFINE_WAIT(wait);
-
-	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
-		for_each_subsys(ss, ssid) {
-			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
-
-			WARN_ON_ONCE(css && percpu_ref_is_dying(&css->refcnt));
-
-			if (!(cgroup_ss_mask(dsct) & (1 << ss->id)))
-				continue;
-
-			if (!css) {
-				css = css_create(dsct, ss);
-				if (IS_ERR(css))
-					return PTR_ERR(css);
-			}
-
-			if (css_visible(css)) {
-				ret = css_populate_dir(css);
-				if (ret)
-					return ret;
-			}
-		}
-	} while_each_subsys_mask();
 
 	cgrp->subtree_control = new_sc;
 	cgrp->subtree_ss_mask = new_ss;
