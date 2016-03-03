@@ -1373,7 +1373,6 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
 
 /**
  * cgroup_calc_subtree_ss_mask - calculate subtree_ss_mask
- * @cgrp: the target cgroup
  * @subtree_control: the new subtree_control mask to consider
  * @this_ss_mask: available subsystems
  *
@@ -1384,15 +1383,13 @@ static umode_t cgroup_file_mode(const struct cftype *cft)
  * This function calculates which subsystems need to be enabled if
  * @subtree_control is to be applied while restricted to @this_ss_mask.
  */
-static u16 cgroup_calc_subtree_ss_mask(struct cgroup *cgrp, u16 subtree_control)
+static u16 cgroup_calc_subtree_ss_mask(u16 subtree_control, u16 this_ss_mask)
 {
 	u16 cur_ss_mask = subtree_control;
 	struct cgroup_subsys *ss;
 	int ssid;
 
 	lockdep_assert_held(&cgroup_mutex);
-
-	cur_ss_mask |= cgrp_dfl_implicit_ss_mask;
 
 	while (true) {
 		u16 new_ss_mask = cur_ss_mask;
@@ -1406,7 +1403,7 @@ static u16 cgroup_calc_subtree_ss_mask(struct cgroup *cgrp, u16 subtree_control)
 		 * happen only if some depended-upon subsystems were bound
 		 * to non-default hierarchies.
 		 */
-		new_ss_mask &= cgroup_ss_mask(cgrp);
+		new_ss_mask &= this_ss_mask;
 
 		if (new_ss_mask == cur_ss_mask)
 			break;
@@ -3287,8 +3284,9 @@ static void cgroup_propagate_control(struct cgroup *cgrp)
 
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		dsct->subtree_control &= cgroup_control(dsct);
-		dsct->subtree_ss_mask = cgroup_calc_subtree_ss_mask(dsct,
-							dsct->subtree_control);
+		dsct->subtree_ss_mask =
+			cgroup_calc_subtree_ss_mask(dsct->subtree_control,
+						    cgroup_ss_mask(dsct));
 	}
 }
 
