@@ -5334,37 +5334,19 @@ err_free_css:
 	return ERR_PTR(err);
 }
 
-/*
- * The returned cgroup is fully initialized including its control mask, but
- * it isn't associated with its kernfs_node and doesn't have the control
- * mask applied.
- */
 static struct cgroup *cgroup_create(struct cgroup *parent)
 {
-	struct cgroup *parent, *cgrp, *tcgrp;
-	struct cgroup_root *root;
+	struct cgroup_root *root = parent->root;
 	struct cgroup_subsys *ss;
-	struct kernfs_node *kn;
-	int level, ssid, ret;
-
-	/* Do not accept '\n' to prevent making /proc/<pid>/cgroup unparsable.
-	 */
-	if (strchr(name, '\n'))
-		return -EINVAL;
-
-	parent = cgroup_kn_lock_live(parent_kn);
-	if (!parent)
-		return -ENODEV;
-	root = parent->root;
-	level = parent->level + 1;
+	struct cgroup *cgrp, *tcgrp;
+	int level = parent->level + 1;
+	int ssid, ret;
 
 	/* allocate the cgroup and its ID, 0 is reserved for the root */
 	cgrp = kzalloc(sizeof(*cgrp) +
 		       sizeof(cgrp->ancestor_ids[0]) * (level + 1), GFP_KERNEL);
-	if (!cgrp) {
-		ret = -ENOMEM;
-		goto out_unlock;
-	}
+	if (!cgrp)
+		return ERR_PTR(-ENOMEM);
 
 	ret = percpu_ref_init(&cgrp->self.refcnt, css_release, 0, GFP_KERNEL);
 	if (ret)
@@ -5428,6 +5410,40 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 		cgroup_refresh_subtree_ss_mask(cgrp);
 	}
 
+	return cgrp;
+
+out_cancel_ref:
+	percpu_ref_exit(&cgrp->self.refcnt);
+out_free_cgrp:
+	kfree(cgrp);
+	return ERR_PTR(ret);
+out_destroy:
+	cgroup_destroy_locked(cgrp);
+	return ERR_PTR(ret);
+}
+
+static int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
+			umode_t mode)
+{
+	struct cgroup *parent, *cgrp;
+	struct cgroup_subsys *ss;
+	struct kernfs_node *kn;
+	int ssid, ret;
+
+	/* do not accept '\n' to prevent making /proc/<pid>/cgroup unparsable */
+	if (strchr(name, '\n'))
+		return -EINVAL;
+
+	parent = cgroup_kn_lock_live(parent_kn);
+	if (!parent)
+		return -ENODEV;
+
+	cgrp = cgroup_create(parent);
+	if (IS_ERR(cgrp)) {
+		ret = PTR_ERR(cgrp);
+		goto out_unlock;
+	}
+
 	/* create the directory */
 	kn = kernfs_create_dir(parent->kn, name, mode, cgrp);
 	if (IS_ERR(kn)) {
@@ -5460,68 +5476,6 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	kernfs_activate(kn);
 
 	return cgrp;
-
-out_cancel_ref:
-	percpu_ref_exit(&cgrp->self.refcnt);
-out_free_cgrp:
-	kfree(cgrp);
-	return ERR_PTR(ret);
-}
-
-static int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
-			umode_t mode)
-{
-	struct cgroup *parent, *cgrp;
-	struct kernfs_node *kn;
-	int ret;
-
-	/* do not accept '\n' to prevent making /proc/<pid>/cgroup unparsable */
-	if (strchr(name, '\n'))
-		return -EINVAL;
-
-	parent = cgroup_kn_lock_live(parent_kn, false);
-	if (!parent)
-		return -ENODEV;
-
-	cgrp = cgroup_create(parent);
-	if (IS_ERR(cgrp)) {
-		ret = PTR_ERR(cgrp);
-		goto out_unlock;
-	}
-
-	/* create the directory */
-	kn = kernfs_create_dir(parent->kn, name, mode, cgrp);
-	if (IS_ERR(kn)) {
-		ret = PTR_ERR(kn);
-		goto out_destroy;
-	}
-	cgrp->kn = kn;
-
-	/*
-	 * This extra ref will be put in cgroup_free_fn() and guarantees
-	 * that @cgrp->kn is always accessible.
-	 */
-	kernfs_get(kn);
-
-	ret = cgroup_kn_set_ugid(kn);
-	if (ret)
-		goto out_destroy;
-
-	ret = css_populate_dir(&cgrp->self);
-	if (ret)
-		goto out_destroy;
-
-	ret = cgroup_apply_control_enable(cgrp);
-	if (ret)
-		goto out_destroy;
-
-	trace_cgroup_mkdir(cgrp);
-
-	/* let's create and online css's */
-	kernfs_activate(kn);
-
-	ret = 0;
-	goto out_unlock;
 
 out_destroy:
 	cgroup_destroy_locked(cgrp);
