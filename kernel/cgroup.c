@@ -3318,6 +3318,43 @@ static bool cgroup_drain_offline(struct cgroup *cgrp)
 	return false;
 }
 
+/**
+ * cgroup_apply_control_disable - kill or hide csses according to control
+ * @cgrp: parent of the target cgroups
+ *
+ * Walk @cgrp's children and kill and hide csses so that they match
+ * cgroup_ss_mask() and cgroup_visible_mask().
+ *
+ * A css is hidden when the userland requests it to be disabled while other
+ * subsystems are still depending on it.  The css must not actively control
+ * resources and be in the vanilla state if it's made visible again later.
+ * Controllers which may be depended upon should provide ->css_reset() for
+ * this purpose.
+ */
+static void cgroup_apply_control_disable(struct cgroup *cgrp)
+{
+	struct cgroup *dsct;
+	struct cgroup_subsys *ss;
+	int ssid;
+
+	cgroup_for_each_live_child(dsct, cgrp) {
+		for_each_subsys(ss, ssid) {
+			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
+
+			if (!css)
+				continue;
+
+			if (!(cgroup_ss_mask(dsct) & (1 << ss->id))) {
+				kill_css(css);
+			} else if (!(cgroup_control(dsct) & (1 << ss->id))) {
+				css_clear_dir(css, NULL);
+				if (ss->css_reset)
+					ss->css_reset(css);
+			}
+		}
+	}
+}
+
 /* change the enabled child controllers for a cgroup in the default hierarchy */
 static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 					    char *buf, size_t nbytes,
@@ -3535,21 +3572,8 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 	char *tok;
 	int ssid, ret;
 
-	/*
-	 * Parse input - space separated list of subsystem names prefixed
-	 * with either + or -.
-	 */
-	do_each_subsys_mask(ss, ssid, disable) {
-		cgroup_for_each_live_child(child, cgrp) {
-			struct cgroup_subsys_state *css = cgroup_css(child, ss);
-
-			if (css_disable & (1 << ssid)) {
-				kill_css(css);
-			} else {
-				return -EINVAL;
-			}
-		}
-	} while_each_subsys_mask();
+	/* all tasks are migrated out of disabled csses, commit disable */
+	cgroup_apply_control_disable(cgrp);
 
 	kernfs_activate(cgrp->kn);
 	ret = 0;
@@ -3558,32 +3582,12 @@ out_unlock:
 	return ret ?: nbytes;
 
 err_undo_css:
+	/* restore masks and shoot down new csses */
 	cgrp->subtree_control = old_sc;
 	cgrp->subtree_ss_mask = old_ss;
 
-	do_each_subsys_mask(ss, ssid, enable) {
-		cgroup_for_each_live_child(child, cgrp) {
-			struct cgroup_subsys_state *css = cgroup_css(child, ss);
+	cgroup_apply_control_disable(cgrp);
 
-			if (!(cgroup_control(cgrp) & (1 << ssid))) {
-				ret = -ENOENT;
-				goto out_unlock;
-			}
-		} else if (disable & (1 << ssid)) {
-			if (!(cgrp->subtree_control & (1 << ssid))) {
-				disable &= ~(1 << ssid);
-				continue;
-			}
-
-			/* a child has it enabled? */
-			cgroup_for_each_live_child(child, cgrp) {
-				if (child->subtree_control & (1 << ssid)) {
-					ret = -EBUSY;
-					goto out_unlock;
-				}
-			}
-		}
-	} while_each_subsys_mask();
 	goto out_unlock;
 }
 
