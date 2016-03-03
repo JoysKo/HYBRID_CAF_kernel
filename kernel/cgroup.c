@@ -234,6 +234,8 @@ static struct cftype cgroup_legacy_base_files[];
 
 static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask);
 static void cgroup_lock_and_drain_offline(struct cgroup *cgrp);
+static int cgroup_apply_control(struct cgroup *cgrp);
+static void cgroup_finalize_control(struct cgroup *cgrp, int ret);
 static void css_task_iter_advance(struct css_task_iter *it);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
 static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
@@ -1189,8 +1191,6 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	struct cgroup *cgrp = &root->cgrp;
 	struct cgrp_cset_link *link, *tmp_link;
 
-	trace_cgroup_destroy_root(root);
-
 	cgroup_lock_and_drain_offline(&cgrp_dfl_root.cgrp);
 
 	BUG_ON(atomic_read(&root->nr_cgrps));
@@ -1417,19 +1417,6 @@ static u16 cgroup_calc_subtree_ss_mask(struct cgroup *cgrp, u16 subtree_control)
 }
 
 /**
- * cgroup_refresh_subtree_ss_mask - update subtree_ss_mask
- * @cgrp: the target cgroup
- *
- * Update @cgrp->subtree_ss_mask according to the current
- * @cgrp->subtree_control using cgroup_calc_subtree_ss_mask().
- */
-static void cgroup_refresh_subtree_ss_mask(struct cgroup *cgrp)
-{
-	cgrp->subtree_ss_mask =
-		cgroup_calc_subtree_ss_mask(cgrp, cgrp->subtree_control);
-}
-
-/**
  * cgroup_kn_unlock - unlocking helper for cgroup kernfs methods
  * @kn: the kernfs_node being serviced
  *
@@ -1587,7 +1574,6 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
 	struct cgroup_subsys *ss;
-	u16 tmp_ss_mask;
 	int ssid, i, ret;
 
 	lockdep_assert_held(&cgroup_mutex);
@@ -1602,46 +1588,6 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 			return -EBUSY;
 	} while_each_subsys_mask();
 
-	/* skip creating root files on dfl_root for inhibited subsystems */
-	tmp_ss_mask = ss_mask;
-	if (dst_root == &cgrp_dfl_root)
-		tmp_ss_mask &= ~cgrp_dfl_inhibit_ss_mask;
-
-	do_each_subsys_mask(ss, ssid, tmp_ss_mask) {
-		struct cgroup *scgrp = &ss->root->cgrp;
-		int tssid;
-
-		ret = css_populate_dir(cgroup_css(scgrp, ss), dcgrp);
-		if (!ret)
-			continue;
-
-		/*
-		 * Rebinding back to the default root is not allowed to
-		 * fail.  Using both default and non-default roots should
-		 * be rare.  Moving subsystems back and forth even more so.
-		 * Just warn about it and continue.
-		 */
-		if (dst_root == &cgrp_dfl_root) {
-			if (cgrp_dfl_visible) {
-				pr_warn("failed to create files (%d) while rebinding 0x%x to default root\n",
-					ret, ss_mask);
-				pr_warn("you may retry by moving them to a different hierarchy and unbinding\n");
-			}
-			continue;
-		}
-
-		do_each_subsys_mask(ss, tssid, tmp_ss_mask) {
-			if (tssid == ssid)
-				break;
-			css_clear_dir(cgroup_css(scgrp, ss), dcgrp);
-		} while_each_subsys_mask();
-		return ret;
-	} while_each_subsys_mask();
-
-	/*
-	 * Nothing can fail from this point on.  Remove files for the
-	 * removed subsystems and rebind each subsystem.
-	 */
 	do_each_subsys_mask(ss, ssid, ss_mask) {
 		struct cgroup_root *src_root = ss->root;
 		struct cgroup *scgrp = &src_root->cgrp;
@@ -1667,17 +1613,12 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 				       &dcgrp->e_csets[ss->id]);
 		spin_unlock_irq(&css_set_lock);
 
-		src_root->subsys_mask &= ~(1 << ssid);
-		scgrp->subtree_control &= ~(1 << ssid);
-		cgroup_refresh_subtree_ss_mask(scgrp);
-
 		/* default hierarchy doesn't enable controllers by default */
 		dst_root->subsys_mask |= 1 << ssid;
 		if (dst_root == &cgrp_dfl_root) {
 			static_branch_enable(cgroup_subsys_on_dfl_key[ssid]);
 		} else {
 			dcgrp->subtree_control |= 1 << ssid;
-			cgroup_refresh_subtree_ss_mask(dcgrp);
 			static_branch_disable(cgroup_subsys_on_dfl_key[ssid]);
 		}
 
@@ -3405,7 +3346,7 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 			}
 
 			if (cgroup_control(dsct) & (1 << ss->id)) {
-				ret = css_populate_dir(css, NULL);
+				ret = css_populate_dir(css);
 				if (ret)
 					return ret;
 			}
@@ -3444,10 +3385,11 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 			if (!css)
 				continue;
 
-			if (!(cgroup_ss_mask(dsct) & (1 << ss->id))) {
+			if (css->parent &&
+			    !(cgroup_ss_mask(dsct) & (1 << ss->id))) {
 				kill_css(css);
 			} else if (!(cgroup_control(dsct) & (1 << ss->id))) {
-				css_clear_dir(css, NULL);
+				css_clear_dir(css);
 				if (ss->css_reset)
 					ss->css_reset(css);
 			}
@@ -5501,7 +5443,7 @@ static int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
 	if (ret)
 		goto out_destroy;
 
-	ret = css_populate_dir(&cgrp->self, NULL);
+	ret = css_populate_dir(&cgrp->self);
 	if (ret)
 		goto out_destroy;
 
