@@ -233,6 +233,7 @@ static struct cftype cgroup_dfl_base_files[];
 static struct cftype cgroup_legacy_base_files[];
 
 static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask);
+static void cgroup_lock_and_drain_offline(struct cgroup *cgrp);
 static void css_task_iter_advance(struct css_task_iter *it);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
 static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
@@ -3272,27 +3273,23 @@ out_finish:
 }
 
 /**
- * cgroup_drain_offline - wait for previously offlined csses to go away
+ * cgroup_lock_and_drain_offline - lock cgroup_mutex and drain offlined csses
  * @cgrp: root of the target subtree
  *
  * Because css offlining is asynchronous, userland may try to re-enable a
- * controller while the previous css is still around.  This function drains
- * the previous css instances of @cgrp's subtree.
- *
- * Must be called with cgroup_mutex held.  Returns %false if there were no
- * dying css instances.  Returns %true if there were one or more and this
- * function waited.  On %true return, cgroup_mutex has been dropped and
- * re-acquired inbetween which anything could have happened.  The caller
- * typically would have to start over.
+ * controller while the previous css is still around.  This function grabs
+ * cgroup_mutex and drains the previous css instances of @cgrp's subtree.
  */
-static bool cgroup_drain_offline(struct cgroup *cgrp)
+static void cgroup_lock_and_drain_offline(struct cgroup *cgrp)
+	__acquires(&cgroup_mutex)
 {
 	struct cgroup *dsct;
 	struct cgroup_subsys_state *d_css;
 	struct cgroup_subsys *ss;
 	int ssid;
 
-	lockdep_assert_held(&cgroup_mutex);
+restart:
+	mutex_lock(&cgroup_mutex);
 
 	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
@@ -3309,14 +3306,11 @@ static bool cgroup_drain_offline(struct cgroup *cgrp)
 			mutex_unlock(&cgroup_mutex);
 			schedule();
 			finish_wait(&dsct->offline_waitq, &wait);
-			mutex_lock(&cgroup_mutex);
 
 			cgroup_put(dsct);
-			return true;
+			goto restart;
 		}
 	}
-
-	return false;
 }
 
 /**
@@ -3399,6 +3393,8 @@ static int cgroup_apply_control_enable(struct cgroup *cgrp)
 		for_each_subsys(ss, ssid) {
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
 
+			WARN_ON_ONCE(css && percpu_ref_is_dying(&css->refcnt));
+
 			if (!(cgroup_ss_mask(dsct) & (1 << ss->id)))
 				continue;
 
@@ -3442,6 +3438,8 @@ static void cgroup_apply_control_disable(struct cgroup *cgrp)
 	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
 		for_each_subsys(ss, ssid) {
 			struct cgroup_subsys_state *css = cgroup_css(dsct, ss);
+
+			WARN_ON_ONCE(css && percpu_ref_is_dying(&css->refcnt));
 
 			if (!css)
 				continue;
@@ -3552,17 +3550,9 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 	}
 }
 
-/**
- * cgroup_save_control - save control masks of a subtree
- * @cgrp: root of the target subtree
- *
- * Save ->subtree_control and ->subtree_ss_mask to the respective old_
- * prefixed fields for @cgrp's subtree including @cgrp itself.
- */
-static void cgroup_save_control(struct cgroup *cgrp)
-{
-	struct cgroup *dsct;
-	struct cgroup_subsys_state *d_css;
+	cgrp = cgroup_kn_lock_live(of->kn, true);
+	if (!cgrp)
+		return -ENODEV;
 
 	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
 		dsct->old_subtree_control = dsct->subtree_control;
@@ -3605,11 +3595,6 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 		dsct->subtree_ss_mask = dsct->old_subtree_ss_mask;
 	}
 }
-
-	if (cgroup_drain_offline(cgrp)) {
-		cgroup_kn_unlock(of->kn);
-		return restart_syscall();
-	}
 
 	/* save and update control masks and prepare csses */
 	cgroup_save_control(cgrp);
@@ -5496,7 +5481,7 @@ static int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
 	if (strchr(name, '\n'))
 		return -EINVAL;
 
-	parent = cgroup_kn_lock_live(parent_kn);
+	parent = cgroup_kn_lock_live(parent_kn, false);
 	if (!parent)
 		return -ENODEV;
 
