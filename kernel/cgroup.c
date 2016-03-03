@@ -3424,14 +3424,26 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	 */
 	do_each_subsys_mask(ss, ssid, enable) {
 		cgroup_for_each_live_child(child, cgrp) {
-			if (css_enable & (1 << ssid))
-				ret = create_css(child, ss,
-					cgrp->subtree_control & (1 << ssid));
-			else
+			if (css_enable & (1 << ssid)) {
+				struct cgroup_subsys_state *css;
+
+				css = css_create(child, ss);
+				if (IS_ERR(css)) {
+					ret = PTR_ERR(css);
+					goto err_undo_css;
+				}
+
+				if (cgrp->subtree_control & (1 << ssid)) {
+					ret = css_populate_dir(css, NULL);
+					if (ret)
+						goto err_undo_css;
+				}
+			} else {
 				ret = css_populate_dir(cgroup_css(child, ss),
 						       NULL);
-			if (ret)
-				goto err_undo_css;
+				if (ret)
+					goto err_undo_css;
+			}
 		}
 	} while_each_subsys_mask();
 
@@ -5174,8 +5186,6 @@ static void css_release_work_fn(struct work_struct *work)
 		if (cgrp->kn)
 			RCU_INIT_POINTER(*(void __rcu __force **)&cgrp->kn->priv,
 					 NULL);
-
-		cgroup_bpf_put(cgrp);
 	}
 
 	mutex_unlock(&cgroup_mutex);
@@ -5316,6 +5326,9 @@ static struct cgroup_subsys_state *css_create(struct cgroup *cgrp,
 
 err_list_del:
 	list_del_rcu(&css->sibling);
+	cgroup_idr_remove(&ss->css_idr, css->id);
+err_free_percpu_ref:
+	percpu_ref_exit(&css->refcnt);
 err_free_css:
 	call_rcu(&css->rcu_head, css_free_rcu_fn);
 	return ERR_PTR(err);
@@ -5405,10 +5418,19 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 
 	/* let's create and online css's */
 	do_each_subsys_mask(ss, ssid, parent->subtree_ss_mask) {
-		ret = create_css(cgrp, ss,
-				 parent->subtree_control & (1 << ssid));
-		if (ret)
+		struct cgroup_subsys_state *css;
+
+		css = css_create(cgrp, ss);
+		if (IS_ERR(css)) {
+			ret = PTR_ERR(css);
 			goto out_destroy;
+		}
+
+		if (parent->subtree_control & (1 << ssid)) {
+			ret = css_populate_dir(css, NULL);
+			if (ret)
+				goto out_destroy;
+		}
 	} while_each_subsys_mask();
 
 	/*
