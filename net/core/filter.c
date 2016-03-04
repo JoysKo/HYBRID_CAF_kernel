@@ -2164,29 +2164,21 @@ static const struct bpf_func_proto bpf_skb_get_tunnel_key_proto = {
 	.arg4_type	= ARG_ANYTHING,
 };
 
-BPF_CALL_3(bpf_skb_get_tunnel_opt, struct sk_buff *, skb, u8 *, to, u32, size)
+static u64 bpf_skb_get_tunnel_opt(u64 r1, u64 r2, u64 size, u64 r4, u64 r5)
 {
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
+	u8 *to = (u8 *) (long) r2;
 	const struct ip_tunnel_info *info = skb_tunnel_info(skb);
-	int err;
 
 	if (unlikely(!info ||
-		     !(info->key.tun_flags & TUNNEL_OPTIONS_PRESENT))) {
-		err = -ENOENT;
-		goto err_clear;
-	}
-	if (unlikely(size < info->options_len)) {
-		err = -ENOMEM;
-		goto err_clear;
-	}
+		     !(info->key.tun_flags & TUNNEL_OPTIONS_PRESENT)))
+		return -ENOENT;
+	if (unlikely(size < info->options_len))
+		return -ENOMEM;
 
 	ip_tunnel_info_opts_get(to, info);
-	if (size > info->options_len)
-		memset(to + info->options_len, 0, size - info->options_len);
 
 	return info->options_len;
-err_clear:
-	memset(to, 0, size);
-	return err;
 }
 
 static const struct bpf_func_proto bpf_skb_get_tunnel_opt_proto = {
@@ -2194,7 +2186,7 @@ static const struct bpf_func_proto bpf_skb_get_tunnel_opt_proto = {
 	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
 	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_PTR_TO_RAW_STACK,
+	.arg2_type	= ARG_PTR_TO_STACK,
 	.arg3_type	= ARG_CONST_STACK_SIZE,
 };
 
@@ -2263,15 +2255,18 @@ static const struct bpf_func_proto bpf_skb_set_tunnel_key_proto = {
 	.arg4_type	= ARG_ANYTHING,
 };
 
-BPF_CALL_3(bpf_skb_set_tunnel_opt, struct sk_buff *, skb,
-	   const u8 *, from, u32, size)
+#define BPF_TUNLEN_MAX	255
+
+static u64 bpf_skb_set_tunnel_opt(u64 r1, u64 r2, u64 size, u64 r4, u64 r5)
 {
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
+	u8 *from = (u8 *) (long) r2;
 	struct ip_tunnel_info *info = skb_tunnel_info(skb);
 	const struct metadata_dst *md = this_cpu_ptr(md_dst);
 
 	if (unlikely(info != &md->u.tun_info || (size & (sizeof(u32) - 1))))
 		return -EINVAL;
-	if (unlikely(size > IP_TUNNEL_OPTS_MAX))
+	if (unlikely(size > BPF_TUNLEN_MAX))
 		return -ENOMEM;
 
 	ip_tunnel_info_opts_set(info, from, size);
@@ -2292,10 +2287,13 @@ static const struct bpf_func_proto *
 bpf_get_skb_set_tunnel_proto(enum bpf_func_id which)
 {
 	if (!md_dst) {
+		BUILD_BUG_ON(FIELD_SIZEOF(struct ip_tunnel_info,
+					  options_len) != 1);
+
 		/* Race is not possible, since it's called from verifier
 		 * that is holding verifier mutex.
 		 */
-		md_dst = metadata_dst_alloc_percpu(IP_TUNNEL_OPTS_MAX,
+		md_dst = metadata_dst_alloc_percpu(BPF_TUNLEN_MAX,
 						   GFP_KERNEL);
 		if (!md_dst)
 			return NULL;
@@ -2309,42 +2307,6 @@ bpf_get_skb_set_tunnel_proto(enum bpf_func_id which)
 	default:
 		return NULL;
 	}
-}
-
-BPF_CALL_3(bpf_skb_under_cgroup, struct sk_buff *, skb, struct bpf_map *, map,
-	   u32, idx)
-{
-	struct bpf_array *array = container_of(map, struct bpf_array, map);
-	struct cgroup *cgrp;
-	struct sock *sk;
-
-	sk = skb->sk;
-	if (!sk || !sk_fullsock(sk))
-		return -ENOENT;
-	if (unlikely(idx >= array->map.max_entries))
-		return -E2BIG;
-
-	cgrp = READ_ONCE(array->ptrs[idx]);
-	if (unlikely(!cgrp))
-		return -EAGAIN;
-
-	return sk_under_cgroup_hierarchy(sk, cgrp);
-}
-
-static const struct bpf_func_proto bpf_skb_under_cgroup_proto = {
-	.func		= bpf_skb_under_cgroup,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_CONST_MAP_PTR,
-	.arg3_type	= ARG_ANYTHING,
-};
-
-static unsigned long bpf_xdp_copy(void *dst_buff, const void *src_buff,
-				  unsigned long off, unsigned long len)
-{
-	memcpy(dst_buff, src_buff + off, len);
-	return 0;
 }
 
 BPF_CALL_5(bpf_xdp_event_output, struct xdp_buff *, xdp, struct bpf_map *, map,
