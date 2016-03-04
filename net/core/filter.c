@@ -1371,7 +1371,7 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	unsigned int len = (unsigned int) r4;
 	void *ptr;
 
-	if (unlikely(flags & ~(BPF_F_RECOMPUTE_CSUM)))
+	if (unlikely(flags & ~(BPF_F_RECOMPUTE_CSUM | BPF_F_INVALIDATE_HASH)))
 		return -EINVAL;
 
 	/* bpf verifier guarantees that:
@@ -1402,6 +1402,8 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 
 	if (flags & BPF_F_RECOMPUTE_CSUM)
 		skb_postpush_rcsum(skb, ptr, len);
+	if (flags & BPF_F_INVALIDATE_HASH)
+		skb_clear_hash(skb);
 
 	return 0;
 }
