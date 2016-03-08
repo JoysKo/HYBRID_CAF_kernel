@@ -20,8 +20,6 @@
 #include <linux/filter.h>
 #include <linux/version.h>
 
-#define BPF_OBJ_FLAG_MASK   (BPF_F_RDONLY | BPF_F_WRONLY)
-
 DEFINE_PER_CPU(int, bpf_prog_active);
 
 int sysctl_unprivileged_bpf_disabled __read_mostly;
@@ -436,6 +434,11 @@ static int map_update_elem(union bpf_attr *attr)
 	if (copy_from_user(value, uvalue, value_size) != 0)
 		goto free_value;
 
+	/* must increment bpf_prog_active to avoid kprobe+bpf triggering from
+	 * inside bpf map update or delete otherwise deadlocks are possible
+	 */
+	preempt_disable();
+	__this_cpu_inc(bpf_prog_active);
 	if (map->map_type == BPF_MAP_TYPE_PERCPU_HASH) {
 		err = bpf_percpu_hash_update(map, key, value, attr->flags);
 	} else if (map->map_type == BPF_MAP_TYPE_PERCPU_ARRAY) {
@@ -445,6 +448,8 @@ static int map_update_elem(union bpf_attr *attr)
 		err = map->ops->map_update_elem(map, key, value, attr->flags);
 		rcu_read_unlock();
 	}
+	__this_cpu_dec(bpf_prog_active);
+	preempt_enable();
 
 free_value:
 	kfree(value);
