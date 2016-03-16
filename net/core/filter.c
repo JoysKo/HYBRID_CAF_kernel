@@ -2521,46 +2521,6 @@ static bool sk_filter_is_valid_access(int off, int size,
 static int tc_cls_act_prologue(struct bpf_insn *insn_buf, bool direct_write,
 			       const struct bpf_prog *prog)
 {
-	struct bpf_insn *insn = insn_buf;
-
-	if (!direct_write)
-		return 0;
-
-	/* if (!skb->cloned)
-	 *       goto start;
-	 *
-	 * (Fast-path, otherwise approximation that we might be
-	 *  a clone, do the rest in helper.)
-	 */
-	*insn++ = BPF_LDX_MEM(BPF_B, BPF_REG_6, BPF_REG_1, CLONED_OFFSET());
-	*insn++ = BPF_ALU32_IMM(BPF_AND, BPF_REG_6, CLONED_MASK);
-	*insn++ = BPF_JMP_IMM(BPF_JEQ, BPF_REG_6, 0, 7);
-
-	/* ret = bpf_skb_pull_data(skb, 0); */
-	*insn++ = BPF_MOV64_REG(BPF_REG_6, BPF_REG_1);
-	*insn++ = BPF_ALU64_REG(BPF_XOR, BPF_REG_2, BPF_REG_2);
-	*insn++ = BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0,
-			       BPF_FUNC_skb_pull_data);
-	/* if (!ret)
-	 *      goto restore;
-	 * return TC_ACT_SHOT;
-	 */
-	*insn++ = BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 2);
-	*insn++ = BPF_ALU32_IMM(BPF_MOV, BPF_REG_0, TC_ACT_SHOT);
-	*insn++ = BPF_EXIT_INSN();
-
-	/* restore: */
-	*insn++ = BPF_MOV64_REG(BPF_REG_1, BPF_REG_6);
-	/* start: */
-	*insn++ = prog->insnsi[0];
-
-	return insn - insn_buf;
-}
-
-static bool tc_cls_act_is_valid_access(int off, int size,
-				       enum bpf_access_type type,
-				       enum bpf_reg_type *reg_type)
-{
 	if (type == BPF_WRITE) {
 		switch (off) {
 		case offsetof(struct __sk_buff, mark):
@@ -2737,20 +2697,6 @@ static u32 sk_filter_convert_ctx_access(enum bpf_access_type type, int dst_reg,
 			*insn++ = BPF_STX_MEM(BPF_H, dst_reg, src_reg, ctx_off);
 		else
 			*insn++ = BPF_LDX_MEM(BPF_H, dst_reg, src_reg, ctx_off);
-		break;
-
-	case offsetof(struct __sk_buff, data):
-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, data),
-				      dst_reg, src_reg,
-				      offsetof(struct sk_buff, data));
-		break;
-
-	case offsetof(struct __sk_buff, data_end):
-		ctx_off -= offsetof(struct __sk_buff, data_end);
-		ctx_off += offsetof(struct sk_buff, cb);
-		ctx_off += offsetof(struct bpf_skb_data_end, data_end);
-		*insn++ = BPF_LDX_MEM(BPF_SIZEOF(void *), dst_reg, src_reg,
-				      ctx_off);
 		break;
 
 	case offsetof(struct __sk_buff, tc_index):
