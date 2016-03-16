@@ -1701,7 +1701,7 @@ static const struct bpf_func_proto bpf_get_cgroup_classid_proto = {
 
 BPF_CALL_1(bpf_get_route_realm, const struct sk_buff *, skb)
 {
-	return dst_tclassid(skb);
+	return dst_tclassid((struct sk_buff *) (unsigned long) r1);
 }
 
 static const struct bpf_func_proto bpf_get_route_realm_proto = {
