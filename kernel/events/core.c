@@ -6700,7 +6700,7 @@ static int __perf_event_overflow(struct perf_event *event,
 		irq_work_queue(&event->pending);
 	}
 
-	READ_ONCE(event->overflow_handler)(event, data, regs);
+	event->overflow_handler(event, data, regs);
 
 	if (*perf_event_fasync(event) && event->pending_kill) {
 		event->pending_wakeup = 1;
