@@ -350,68 +350,6 @@ static const struct bpf_func_proto bpf_perf_event_output_proto = {
 	.arg5_type	= ARG_CONST_STACK_SIZE,
 };
 
-static DEFINE_PER_CPU(struct pt_regs, bpf_pt_regs);
-
-u64 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
-		     void *ctx, u64 ctx_size, bpf_ctx_copy_t ctx_copy)
-{
-	struct pt_regs *regs = this_cpu_ptr(&bpf_pt_regs);
-	struct perf_raw_frag frag = {
-		.copy		= ctx_copy,
-		.size		= ctx_size,
-		.data		= ctx,
-	};
-	struct perf_raw_record raw = {
-		.frag = {
-			{
-				.next	= ctx_size ? &frag : NULL,
-			},
-			.size	= meta_size,
-			.data	= meta,
-		},
-	};
-
-	perf_fetch_caller_regs(regs);
-
-	return __bpf_perf_event_output(regs, map, flags, &raw);
-}
-
-BPF_CALL_0(bpf_get_current_task)
-{
-	return (long) current;
-}
-
-static const struct bpf_func_proto bpf_get_current_task_proto = {
-	.func		= bpf_get_current_task,
-	.gpl_only	= true,
-	.ret_type	= RET_INTEGER,
-};
-
-BPF_CALL_2(bpf_current_task_under_cgroup, struct bpf_map *, map, u32, idx)
-{
-	struct bpf_array *array = container_of(map, struct bpf_array, map);
-	struct cgroup *cgrp;
-
-	if (unlikely(in_interrupt()))
-		return -EINVAL;
-	if (unlikely(idx >= array->map.max_entries))
-		return -E2BIG;
-
-	cgrp = READ_ONCE(array->ptrs[idx]);
-	if (unlikely(!cgrp))
-		return -EAGAIN;
-
-	return task_under_cgroup_hierarchy(current, cgrp);
-}
-
-static const struct bpf_func_proto bpf_current_task_under_cgroup_proto = {
-	.func           = bpf_current_task_under_cgroup,
-	.gpl_only       = false,
-	.ret_type       = RET_INTEGER,
-	.arg1_type      = ARG_CONST_MAP_PTR,
-	.arg2_type      = ARG_ANYTHING,
-};
-
 static const struct bpf_func_proto *tracing_func_proto(enum bpf_func_id func_id)
 {
 	switch (func_id) {
@@ -441,12 +379,6 @@ static const struct bpf_func_proto *tracing_func_proto(enum bpf_func_id func_id)
 		return &bpf_get_smp_processor_id_proto;
 	case BPF_FUNC_perf_event_read:
 		return &bpf_perf_event_read_proto;
-	case BPF_FUNC_probe_write_user:
-		return bpf_get_probe_write_proto();
-	case BPF_FUNC_current_task_under_cgroup:
-		return &bpf_current_task_under_cgroup_proto;
-	case BPF_FUNC_get_prandom_u32:
-		return &bpf_get_prandom_u32_proto;
 	default:
 		return NULL;
 	}
@@ -487,67 +419,18 @@ static struct bpf_prog_type_list kprobe_tl = {
 	.type	= BPF_PROG_TYPE_KPROBE,
 };
 
-BPF_CALL_5(bpf_perf_event_output_tp, void *, tp_buff, struct bpf_map *, map,
-	   u64, flags, void *, data, u64, size)
-{
-	struct pt_regs *regs = *(struct pt_regs **)tp_buff;
-
-	/*
-	 * r1 points to perf tracepoint buffer where first 8 bytes are hidden
-	 * from bpf program and contain a pointer to 'struct pt_regs'. Fetch it
-	 * from there and call the same bpf_perf_event_output() helper inline.
-	 */
-	return ____bpf_perf_event_output(regs, map, flags, data, size);
-}
-
-static const struct bpf_func_proto bpf_perf_event_output_proto_tp = {
-	.func		= bpf_perf_event_output_tp,
-	.gpl_only	= true,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_CONST_MAP_PTR,
-	.arg3_type	= ARG_ANYTHING,
-	.arg4_type	= ARG_PTR_TO_STACK,
-	.arg5_type	= ARG_CONST_STACK_SIZE,
-};
-
-BPF_CALL_3(bpf_get_stackid_tp, void *, tp_buff, struct bpf_map *, map,
-	   u64, flags)
-{
-	struct pt_regs *regs = *(struct pt_regs **)tp_buff;
-
-	/*
-	 * Same comment as in bpf_perf_event_output_tp(), only that this time
-	 * the other helper's function body cannot be inlined due to being
-	 * external, thus we need to call raw helper function.
-	 */
-	return bpf_get_stackid((unsigned long) regs, (unsigned long) map,
-			       flags, 0, 0);
-}
-
-static const struct bpf_func_proto bpf_get_stackid_proto_tp = {
-	.func		= bpf_get_stackid_tp,
-	.gpl_only	= true,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-	.arg2_type	= ARG_CONST_MAP_PTR,
-	.arg3_type	= ARG_ANYTHING,
-};
-
 static const struct bpf_func_proto *tp_prog_func_proto(enum bpf_func_id func_id)
 {
 	switch (func_id) {
 	case BPF_FUNC_perf_event_output:
-		return &bpf_perf_event_output_proto_tp;
 	case BPF_FUNC_get_stackid:
-		return &bpf_get_stackid_proto_tp;
+		return NULL;
 	default:
 		return tracing_func_proto(func_id);
 	}
 }
 
-static bool tp_prog_is_valid_access(int off, int size, enum bpf_access_type type,
-				    enum bpf_reg_type *reg_type)
+static bool tp_prog_is_valid_access(int off, int size, enum bpf_access_type type)
 {
 	if (off < sizeof(void *) || off >= PERF_MAX_TRACE_SIZE)
 		return false;
@@ -568,128 +451,10 @@ static struct bpf_prog_type_list tracepoint_tl = {
 	.type	= BPF_PROG_TYPE_TRACEPOINT,
 };
 
-static bool pe_prog_is_valid_access(int off, int size, enum bpf_access_type type,
-				    enum bpf_reg_type *reg_type)
-{
-	if (off < 0 || off >= sizeof(struct bpf_perf_event_data))
-		return false;
-	if (type != BPF_READ)
-		return false;
-	if (off % size != 0)
-		return false;
-	if (off == offsetof(struct bpf_perf_event_data, sample_period)) {
-		if (size != sizeof(u64))
-			return false;
-	} else {
-		if (size != sizeof(long))
-			return false;
-	}
-	return true;
-}
-
-static u32 pe_prog_convert_ctx_access(enum bpf_access_type type, int dst_reg,
-				      int src_reg, int ctx_off,
-				      struct bpf_insn *insn_buf,
-				      struct bpf_prog *prog)
-{
-	struct bpf_insn *insn = insn_buf;
-
-	switch (ctx_off) {
-	case offsetof(struct bpf_perf_event_data, sample_period):
-		BUILD_BUG_ON(FIELD_SIZEOF(struct perf_sample_data, period) != sizeof(u64));
-
-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct bpf_perf_event_data_kern,
-						       data), dst_reg, src_reg,
-				      offsetof(struct bpf_perf_event_data_kern, data));
-		*insn++ = BPF_LDX_MEM(BPF_DW, dst_reg, dst_reg,
-				      offsetof(struct perf_sample_data, period));
-		break;
-	default:
-		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct bpf_perf_event_data_kern,
-						       regs), dst_reg, src_reg,
-				      offsetof(struct bpf_perf_event_data_kern, regs));
-		*insn++ = BPF_LDX_MEM(BPF_SIZEOF(long), dst_reg, dst_reg, ctx_off);
-		break;
-	}
-
-	return insn - insn_buf;
-}
-
-static const struct bpf_verifier_ops perf_event_prog_ops = {
-	.get_func_proto		= tp_prog_func_proto,
-	.is_valid_access	= pe_prog_is_valid_access,
-	.convert_ctx_access	= pe_prog_convert_ctx_access,
-};
-
-static DEFINE_MUTEX(bpf_event_mutex);
-
-int perf_event_attach_bpf_prog(struct perf_event *event,
-			       struct bpf_prog *prog)
-{
-	struct bpf_prog_array __rcu *old_array;
-	struct bpf_prog_array *new_array;
-	int ret = -EEXIST;
-
-	mutex_lock(&bpf_event_mutex);
-
-	if (event->prog)
-		goto out;
-
-	old_array = rcu_dereference_protected(event->tp_event->prog_array,
-					      lockdep_is_held(&bpf_event_mutex));
-	ret = bpf_prog_array_copy(old_array, NULL, prog, &new_array);
-	if (ret < 0)
-		goto out;
-
-	/* set the new array to event->tp_event and set event->prog */
-	event->prog = prog;
-	rcu_assign_pointer(event->tp_event->prog_array, new_array);
-	bpf_prog_array_free(old_array);
-
-out:
-	mutex_unlock(&bpf_event_mutex);
-	return ret;
-}
-
-void perf_event_detach_bpf_prog(struct perf_event *event)
-{
-	struct bpf_prog_array __rcu *old_array;
-	struct bpf_prog_array *new_array;
-	int ret;
-
-	mutex_lock(&bpf_event_mutex);
-
-	if (!event->prog)
-		goto out;
-
-	old_array = rcu_dereference_protected(event->tp_event->prog_array,
-					      lockdep_is_held(&bpf_event_mutex));
-
-	ret = bpf_prog_array_copy(old_array, event->prog, NULL, &new_array);
-	if (ret < 0) {
-		bpf_prog_array_delete_safe(old_array, event->prog);
-	} else {
-		rcu_assign_pointer(event->tp_event->prog_array, new_array);
-		bpf_prog_array_free(old_array);
-	}
-
-	bpf_prog_put(event->prog);
-	event->prog = NULL;
-
-out:
-	mutex_unlock(&bpf_event_mutex);
-}
-
-static struct bpf_prog_type_list perf_event_tl = {
-	.ops	= &perf_event_prog_ops,
-	.type	= BPF_PROG_TYPE_PERF_EVENT,
-};
-
 static int __init register_kprobe_prog_ops(void)
 {
 	bpf_register_prog_type(&kprobe_tl);
 	bpf_register_prog_type(&tracepoint_tl);
-	bpf_register_prog_type(&perf_event_tl);
 	return 0;
 }
 late_initcall(register_kprobe_prog_ops);
