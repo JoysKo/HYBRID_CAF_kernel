@@ -64,8 +64,9 @@ perf_trace_##call(void *__data, proto)					\
 									\
 	{ assign; }							\
 									\
-	perf_trace_buf_submit(entry, __entry_size, rctx, 0,		\
-		__count, __regs, head, __task);				\
+	perf_trace_buf_submit(entry, __entry_size, rctx,		\
+			      event_call->event.type, __count, __regs,	\
+			      head, __task);				\
 }
 
 /*
