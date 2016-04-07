@@ -7383,6 +7383,14 @@ static int perf_event_set_bpf_handler(struct perf_event *event, u32 prog_fd)
 			return -EACCES;
 		}
 	}
+	event->tp_event->prog = prog;
+	event->tp_event->bpf_prog_owner = event;
+
+		if (prog->aux->max_ctx_offset > off) {
+			bpf_prog_put(prog);
+			return -EACCES;
+		}
+	}
 
 	ret = perf_event_attach_bpf_prog(event, prog);
 	if (ret)
