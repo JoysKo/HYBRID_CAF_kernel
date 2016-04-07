@@ -127,6 +127,55 @@
  * are set to NOT_INIT to indicate that they are no longer readable.
  */
 
+/* types of values stored in eBPF registers */
+enum bpf_reg_type {
+	NOT_INIT = 0,		 /* nothing was written into register */
+	UNKNOWN_VALUE,		 /* reg doesn't contain a valid pointer */
+	PTR_TO_CTX,		 /* reg points to bpf_context */
+	CONST_PTR_TO_MAP,	 /* reg points to struct bpf_map */
+	PTR_TO_MAP_VALUE,	 /* reg points to map element value */
+	PTR_TO_MAP_VALUE_OR_NULL,/* points to map elem value or NULL */
+	FRAME_PTR,		 /* reg == frame_pointer */
+	PTR_TO_STACK,		 /* reg == frame_pointer + imm */
+	CONST_IMM,		 /* constant integer value */
+};
+
+struct reg_state {
+	enum bpf_reg_type type;
+	union {
+		/* valid when type == CONST_IMM | PTR_TO_STACK */
+		long imm;
+
+		/* valid when type == CONST_PTR_TO_MAP | PTR_TO_MAP_VALUE |
+		 *   PTR_TO_MAP_VALUE_OR_NULL
+		 */
+		struct bpf_map *map_ptr;
+	};
+};
+
+enum bpf_stack_slot_type {
+	STACK_INVALID,    /* nothing was stored in this stack slot */
+	STACK_SPILL,      /* register spilled into stack */
+	STACK_MISC	  /* BPF program wrote some data into this slot */
+};
+
+#define BPF_REG_SIZE 8	/* size of eBPF register in bytes */
+
+/* state of the program:
+ * type of all registers and stack info
+ */
+struct verifier_state {
+	struct reg_state regs[MAX_BPF_REG];
+	u8 stack_slot_type[MAX_BPF_STACK];
+	struct reg_state spilled_regs[MAX_BPF_STACK / BPF_REG_SIZE];
+};
+
+/* linked list of verifier states used to prune search */
+struct verifier_state_list {
+	struct verifier_state state;
+	struct verifier_state_list *next;
+};
+
 /* verifier_state + insn_idx are pushed to stack when branch is encountered */
 struct bpf_verifier_stack_elem {
 	/* verifer state is 'st'
@@ -221,12 +270,7 @@ static void print_verifier_state(struct verifier_env *env)
 			continue;
 		verbose(" R%d=%s", i, reg_type_str[t]);
 		if (t == CONST_IMM || t == PTR_TO_STACK)
-			verbose("%lld", reg->imm);
-		else if (t == PTR_TO_PACKET)
-			verbose("(id=%d,off=%d,r=%d)",
-				reg->id, reg->off, reg->range);
-		else if (t == UNKNOWN_VALUE && reg->imm)
-			verbose("%lld", reg->imm);
+			verbose("%ld", env->cur_state.regs[i].imm);
 		else if (t == CONST_PTR_TO_MAP || t == PTR_TO_MAP_VALUE ||
 			 t == PTR_TO_MAP_VALUE_OR_NULL ||
 			 t == PTR_TO_MAP_VALUE_ADJ)
@@ -451,8 +495,6 @@ static void init_reg_state(struct bpf_reg_state *regs)
 	for (i = 0; i < MAX_BPF_REG; i++) {
 		regs[i].type = NOT_INIT;
 		regs[i].imm = 0;
-		regs[i].min_value = BPF_REGISTER_MIN_RANGE;
-		regs[i].max_value = BPF_REGISTER_MAX_RANGE;
 	}
 
 	/* frame pointer */
@@ -467,18 +509,6 @@ static void __mark_reg_unknown_value(struct bpf_reg_state *regs, u32 regno)
 	regs[regno].type = UNKNOWN_VALUE;
 	regs[regno].id = 0;
 	regs[regno].imm = 0;
-}
-
-static void mark_reg_unknown_value(struct bpf_reg_state *regs, u32 regno)
-{
-	BUG_ON(regno >= MAX_BPF_REG);
-	__mark_reg_unknown_value(regs, regno);
-}
-
-static void reset_reg_range_values(struct bpf_reg_state *regs, u32 regno)
-{
-	regs[regno].min_value = BPF_REGISTER_MIN_RANGE;
-	regs[regno].max_value = BPF_REGISTER_MAX_RANGE;
 }
 
 enum reg_arg_type {
