@@ -207,6 +207,10 @@ struct verifier_env {
 #define BPF_COMPLEXITY_LIMIT_INSNS	65536
 #define BPF_COMPLEXITY_LIMIT_STACK	1024
 
+struct bpf_call_arg_meta {
+	struct bpf_map *map_ptr;
+};
+
 /* verbose verifier prints what it's seeing
  * bpf_check() is called under lock, so no race to access these global vars
  */
@@ -949,7 +953,7 @@ static int check_stack_boundary(struct verifier_env *env, int regno,
 	return 0;
 }
 
-static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
+static int check_func_arg(struct verifier_env *env, u32 regno,
 			  enum bpf_arg_type arg_type,
 			  struct bpf_call_arg_meta *meta)
 {
@@ -1017,7 +1021,7 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->key\n");
 			return -EACCES;
 		}
-		err = check_stack_boundary(env, regno, (*mapp)->key_size,
+		err = check_stack_boundary(env, regno, meta->map_ptr->key_size,
 					   false);
 	} else if (arg_type == ARG_PTR_TO_MAP_VALUE) {
 		/* bpf_map_xxx(..., map_ptr, ..., value) call:
@@ -1028,8 +1032,8 @@ static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->value\n");
 			return -EACCES;
 		}
-		err = check_stack_boundary(env, regno, (*mapp)->value_size,
-					   false);
+		err = check_stack_boundary(env, regno,
+					   meta->map_ptr->value_size, false);
 	} else if (arg_type == ARG_CONST_STACK_SIZE ||
 		   arg_type == ARG_CONST_STACK_SIZE_OR_ZERO) {
 		bool zero_size_allowed = (arg_type == ARG_CONST_STACK_SIZE_OR_ZERO);
@@ -1083,10 +1087,9 @@ static int check_call(struct verifier_env *env, int func_id)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
 	const struct bpf_func_proto *fn = NULL;
-	struct bpf_reg_state *regs = state->regs;
-	struct bpf_reg_state *reg;
+	struct reg_state *regs = state->regs;
+	struct reg_state *reg;
 	struct bpf_call_arg_meta meta;
-	bool changes_data;
 	int i, err;
 
 	/* find function prototype */
@@ -1109,19 +1112,7 @@ static int check_call(struct verifier_env *env, int func_id)
 		return -EINVAL;
 	}
 
-	changes_data = bpf_helper_changes_skb_data(fn->func);
-
 	memset(&meta, 0, sizeof(meta));
-	meta.pkt_access = fn->pkt_access;
-
-	/* We only support one arg being in raw mode at the moment, which
-	 * is sufficient for the helper functions we have right now.
-	 */
-	err = check_raw_mode(fn);
-	if (err) {
-		verbose("kernel subsystem misconfigured func %d\n", func_id);
-		return err;
-	}
 
 	/* check args */
 	err = check_func_arg(env, BPF_REG_1, fn->arg1_type, &meta);
@@ -1130,7 +1121,7 @@ static int check_call(struct verifier_env *env, int func_id)
 	err = check_func_arg(env, BPF_REG_2, fn->arg2_type, &meta);
 	if (err)
 		return err;
-	err = check_func_arg(env, BPF_REG_3, fn->arg3_type, &map);
+	err = check_func_arg(env, BPF_REG_3, fn->arg3_type, &meta);
 	if (err)
 		return err;
 	err = check_func_arg(env, BPF_REG_4, fn->arg4_type, &meta);
@@ -1173,7 +1164,6 @@ static int check_call(struct verifier_env *env, int func_id)
 			return -EINVAL;
 		}
 		regs[BPF_REG_0].map_ptr = meta.map_ptr;
-		regs[BPF_REG_0].id = ++env->id_gen;
 	} else {
 		verbose("unknown return type %d of func %d\n",
 			fn->ret_type, func_id);
