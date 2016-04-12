@@ -76,7 +76,9 @@ EXPORT_SYMBOL_GPL(trace_call_bpf);
 
 BPF_CALL_3(bpf_probe_read, void *, dst, u32, size, const void *, unsafe_ptr)
 {
-	int ret;
+	void *dst = (void *) (long) r1;
+	int ret, size = (int) r2;
+	void *unsafe_ptr = (void *) (long) r3;
 
 	ret = probe_kernel_read(dst, unsafe_ptr, size);
 	if (unlikely(ret < 0))

@@ -149,7 +149,11 @@ BPF_CALL_2(bpf_get_current_comm, char *, buf, u32, size)
 
 	strncpy(buf, task->comm, size);
 
-	strlcpy(buf, task->comm, min_t(size_t, size, sizeof(task->comm)));
+	/* Verifier guarantees that size > 0. For task->comm exceeding
+	 * size, guarantee that buf is %NUL-terminated. Unconditionally
+	 * done here to save the size test.
+	 */
+	buf[size - 1] = 0;
 	return 0;
 err_clear:
 	memset(buf, 0, size);
