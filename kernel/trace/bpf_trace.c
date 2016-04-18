@@ -286,12 +286,11 @@ static const struct bpf_func_proto bpf_perf_event_read_proto = {
 	.arg2_type	= ARG_ANYTHING,
 };
 
-static __always_inline u64
-__bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
-			u64 flags, struct perf_raw_record *raw)
+static u64 bpf_perf_event_output(u64 r1, u64 r2, u64 flags, u64 r4, u64 size)
 {
 	struct bpf_array *array = container_of(map, struct bpf_array, map);
 	u64 index = flags & BPF_F_INDEX_MASK;
+	void *data = (void *) (long) r4;
 	struct perf_sample_data sample_data;
 	struct bpf_event_entry *ee;
 	struct perf_event *event;
@@ -301,6 +300,8 @@ __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 		.data = data,
 	};
 
+	if (unlikely(flags & ~(BPF_F_INDEX_MASK)))
+		return -EINVAL;
 	if (index == BPF_F_CURRENT_CPU)
 		index = raw_smp_processor_id();
 	if (unlikely(index >= array->map.max_entries))
