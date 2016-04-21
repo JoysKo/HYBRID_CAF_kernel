@@ -61,11 +61,6 @@ struct perf_callchain_entry {
 	__u64				ip[0]; /* /proc/sys/kernel/perf_event_max_stack */
 };
 
-struct perf_callchain_entry_ctx {
-	struct perf_callchain_entry *entry;
-	u32			    max_stack;
-};
-
 struct perf_raw_record {
 	u32				size;
 	void				*data;
@@ -1012,9 +1007,11 @@ get_perf_callchain(struct pt_regs *regs, u32 init_nr, bool kernel, bool user,
 extern int get_callchain_buffers(void);
 extern void put_callchain_buffers(void);
 
+extern int sysctl_perf_event_max_stack;
+
 static inline int perf_callchain_store(struct perf_callchain_entry *entry, u64 ip)
 {
-	if (entry->nr < PERF_MAX_STACK_DEPTH) {
+	if (entry->nr < sysctl_perf_event_max_stack) {
 		entry->ip[entry->nr++] = ip;
 		return 0;
 	} else {

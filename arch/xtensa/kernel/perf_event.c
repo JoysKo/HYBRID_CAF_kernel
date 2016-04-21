@@ -332,14 +332,14 @@ static int callchain_trace(struct stackframe *frame, void *data)
 void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry,
 			   struct pt_regs *regs)
 {
-	xtensa_backtrace_kernel(regs, entry->max_stack,
+	xtensa_backtrace_kernel(regs, sysctl_perf_event_max_stack,
 				callchain_trace, NULL, entry);
 }
 
 void perf_callchain_user(struct perf_callchain_entry_ctx *entry,
 			 struct pt_regs *regs)
 {
-	xtensa_backtrace_user(regs, entry->max_stack,
+	xtensa_backtrace_user(regs, sysctl_perf_event_max_stack,
 			      callchain_trace, entry);
 }
 
