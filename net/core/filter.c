@@ -1353,8 +1353,22 @@ struct bpf_scratchpad {
 
 static DEFINE_PER_CPU(struct bpf_scratchpad, bpf_sp);
 
-BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
-	   const void *, from, u32, len, u64, flags)
+static inline int bpf_try_make_writable(struct sk_buff *skb,
+					unsigned int write_len)
+{
+	int err;
+
+	if (!skb_cloned(skb))
+		return 0;
+	if (skb_clone_writable(skb, write_len))
+		return 0;
+	err = pskb_expand_head(skb, 0, 0, GFP_ATOMIC);
+	if (!err)
+		bpf_compute_data_end(skb);
+	return err;
+}
+
+static u64 bpf_skb_store_bytes(u64 r1, u64 r2, u64 r3, u64 r4, u64 flags)
 {
 	struct bpf_scratchpad *sp = this_cpu_ptr(&bpf_sp);
 	struct sk_buff *skb = (struct sk_buff *) (long) r1;
@@ -1376,7 +1390,7 @@ BPF_CALL_5(bpf_skb_store_bytes, struct sk_buff *, skb, u32, offset,
 	 */
 	if (unlikely((u32) offset > 0xffff || len > sizeof(sp->buff)))
 		return -EFAULT;
-	if (unlikely(skb_try_make_writable(skb, offset + len)))
+	if (unlikely(bpf_try_make_writable(skb, offset + len)))
 		return -EFAULT;
 
 	ptr = skb_header_pointer(skb, offset, len, sp->buff);
@@ -1452,7 +1466,8 @@ static u64 bpf_l3_csum_replace(u64 r1, u64 r2, u64 from, u64 to, u64 flags)
 		return -EINVAL;
 	if (unlikely((u32) offset > 0xffff))
 		return -EFAULT;
-	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(*ptr))))
+
+	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(sum))))
 		return -EFAULT;
 
 	ptr = (__sum16 *)(skb->data + offset);
@@ -1506,7 +1521,7 @@ BPF_CALL_5(bpf_l4_csum_replace, struct sk_buff *, skb, u32, offset,
 		return -EINVAL;
 	if (unlikely((u32) offset > 0xffff))
 		return -EFAULT;
-	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(*ptr))))
+	if (unlikely(bpf_try_make_writable(skb, offset + sizeof(sum))))
 		return -EFAULT;
 
 	ptr = skb_header_pointer(skb, offset, sizeof(sum), &sum);
@@ -1708,50 +1723,15 @@ static const struct bpf_func_proto bpf_get_route_realm_proto = {
 
 BPF_CALL_1(bpf_get_hash_recalc, struct sk_buff *, skb)
 {
-	/* If skb_clear_hash() was called due to mangling, we can
-	 * trigger SW recalculation here. Later access to hash
-	 * can then use the inline skb->hash via context directly
-	 * instead of calling this helper again.
-	 */
-	return skb_get_hash(skb);
-}
-
-static const struct bpf_func_proto bpf_get_hash_recalc_proto = {
-	.func		= bpf_get_hash_recalc,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-};
-
-BPF_CALL_1(bpf_set_hash_invalid, struct sk_buff *, skb)
-{
-	/* After all direct packet write, this can be used once for
-	 * triggering a lazy recalc on next skb_get_hash() invocation.
-	 */
-	skb_clear_hash(skb);
-	return 0;
-}
-
-static const struct bpf_func_proto bpf_set_hash_invalid_proto = {
-	.func		= bpf_set_hash_invalid,
-	.gpl_only	= false,
-	.ret_type	= RET_INTEGER,
-	.arg1_type	= ARG_PTR_TO_CTX,
-};
-
-BPF_CALL_3(bpf_skb_vlan_push, struct sk_buff *, skb, __be16, vlan_proto,
-	   u16, vlan_tci)
-{
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
+	__be16 vlan_proto = (__force __be16) r2;
 	int ret;
 
 	if (unlikely(vlan_proto != htons(ETH_P_8021Q) &&
 		     vlan_proto != htons(ETH_P_8021AD)))
 		vlan_proto = htons(ETH_P_8021Q);
 
-	bpf_push_mac_rcsum(skb);
 	ret = skb_vlan_push(skb, vlan_proto, vlan_tci);
-	bpf_pull_mac_rcsum(skb);
-
 	bpf_compute_data_end(skb);
 	return ret;
 }
@@ -1768,12 +1748,10 @@ EXPORT_SYMBOL_GPL(bpf_skb_vlan_push_proto);
 
 BPF_CALL_1(bpf_skb_vlan_pop, struct sk_buff *, skb)
 {
+	struct sk_buff *skb = (struct sk_buff *) (long) r1;
 	int ret;
 
-	bpf_push_mac_rcsum(skb);
 	ret = skb_vlan_pop(skb);
-	bpf_pull_mac_rcsum(skb);
-
 	bpf_compute_data_end(skb);
 	return ret;
 }
@@ -2625,6 +2603,20 @@ static u32 sk_filter_convert_ctx_access(enum bpf_access_type type, int dst_reg,
 			*insn++ = BPF_STX_MEM(BPF_H, dst_reg, src_reg, ctx_off);
 		else
 			*insn++ = BPF_LDX_MEM(BPF_H, dst_reg, src_reg, ctx_off);
+		break;
+
+	case offsetof(struct __sk_buff, data):
+		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(FIELD_SIZEOF(struct sk_buff, data)),
+				      dst_reg, src_reg,
+				      offsetof(struct sk_buff, data));
+		break;
+
+	case offsetof(struct __sk_buff, data_end):
+		ctx_off -= offsetof(struct __sk_buff, data_end);
+		ctx_off += offsetof(struct sk_buff, cb);
+		ctx_off += offsetof(struct bpf_skb_data_end, data_end);
+		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(sizeof(void *)),
+				      dst_reg, src_reg, ctx_off);
 		break;
 
 	case offsetof(struct __sk_buff, tc_index):
