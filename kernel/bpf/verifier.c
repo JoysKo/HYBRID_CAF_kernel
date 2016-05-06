@@ -2121,12 +2121,11 @@ static int check_cond_jmp_op(struct verifier_env *env,
 			 */
 			regs[insn->dst_reg].type = PTR_TO_MAP_VALUE;
 			/* branch targer cannot access it, since reg == 0 */
-			other_branch->regs[insn->dst_reg].type = CONST_IMM;
-			other_branch->regs[insn->dst_reg].imm = 0;
+			mark_reg_unknown_value(other_branch->regs,
+					       insn->dst_reg);
 		} else {
 			other_branch->regs[insn->dst_reg].type = PTR_TO_MAP_VALUE;
-			regs[insn->dst_reg].type = CONST_IMM;
-			regs[insn->dst_reg].imm = 0;
+			mark_reg_unknown_value(regs, insn->dst_reg);
 		}
 	} else if (BPF_SRC(insn->code) == BPF_X && opcode == BPF_JGT &&
 		   dst_reg->type == PTR_TO_PACKET &&
