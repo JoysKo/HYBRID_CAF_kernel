@@ -60,6 +60,7 @@ always += spintest_kern.o
 always += map_perf_test_kern.o
 always += test_overhead_tp_kern.o
 always += test_overhead_kprobe_kern.o
+always += parse_varlen.o parse_simple.o parse_ldabs.o
 
 HOSTCFLAGS += -I$(objtree)/usr/include
 
