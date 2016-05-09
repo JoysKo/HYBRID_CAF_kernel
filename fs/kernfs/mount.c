@@ -14,7 +14,6 @@
 #include <linux/magic.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
-#include <linux/namei.h>
 #include <linux/seq_file.h>
 
 #include "kernfs-internal.h"
