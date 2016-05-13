@@ -30,9 +30,10 @@
 
 #include "bpf_jit.h"
 
+int bpf_jit_enable __read_mostly;
+
 #define TMP_REG_1 (MAX_BPF_JIT_REG + 0)
 #define TMP_REG_2 (MAX_BPF_JIT_REG + 1)
-#define TCALL_CNT (MAX_BPF_JIT_REG + 2)
 
 /* Map BPF registers to A64 registers */
 static const int bpf2a64[] = {
@@ -51,11 +52,9 @@ static const int bpf2a64[] = {
 	[BPF_REG_9] = A64_R(22),
 	/* read-only frame pointer to access stack */
 	[BPF_REG_FP] = A64_R(25),
-	/* temporary registers for internal BPF JIT */
-	[TMP_REG_1] = A64_R(10),
-	[TMP_REG_2] = A64_R(11),
-	/* tail_call_cnt */
-	[TCALL_CNT] = A64_R(26),
+	/* temporary register for internal BPF JIT */
+	[TMP_REG_1] = A64_R(23),
+	[TMP_REG_2] = A64_R(24),
 	/* temporary register for blinding constants */
 	[BPF_REG_AX] = A64_R(9),
 };
@@ -756,7 +755,18 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	u8 *image_ptr;
 
 	if (!bpf_jit_enable)
-		return prog;
+		return orig_prog;
+
+	tmp = bpf_jit_blind_constants(prog);
+	/* If blinding was requested and we failed during blinding,
+	 * we must fall back to the interpreter.
+	 */
+	if (IS_ERR(tmp))
+		return orig_prog;
+	if (tmp != prog) {
+		tmp_blinded = true;
+		prog = tmp;
+	}
 
 	tmp = bpf_jit_blind_constants(prog);
 	/* If blinding was requested and we failed during blinding,
@@ -773,12 +783,14 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	ctx.prog = prog;
 
 	ctx.offset = kcalloc(prog->len, sizeof(int), GFP_KERNEL);
-	if (ctx.offset == NULL)
-		return prog;
+	if (ctx.offset == NULL) {
+		prog = orig_prog;
+		goto out;
+	}
 
 	/* 1. Initial fake pass to compute ctx->idx. */
 
-	/* Fake pass to fill in ctx->offset. */
+	/* Fake pass to fill in ctx->offset and ctx->tmp_used. */
 	if (build_body(&ctx)) {
 		prog = orig_prog;
 		goto out_off;
@@ -819,7 +831,8 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	/* 3. Extra pass to validate JITed code. */
 	if (validate_code(&ctx)) {
 		bpf_jit_binary_free(header);
-		goto out;
+		prog = orig_prog;
+		goto out_off;
 	}
 
 	/* And we're done. */
@@ -834,6 +847,10 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 
 out_off:
 	kfree(ctx.offset);
+out:
+	if (tmp_blinded)
+		bpf_jit_prog_release_other(prog, prog == orig_prog ?
+					   tmp : orig_prog);
 	return prog;
 }
 
