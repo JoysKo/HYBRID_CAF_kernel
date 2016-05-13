@@ -1026,7 +1026,13 @@ struct bpf_prog *bpf_prog_select_runtime(struct bpf_prog *fp, int *err)
 {
 	fp->bpf_func = (void *) __bpf_prog_run;
 
-	bpf_int_jit_compile(fp);
+	/* eBPF JITs can rewrite the program in case constant
+	 * blinding is active. However, in case of error during
+	 * blinding, bpf_int_jit_compile() must always return a
+	 * valid program, which in this case would simply not
+	 * be JITed, but falls back to the interpreter.
+	 */
+	fp = bpf_int_jit_compile(fp);
 	bpf_prog_lock_ro(fp);
 
 	/* The tail call compatibility check can only be done at
@@ -1233,11 +1239,6 @@ const struct bpf_func_proto bpf_tail_call_proto = {
 struct bpf_prog * __weak bpf_int_jit_compile(struct bpf_prog *prog)
 {
 	return prog;
-}
-
-bool __weak bpf_helper_changes_skb_data(void *func)
-{
-	return false;
 }
 
 bool __weak bpf_helper_changes_skb_data(void *func)

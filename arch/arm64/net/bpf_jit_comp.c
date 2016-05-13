@@ -756,7 +756,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	u8 *image_ptr;
 
 	if (!bpf_jit_enable)
-		return orig_prog;
+		return prog;
 
 	tmp = bpf_jit_blind_constants(prog);
 	/* If blinding was requested and we failed during blinding,
@@ -773,10 +773,8 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 	ctx.prog = prog;
 
 	ctx.offset = kcalloc(prog->len, sizeof(int), GFP_KERNEL);
-	if (ctx.offset == NULL) {
-		prog = orig_prog;
-		goto out;
-	}
+	if (ctx.offset == NULL)
+		return prog;
 
 	/* 1. Initial fake pass to compute ctx->idx. */
 
@@ -837,10 +835,6 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 
 out_off:
 	kfree(ctx.offset);
-out:
-	if (tmp_blinded)
-		bpf_jit_prog_release_other(prog, prog == orig_prog ?
-					   tmp : orig_prog);
 	return prog;
 }
 
