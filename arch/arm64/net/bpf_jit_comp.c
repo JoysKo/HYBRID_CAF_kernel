@@ -52,9 +52,9 @@ static const int bpf2a64[] = {
 	[BPF_REG_9] = A64_R(22),
 	/* read-only frame pointer to access stack */
 	[BPF_REG_FP] = A64_R(25),
-	/* temporary register for internal BPF JIT */
-	[TMP_REG_1] = A64_R(23),
-	[TMP_REG_2] = A64_R(24),
+	/* temporary registers for internal BPF JIT */
+	[TMP_REG_1] = A64_R(10),
+	[TMP_REG_2] = A64_R(11),
 	/* temporary register for blinding constants */
 	[BPF_REG_AX] = A64_R(9),
 };
@@ -156,8 +156,6 @@ static int build_prologue(struct jit_ctx *ctx)
 	const u8 r8 = bpf2a64[BPF_REG_8];
 	const u8 r9 = bpf2a64[BPF_REG_9];
 	const u8 fp = bpf2a64[BPF_REG_FP];
-	const u8 tmp1 = bpf2a64[TMP_REG_1];
-	const u8 tmp2 = bpf2a64[TMP_REG_2];
 
 	/*
 	 * BPF prog stack layout
@@ -167,6 +165,8 @@ static int build_prologue(struct jit_ctx *ctx)
 	 *                        |FP/LR|
 	 * current A64_FP =>  -16:+-----+
 	 *                        | ... | callee saved registers
+	 *                        +-----+
+	 *                        |     | x25/x26
 	 * BPF fp register => -64:+-----+ <= (BPF_FP)
 	 *                        |     |
 	 *                        | ... | BPF prog stack
@@ -189,7 +189,9 @@ static int build_prologue(struct jit_ctx *ctx)
 	/* Save callee-saved registers */
 	emit(A64_PUSH(r6, r7, A64_SP), ctx);
 	emit(A64_PUSH(r8, r9, A64_SP), ctx);
-	emit(A64_PUSH(fp, tcc, A64_SP), ctx);
+
+	/* Save fp (x25) and x26. SP requires 16 bytes alignment */
+	emit(A64_PUSH(fp, A64_R(26), A64_SP), ctx);
 
 	/* Set up BPF prog stack base register */
 	emit(A64_MOV(1, fp, A64_SP), ctx);
@@ -790,7 +792,7 @@ struct bpf_prog *bpf_int_jit_compile(struct bpf_prog *prog)
 
 	/* 1. Initial fake pass to compute ctx->idx. */
 
-	/* Fake pass to fill in ctx->offset and ctx->tmp_used. */
+	/* Fake pass to fill in ctx->offset. */
 	if (build_body(&ctx)) {
 		prog = orig_prog;
 		goto out_off;
