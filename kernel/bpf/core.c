@@ -508,7 +508,7 @@ static int bpf_jit_blind_insn(const struct bpf_insn *from,
 			      struct bpf_insn *to_buff)
 {
 	struct bpf_insn *to = to_buff;
-	u32 imm_rnd = prandom_u32();
+	u32 imm_rnd = get_random_int();
 	s16 off;
 
 	BUILD_BUG_ON(BPF_REG_AX  + 1 != MAX_BPF_JIT_REG);
