@@ -998,7 +998,8 @@ struct dentry *mount_ns(struct file_system_type *fs_type,
 	if (!(flags & MS_KERNMOUNT) && !ns_capable(user_ns, CAP_SYS_ADMIN))
 		return ERR_PTR(-EPERM);
 
-	sb = sget(fs_type, ns_test_super, ns_set_super, flags, ns);
+	sb = sget_userns(fs_type, ns_test_super, ns_set_super, flags,
+			 user_ns, ns);
 	if (IS_ERR(sb))
 		return ERR_CAST(sb);
 
