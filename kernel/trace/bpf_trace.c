@@ -255,7 +255,7 @@ BPF_CALL_2(bpf_perf_event_read, struct bpf_map *, map, u64, flags)
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	file = (struct file *)array->ptrs[index];
+	file = READ_ONCE(array->ptrs[index]);
 	if (unlikely(!file))
 		return -ENOENT;
 
@@ -307,7 +307,7 @@ static u64 bpf_perf_event_output(u64 r1, u64 r2, u64 flags, u64 r4, u64 size)
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	file = (struct file *)array->ptrs[index];
+	file = READ_ONCE(array->ptrs[index]);
 	if (unlikely(!file))
 		return -ENOENT;
 
