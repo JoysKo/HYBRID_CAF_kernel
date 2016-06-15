@@ -438,7 +438,7 @@ static struct bpf_event_entry *bpf_event_entry_gen(struct file *perf_file,
 {
 	struct bpf_event_entry *ee;
 
-	ee = kzalloc(sizeof(*ee), GFP_ATOMIC);
+	ee = kzalloc(sizeof(*ee), GFP_KERNEL);
 	if (ee) {
 		ee->event = perf_file->private_data;
 		ee->perf_file = perf_file;
@@ -448,18 +448,14 @@ static struct bpf_event_entry *bpf_event_entry_gen(struct file *perf_file,
 	return ee;
 }
 
-static void *perf_event_fd_array_get_ptr(struct bpf_map *map,
-					 struct file *map_file, int fd)
+static void __bpf_event_entry_free(struct rcu_head *rcu)
 {
-	struct perf_event *event;
-	const struct perf_event_attr *attr;
-	struct file *file;
+	struct bpf_event_entry *ee;
 
-	file = perf_event_get(fd);
-	if (IS_ERR(file))
-		return file;
-
-	event = file->private_data;
+	ee = container_of(rcu, struct bpf_event_entry, rcu);
+	fput(ee->perf_file);
+	kfree(ee);
+}
 
 static void bpf_event_entry_free_rcu(struct bpf_event_entry *ee)
 {
@@ -478,23 +474,53 @@ static void *perf_event_fd_array_get_ptr(struct bpf_map *map,
 	if (IS_ERR(perf_file))
 		return perf_file;
 
-	if (attr->type == PERF_TYPE_RAW)
-		return file;
+	event = perf_file->private_data;
+	ee = ERR_PTR(-EINVAL);
 
-	if (attr->type == PERF_TYPE_HARDWARE)
-		return file;
+	attr = perf_event_attrs(event);
+	if (IS_ERR(attr) || attr->inherit)
+		goto err_out;
 
-	if (attr->type == PERF_TYPE_SOFTWARE &&
-	    attr->config == PERF_COUNT_SW_BPF_OUTPUT)
-		return file;
-err:
-	fput(file);
-	return ERR_PTR(-EINVAL);
+	switch (attr->type) {
+	case PERF_TYPE_SOFTWARE:
+		if (attr->config != PERF_COUNT_SW_BPF_OUTPUT)
+			goto err_out;
+		/* fall-through */
+	case PERF_TYPE_RAW:
+	case PERF_TYPE_HARDWARE:
+		ee = bpf_event_entry_gen(perf_file, map_file);
+		if (ee)
+			return ee;
+		ee = ERR_PTR(-ENOMEM);
+		/* fall-through */
+	default:
+		break;
+	}
+
+err_out:
+	fput(perf_file);
+	return ee;
 }
 
 static void perf_event_fd_array_put_ptr(void *ptr)
 {
-	fput((struct file *)ptr);
+	bpf_event_entry_free_rcu(ptr);
+}
+
+static void perf_event_fd_array_release(struct bpf_map *map,
+					struct file *map_file)
+{
+	struct bpf_array *array = container_of(map, struct bpf_array, map);
+	struct bpf_event_entry *ee;
+	int i;
+
+	rcu_read_lock();
+	for (i = 0; i < array->map.max_entries; i++) {
+		ee = READ_ONCE(array->ptrs[i]);
+		if (ee && ee->map_file == map_file)
+			fd_array_map_delete_elem(map, &i);
+	}
+	rcu_read_unlock();
 }
 
 static const struct bpf_map_ops perf_event_array_ops = {
