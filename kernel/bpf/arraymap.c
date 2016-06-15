@@ -448,7 +448,8 @@ static struct bpf_event_entry *bpf_event_entry_gen(struct file *perf_file,
 	return ee;
 }
 
-static void __bpf_event_entry_free(struct rcu_head *rcu)
+static void *perf_event_fd_array_get_ptr(struct bpf_map *map,
+					 struct file *map_file, int fd)
 {
 	struct perf_event *event;
 	const struct perf_event_attr *attr;
