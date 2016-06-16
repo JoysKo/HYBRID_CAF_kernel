@@ -2510,8 +2510,9 @@ static bool sk_filter_is_valid_access(int off, int size,
 	return __is_valid_access(off, size, type);
 }
 
-static int tc_cls_act_prologue(struct bpf_insn *insn_buf, bool direct_write,
-			       const struct bpf_prog *prog)
+static bool tc_cls_act_is_valid_access(int off, int size,
+				       enum bpf_access_type type,
+				       enum bpf_reg_type *reg_type)
 {
 	if (type == BPF_WRITE) {
 		switch (off) {
