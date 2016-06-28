@@ -255,10 +255,14 @@ BPF_CALL_2(bpf_perf_event_read, struct bpf_map *, map, u64, flags)
 		return -E2BIG;
 
 	ee = READ_ONCE(array->ptrs[index]);
-	if (unlikely(!ee))
+	if (!ee)
 		return -ENOENT;
 
 	event = ee->event;
+	if (unlikely(event->attr.type != PERF_TYPE_HARDWARE &&
+		     event->attr.type != PERF_TYPE_RAW))
+		return -EINVAL;
+
 	/* make sure event is local and doesn't have pmu::count */
 	if (event->oncpu != smp_processor_id() ||
 	    event->pmu->count)
@@ -305,7 +309,7 @@ static u64 bpf_perf_event_output(u64 r1, u64 r2, u64 flags, u64 r4, u64 size)
 		return -E2BIG;
 
 	ee = READ_ONCE(array->ptrs[index]);
-	if (unlikely(!ee))
+	if (!ee)
 		return -ENOENT;
 
 	event = ee->event;
