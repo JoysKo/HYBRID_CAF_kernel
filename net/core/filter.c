@@ -2252,60 +2252,39 @@ bpf_get_skb_set_tunnel_proto(enum bpf_func_id which)
 	}
 }
 
-BPF_CALL_5(bpf_xdp_event_output, struct xdp_buff *, xdp, struct bpf_map *, map,
-	   u64, flags, void *, meta, u64, meta_size)
+#ifdef CONFIG_SOCK_CGROUP_DATA
+static u64 bpf_skb_in_cgroup(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
 {
-	u64 xdp_size = (flags & BPF_F_CTXLEN_MASK) >> 32;
+	struct sk_buff *skb = (struct sk_buff *)(long)r1;
+	struct bpf_map *map = (struct bpf_map *)(long)r2;
+	struct bpf_array *array = container_of(map, struct bpf_array, map);
+	struct cgroup *cgrp;
+	struct sock *sk;
+	u32 i = (u32)r3;
 
-	if (unlikely(flags & ~(BPF_F_CTXLEN_MASK | BPF_F_INDEX_MASK)))
-		return -EINVAL;
-	if (unlikely(xdp_size > (unsigned long)(xdp->data_end - xdp->data)))
-		return -EFAULT;
+	sk = skb->sk;
+	if (!sk || !sk_fullsock(sk))
+		return -ENOENT;
 
-	return bpf_event_output(map, flags, meta, meta_size, xdp, xdp_size,
-				bpf_xdp_copy);
+	if (unlikely(i >= array->map.max_entries))
+		return -E2BIG;
+
+	cgrp = READ_ONCE(array->ptrs[i]);
+	if (unlikely(!cgrp))
+		return -EAGAIN;
+
+	return cgroup_is_descendant(sock_cgroup_ptr(&sk->sk_cgrp_data), cgrp);
 }
 
-static const struct bpf_func_proto bpf_xdp_event_output_proto = {
-	.func		= bpf_xdp_event_output,
-	.gpl_only	= true,
+static const struct bpf_func_proto bpf_skb_in_cgroup_proto = {
+	.func		= bpf_skb_in_cgroup,
+	.gpl_only	= false,
 	.ret_type	= RET_INTEGER,
 	.arg1_type	= ARG_PTR_TO_CTX,
 	.arg2_type	= ARG_CONST_MAP_PTR,
 	.arg3_type	= ARG_ANYTHING,
-	.arg4_type	= ARG_PTR_TO_STACK,
-	.arg5_type	= ARG_CONST_STACK_SIZE,
 };
-
-BPF_CALL_1(bpf_get_socket_cookie, struct sk_buff *, skb)
-{
-	return skb->sk ? sock_gen_cookie(skb->sk) : 0;
-}
-
-static const struct bpf_func_proto bpf_get_socket_cookie_proto = {
-	.func           = bpf_get_socket_cookie,
-	.gpl_only       = false,
-	.ret_type       = RET_INTEGER,
-	.arg1_type      = ARG_PTR_TO_CTX,
-};
-
-BPF_CALL_1(bpf_get_socket_uid, struct sk_buff *, skb)
-{
-	struct sock *sk = sk_to_full_sk(skb->sk);
-	kuid_t kuid;
-
-	if (!sk || !sk_fullsock(sk))
-		return overflowuid;
-	kuid = sock_net_uid(sock_net(sk), sk);
-	return from_kuid_munged(sock_net(sk)->user_ns, kuid);
-}
-
-static const struct bpf_func_proto bpf_get_socket_uid_proto = {
-	.func           = bpf_get_socket_uid,
-	.gpl_only       = false,
-	.ret_type       = RET_INTEGER,
-	.arg1_type      = ARG_PTR_TO_CTX,
-};
+#endif
 
 static const struct bpf_func_proto *
 sk_filter_func_proto(enum bpf_func_id func_id)
@@ -2379,6 +2358,10 @@ tc_cls_act_func_proto(enum bpf_func_id func_id)
 		return bpf_get_event_output_proto();
 	case BPF_FUNC_get_smp_processor_id:
 		return &bpf_get_smp_processor_id_proto;
+#ifdef CONFIG_SOCK_CGROUP_DATA
+	case BPF_FUNC_skb_in_cgroup:
+		return &bpf_skb_in_cgroup_proto;
+#endif
 	default:
 		return sk_filter_func_proto(func_id);
 	}
