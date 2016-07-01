@@ -353,8 +353,9 @@ struct qpnp_hap {
 	u32				overdrive;
 	u32				drive_direction;
 	u32				vmax_mv;
-	u32				vmax_overbrake_mv;
-	u32				vmax_overdrive_mv;
+	u32				vtg_min;
+	u32				vtg_max;
+	u32				vtg_default;
 	u32				ilim_ma;
 	u32				sc_deb_cycles;
 	u32				int_pwm_freq_khz;
@@ -933,12 +934,14 @@ static int qpnp_hap_vmax_overbrake_config(struct qpnp_hap *hap)
 	u8 val = 0;
 	int rc;
 
-	if (hap->vmax_overbrake_mv < QPNP_HAP_VMAX_MIN_MV)
-		hap->vmax_overbrake_mv = QPNP_HAP_VMAX_MIN_MV;
-	else if (hap->vmax_overbrake_mv > QPNP_HAP_VMAX_MAX_MV)
-		hap->vmax_overbrake_mv = QPNP_HAP_VMAX_MAX_MV;
+	if (vmax_mv < hap->vtg_min)
+		vmax_mv = hap->vtg_min;
+	else if (vmax_mv > hap->vtg_max)
+		vmax_mv = hap->vtg_max;
 
-	val = (hap->vmax_overbrake_mv / QPNP_HAP_VMAX_MIN_MV) << QPNP_HAP_VMAX_SHIFT;
+	val = (vmax_mv / hap->vtg_min) << QPNP_HAP_VMAX_SHIFT;
+	if (overdrive)
+		val |= QPNP_HAP_VMAX_OVD_BIT;
 	rc = qpnp_hap_masked_write_reg(hap, QPNP_HAP_VMAX_REG(hap->base),
 			QPNP_HAP_VMAX_MASK, val);
 	return rc;
@@ -1864,46 +1867,42 @@ static ssize_t qpnp_hap_brake_pat_max_store(struct device *dev,
 }
 
 
-/* sysfs show function for brake_pattern */
-static ssize_t qpnp_hap_brake_pattern_show(struct device *dev,
+	hap->vmax_mv = data;
+	rc = qpnp_hap_vmax_config(hap, hap->vmax_mv, true);
+	if (rc)
+		return rc;
+
+	return count;
+}
+
+static ssize_t qpnp_hap_min_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
 	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
 					 timed_dev);
 
-	return snprintf(buf, PAGE_SIZE, "%u %u %u %u\n",
-			hap->brake_pat[0], hap->brake_pat[1], hap->brake_pat[2], hap->brake_pat[3]);
+	return snprintf(buf, PAGE_SIZE, "%d\n", hap->vtg_min);
 }
 
-/* sysfs store for brake_pattern */
-static ssize_t qpnp_hap_brake_pattern_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t qpnp_hap_max_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
 {
 	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
 	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
 					 timed_dev);
-	int rc, i, temp;
-	u32 tmp_val[4] = {};
-	u8 reg;
 
-	rc = sscanf(buf, " %u %u %u %u", tmp_val, tmp_val+1, tmp_val+2, tmp_val+3);
-
-	if (rc != 4 || tmp_val[0] > 3 || tmp_val[1] > 3 || tmp_val[2] > 3 || tmp_val[3]  > 3) {
-		pr_info("Vibrator:illegal parameter0~3: %u,%u,%u,%u,input count=%d.This change is ethereal\n",
-				tmp_val[0], tmp_val[0], tmp_val[2], tmp_val[3], rc);
-		return -EINVAL;
-	} else {
-		for (i = QPNP_HAP_BRAKE_PAT_LEN - 1, reg = 0; i >= 0; i--) {
-			hap->brake_pat[i] = tmp_val[i] & QPNP_HAP_BRAKE_PAT_MASK;
-			temp = i << 1;
-			reg |= hap->brake_pat[i] << temp;
-		}
-		rc = qpnp_hap_write_reg(hap, QPNP_HAP_BRAKE_REG(hap->base), reg);
-		if (rc)
-			return rc;
+	return snprintf(buf, PAGE_SIZE, "%d\n", hap->vtg_max);
 }
-	return count;
+
+static ssize_t qpnp_hap_default_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
+	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
+					 timed_dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", hap->vtg_default);
 }
 
 /* sysfs attributes */
@@ -1927,37 +1926,20 @@ static struct device_attribute qpnp_hap_attrs[] = {
 		qpnp_hap_ramp_test_data_store),
 	__ATTR(min_max_test, 0664, qpnp_hap_min_max_test_data_show,
 		qpnp_hap_min_max_test_data_store),
-	__ATTR(force_back_emf_delay, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_force_back_emf_delay_show,
-			qpnp_hap_force_back_emf_delay_store),
-	__ATTR(play_rate_us, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_play_rate_us_show,
-			qpnp_hap_play_rate_us_store),
-	__ATTR(autores_mode, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_autores_show,
-			qpnp_hap_autores_store),
-	__ATTR(vmax_overdrive_mv, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_vmax_overdrive_show,
-			qpnp_hap_vmax_overdrive_store),
-	__ATTR(vmax_mv, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_vmax_show,
-			qpnp_hap_vmax_store),
-	__ATTR(EN_OVD_2X, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_overdrive_show,
-			qpnp_hap_overdrive_store),
-	__ATTR(drive_direction, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_drive_direction_show,
-			qpnp_hap_drive_direction_store),
-	__ATTR(vmax_overbrake_mv, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_vmax_overbrake_show,
-			qpnp_hap_vmax_overbrake_store),
-	__ATTR(brake_pattern, (S_IRUGO | S_IWUSR | S_IWGRP),
-			qpnp_hap_brake_pattern_show,
-			qpnp_hap_brake_pattern_store),
-	__ATTR(brake_pat_max, 0664, qpnp_hap_brake_pat_max_show,
-			qpnp_hap_brake_pat_max_store),
-	__ATTR(square_drive, 0664, qpnp_hap_square_drive_show,
-			qpnp_hap_square_drive_store),
+	__ATTR(auto_res_mode, 0664, qpnp_hap_auto_res_mode_show,
+		qpnp_hap_auto_res_mode_store),
+	__ATTR(high_z_period, 0664, qpnp_hap_hi_z_period_show,
+		qpnp_hap_hi_z_period_store),
+	__ATTR(calib_period, 0664, qpnp_hap_calib_period_show,
+		qpnp_hap_calib_period_store),
+	__ATTR(override_auto_mode_config, 0664,
+		qpnp_hap_override_auto_mode_show,
+		qpnp_hap_override_auto_mode_store),
+	__ATTR(vmax_mv, 0664, qpnp_hap_vmax_show, qpnp_hap_vmax_store),
+	__ATTR(vtg_level, 0664, qpnp_hap_vmax_show, qpnp_hap_vmax_store),
+	__ATTR(vtg_min, 0664, qpnp_hap_min_show, NULL),
+	__ATTR(vtg_max, 0664, qpnp_hap_max_show, NULL),
+	__ATTR(vtg_default, 0664, qpnp_hap_default_show, NULL),
 };
 
 static int calculate_lra_code(struct qpnp_hap *hap)
@@ -2335,6 +2317,132 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 	}
 
 	return rc;
+}
+
+static int qpnp_hap_auto_mode_config(struct qpnp_hap *hap, int time_ms)
+{
+	struct qpnp_hap_lra_ares_cfg ares_cfg;
+	enum qpnp_hap_mode old_play_mode;
+	u8 old_ares_mode;
+	u8 brake_pat[QPNP_HAP_BRAKE_PAT_LEN] = {0};
+	u8 wave_samp[QPNP_HAP_WAV_SAMP_LEN] = {0};
+	int rc, vmax_mv;
+
+	/* For now, this is for LRA only */
+	if (hap->act_type == QPNP_HAP_ERM)
+		return 0;
+
+	old_ares_mode = hap->ares_cfg.auto_res_mode;
+	old_play_mode = hap->play_mode;
+	pr_debug("auto_mode, time_ms: %d\n", time_ms);
+	if (time_ms <= 20) {
+		wave_samp[0] = QPNP_HAP_WAV_SAMP_MAX;
+		wave_samp[1] = QPNP_HAP_WAV_SAMP_MAX;
+		if (time_ms > 15)
+			wave_samp[2] = QPNP_HAP_WAV_SAMP_MAX;
+
+		/* short pattern */
+		rc = qpnp_hap_parse_buffer_dt(hap);
+		if (!rc)
+			rc = qpnp_hap_buffer_config(hap, wave_samp, true);
+		if (rc < 0) {
+			pr_err("Error in configuring buffer mode %d\n",
+				rc);
+			return rc;
+		}
+
+		ares_cfg.lra_high_z = QPNP_HAP_LRA_HIGH_Z_OPT1;
+		ares_cfg.lra_res_cal_period = QPNP_HAP_RES_CAL_PERIOD_MIN;
+		if (hap->pmic_subtype == PM660_SUBTYPE) {
+			ares_cfg.auto_res_mode =
+						QPNP_HAP_PM660_AUTO_RES_QWD;
+			ares_cfg.lra_qwd_drive_duration = 0;
+			ares_cfg.calibrate_at_eop = 0;
+		} else {
+			ares_cfg.auto_res_mode = QPNP_HAP_AUTO_RES_QWD;
+			ares_cfg.lra_qwd_drive_duration = -EINVAL;
+			ares_cfg.calibrate_at_eop = -EINVAL;
+		}
+
+		vmax_mv = hap->vtg_max;
+		rc = qpnp_hap_vmax_config(hap, vmax_mv, true);
+		if (rc < 0)
+			return rc;
+
+		rc = qpnp_hap_brake_config(hap, brake_pat);
+		if (rc < 0)
+			return rc;
+
+		/* enable play_irq for buffer mode */
+		if (hap->play_irq >= 0 && !hap->play_irq_en) {
+			enable_irq(hap->play_irq);
+			hap->play_irq_en = true;
+		}
+
+		hap->play_mode = QPNP_HAP_BUFFER;
+		hap->wave_shape = QPNP_HAP_WAV_SQUARE;
+	} else {
+		/* long pattern */
+		ares_cfg.lra_high_z = QPNP_HAP_LRA_HIGH_Z_OPT1;
+		if (hap->pmic_subtype == PM660_SUBTYPE) {
+			ares_cfg.auto_res_mode =
+				QPNP_HAP_PM660_AUTO_RES_ZXD;
+			ares_cfg.lra_res_cal_period =
+				QPNP_HAP_PM660_RES_CAL_PERIOD_MAX;
+			ares_cfg.lra_qwd_drive_duration = 0;
+			ares_cfg.calibrate_at_eop = 1;
+		} else {
+			ares_cfg.auto_res_mode = QPNP_HAP_AUTO_RES_ZXD_EOP;
+			ares_cfg.lra_res_cal_period =
+				QPNP_HAP_RES_CAL_PERIOD_MAX;
+			ares_cfg.lra_qwd_drive_duration = -EINVAL;
+			ares_cfg.calibrate_at_eop = -EINVAL;
+		}
+
+		vmax_mv = hap->vmax_mv;
+		rc = qpnp_hap_vmax_config(hap, vmax_mv, false);
+		if (rc < 0)
+			return rc;
+
+		brake_pat[0] = 0x3;
+		rc = qpnp_hap_brake_config(hap, brake_pat);
+		if (rc < 0)
+			return rc;
+
+		/* enable play_irq for direct mode */
+		if (hap->play_irq >= 0 && hap->play_irq_en) {
+			disable_irq(hap->play_irq);
+			hap->play_irq_en = false;
+		}
+
+		hap->play_mode = QPNP_HAP_DIRECT;
+		hap->wave_shape = QPNP_HAP_WAV_SINE;
+	}
+
+	if (hap->override_auto_mode_config) {
+		rc = qpnp_hap_lra_auto_res_config(hap, NULL);
+	} else {
+		hap->ares_cfg.auto_res_mode = ares_cfg.auto_res_mode;
+		rc = qpnp_hap_lra_auto_res_config(hap, &ares_cfg);
+	}
+
+	if (rc < 0) {
+		hap->ares_cfg.auto_res_mode = old_ares_mode;
+		return rc;
+	}
+
+	rc = qpnp_hap_play_mode_config(hap);
+	if (rc < 0) {
+		hap->play_mode = old_play_mode;
+		return rc;
+	}
+
+	rc = qpnp_hap_masked_write_reg(hap, QPNP_HAP_CFG2_REG(hap->base),
+			QPNP_HAP_WAV_SHAPE_MASK, hap->wave_shape);
+	if (rc < 0)
+		return rc;
+
+	return 0;
 }
 
 /* enable interface from timed output class */
@@ -2982,7 +3090,25 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 		return rc;
 	}
 
-	hap->vmax_mv = QPNP_HAP_VMAX_MAX_MV;
+	hap->vtg_min = QPNP_HAP_VMAX_MIN_MV;
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,vtg-min", &temp);
+	if (!rc) {
+		hap->vtg_min = temp;
+	} else if (rc != -EINVAL) {
+		pr_err("Unable to read vtg_min\n");
+		return rc;
+	}
+
+	hap->vtg_max = QPNP_HAP_VMAX_MAX_MV;
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,vtg-max", &temp);
+	if (!rc) {
+		hap->vtg_max = temp;
+	} else if (rc != -EINVAL) {
+		pr_err("Unable to read vtg_max\n");
+		return rc;
+	}
+
+	hap->vmax_mv = hap->vtg_max;
 	rc = of_property_read_u32(pdev->dev.of_node, "qcom,vmax-mv", &temp);
 	if (!rc) {
 		hap->vmax_mv = temp;
@@ -2991,31 +3117,13 @@ static int qpnp_hap_parse_dt(struct qpnp_hap *hap)
 		return rc;
 	}
 
-	hap->overdrive  = of_property_read_bool(pdev->dev.of_node,
-			"qcom,ovd_2x");
-
-	hap->drive_direction = of_property_read_bool(pdev->dev.of_node,
-			"qcom,reverse");
-
-	hap->vmax_overbrake_mv = 0;
-	rc = of_property_read_u32(pdev->dev.of_node,
-			"qcom,vmax-overbrake-mv", &temp);
-	if (!rc) {
-		hap->vmax_overbrake_mv = temp;
-	} else if (rc != -EINVAL) {
-		dev_err(&pdev->dev, "Unable to read vmax_overbrake_mv\n");
-		return rc;
+	if (hap->vmax_mv < hap->vtg_min) {
+		hap->vmax_mv = hap->vtg_min;
+	} else if (hap->vmax_mv > hap->vtg_max) {
+		hap->vmax_mv = hap->vtg_max;
 	}
 
-	hap->vmax_overdrive_mv = 0;
-	rc = of_property_read_u32(pdev->dev.of_node,
-			"qcom,vmax-overdrive-mv", &temp);
-	if (!rc) {
-		hap->vmax_overdrive_mv = temp;
-	} else if (rc != -EINVAL) {
-		dev_err(&pdev->dev, "Unable to read vmax_overdrive_mv\n");
-		return rc;
-	}
+	hap->vtg_default = hap->vmax_mv;
 
 	hap->ilim_ma = QPNP_HAP_ILIM_MIN_MV;
 	rc = of_property_read_u32(pdev->dev.of_node, "qcom,ilim-ma", &temp);
