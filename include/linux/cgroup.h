@@ -568,8 +568,12 @@ static inline int cgroup_name(struct cgroup *cgrp, char *buf, size_t buflen)
 
 static inline int cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
 {
+	int ret;
 
-	return kernfs_path(cgrp->kn, buf, buflen);
+	ret = kernfs_path(cgrp->kn, buf, buflen);
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
 }
 
 static inline void pr_cont_cgroup_name(struct cgroup *cgrp)
