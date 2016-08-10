@@ -2829,10 +2829,10 @@ int proc_cpuset_show(struct seq_file *m, struct pid_namespace *ns,
 
 	retval = -ENAMETOOLONG;
 	css = task_get_css(tsk, cpuset_cgrp_id);
-	p = cgroup_path_ns(css->cgroup, buf, PATH_MAX,
-			   current->nsproxy->cgroup_ns);
+	retval = cgroup_path_ns(css->cgroup, buf, PATH_MAX,
+				current->nsproxy->cgroup_ns);
 	css_put(css);
-	if (!p)
+	if (retval >= PATH_MAX)
 		goto out_free;
 	seq_puts(m, buf);
 	seq_putc(m, '\n');

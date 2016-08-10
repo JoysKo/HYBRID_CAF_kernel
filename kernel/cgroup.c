@@ -2342,22 +2342,18 @@ static struct file_system_type cgroup2_fs_type = {
 	.fs_flags = FS_USERNS_MOUNT,
 };
 
-static char *cgroup_path_ns_locked(struct cgroup *cgrp, char *buf, size_t buflen,
-				   struct cgroup_namespace *ns)
+static int cgroup_path_ns_locked(struct cgroup *cgrp, char *buf, size_t buflen,
+				 struct cgroup_namespace *ns)
 {
 	struct cgroup *root = cset_cgroup_from_root(ns->root_cset, cgrp->root);
-	int ret;
 
-	ret = kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
-	if (ret < 0 || ret >= buflen)
-		return NULL;
-	return buf;
+	return kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
 }
 
-char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
-		     struct cgroup_namespace *ns)
+int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
+		   struct cgroup_namespace *ns)
 {
-	char *ret;
+	int ret;
 
 	mutex_lock(&cgroup_mutex);
 	spin_lock_bh(&css_set_lock);
@@ -2398,7 +2394,7 @@ int task_cgroup_path(struct task_struct *task, char *buf, size_t buflen)
 
 	if (root) {
 		cgrp = task_cgroup_from_root(task, root);
-		path = cgroup_path_ns_locked(cgrp, buf, buflen, &init_cgroup_ns);
+		ret = cgroup_path_ns_locked(cgrp, buf, buflen, &init_cgroup_ns);
 	} else {
 		/* if no hierarchy exists, everyone is in "/" */
 		ret = strlcpy(buf, "/", buflen);
@@ -5949,12 +5945,13 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 		 * " (deleted)" is appended to the cgroup path.
 		 */
 		if (cgroup_on_dfl(cgrp) || !(tsk->flags & PF_EXITING)) {
-			path = cgroup_path_ns_locked(cgrp, buf, PATH_MAX,
+			retval = cgroup_path_ns_locked(cgrp, buf, PATH_MAX,
 						current->nsproxy->cgroup_ns);
-			if (!path) {
+			if (retval >= PATH_MAX) {
 				retval = -ENAMETOOLONG;
 			if (retval < 0)
 				goto out_unlock;
+			}
 
 			seq_puts(m, buf);
 		} else {
@@ -6240,9 +6237,9 @@ static void cgroup_release_agent(struct work_struct *work)
 		goto out;
 
 	spin_lock_irq(&css_set_lock);
-        path = cgroup_path_ns_locked(cgrp, pathbuf, PATH_MAX, &init_cgroup_ns);
+	ret = cgroup_path_ns_locked(cgrp, pathbuf, PATH_MAX, &init_cgroup_ns);
 	spin_unlock_irq(&css_set_lock);
-	if (ret < 0 || ret >= PATH_MAX)
+	if (ret >= PATH_MAX)
 		goto out;
 
 	argv[0] = agentbuf;
