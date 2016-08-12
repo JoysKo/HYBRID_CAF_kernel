@@ -976,7 +976,7 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 			  enum bpf_arg_type arg_type,
 			  struct bpf_call_arg_meta *meta)
 {
-	struct bpf_reg_state *regs = env->cur_state.regs, *reg = &regs[regno];
+	struct reg_state *regs = env->cur_state.regs, *reg = &regs[regno];
 	enum bpf_reg_type expected_type, type = reg->type;
 	int err = 0;
 
@@ -996,9 +996,16 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 		return 0;
 	}
 
+	if (type == PTR_TO_PACKET && !may_write_pkt_data(env->prog->type)) {
+		verbose("helper access to the packet is not allowed for clsact\n");
+		return -EACCES;
+	}
+
 	if (arg_type == ARG_PTR_TO_MAP_KEY ||
 	    arg_type == ARG_PTR_TO_MAP_VALUE) {
 		expected_type = PTR_TO_STACK;
+		if (type != PTR_TO_PACKET && type != expected_type)
+			goto err_type;
 	} else if (arg_type == ARG_CONST_STACK_SIZE ||
 		   arg_type == ARG_CONST_STACK_SIZE_OR_ZERO) {
 		expected_type = CONST_IMM;
@@ -1010,6 +1017,8 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 			goto err_type;
 	} else if (arg_type == ARG_PTR_TO_CTX) {
 		expected_type = PTR_TO_CTX;
+		if (type != expected_type)
+			goto err_type;
 	} else if (arg_type == ARG_PTR_TO_STACK ||
 		   arg_type == ARG_PTR_TO_RAW_STACK) {
 		expected_type = PTR_TO_STACK;
@@ -1017,8 +1026,10 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 		 * passed in as argument, it's a CONST_IMM type. Final test
 		 * happens during stack boundary checking.
 		 */
-		if (reg->type == CONST_IMM && reg->imm == 0)
-			expected_type = CONST_IMM;
+		if (type == CONST_IMM && reg->imm == 0)
+			/* final test in check_stack_boundary() */;
+		else if (type != PTR_TO_PACKET && type != expected_type)
+			goto err_type;
 		meta->raw_mode = arg_type == ARG_PTR_TO_RAW_STACK;
 	} else {
 		verbose("unsupported arg_type %d\n", arg_type);
@@ -1042,8 +1053,13 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->key\n");
 			return -EACCES;
 		}
-		err = check_stack_boundary(env, regno, meta->map_ptr->key_size,
-					   false, NULL);
+		if (type == PTR_TO_PACKET)
+			err = check_packet_access(env, regno, 0,
+						  meta->map_ptr->key_size);
+		else
+			err = check_stack_boundary(env, regno,
+						   meta->map_ptr->key_size,
+						   false, NULL);
 	} else if (arg_type == ARG_PTR_TO_MAP_VALUE) {
 		/* bpf_map_xxx(..., map_ptr, ..., value) call:
 		 * check [value, value + map->value_size) validity
@@ -1053,9 +1069,13 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 			verbose("invalid map_ptr to access map->value\n");
 			return -EACCES;
 		}
-		err = check_stack_boundary(env, regno,
-					   meta->map_ptr->value_size,
-					   false, NULL);
+		if (type == PTR_TO_PACKET)
+			err = check_packet_access(env, regno, 0,
+						  meta->map_ptr->value_size);
+		else
+			err = check_stack_boundary(env, regno,
+						   meta->map_ptr->value_size,
+						   false, NULL);
 	} else if (arg_type == ARG_CONST_STACK_SIZE ||
 		   arg_type == ARG_CONST_STACK_SIZE_OR_ZERO) {
 		bool zero_size_allowed = (arg_type == ARG_CONST_STACK_SIZE_OR_ZERO);
@@ -1069,8 +1089,11 @@ static int check_func_arg(struct verifier_env *env, u32 regno,
 			verbose("ARG_CONST_STACK_SIZE cannot be first argument\n");
 			return -EACCES;
 		}
-		err = check_stack_boundary(env, regno - 1, reg->imm,
-					   zero_size_allowed, meta);
+		if (regs[regno - 1].type == PTR_TO_PACKET)
+			err = check_packet_access(env, regno - 1, 0, reg->imm);
+		else
+			err = check_stack_boundary(env, regno - 1, reg->imm,
+						   zero_size_allowed, meta);
 	}
 
 	return err;
