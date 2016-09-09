@@ -1986,8 +1986,7 @@ static u32 __bpf_skb_min_len(const struct sk_buff *skb)
 
 static u32 __bpf_skb_max_len(const struct sk_buff *skb)
 {
-	return skb->dev ? skb->dev->mtu + skb->dev->hard_header_len :
-	       65536;
+	return skb->dev->mtu + skb->dev->hard_header_len;
 }
 
 static int bpf_skb_grow_rcsum(struct sk_buff *skb, unsigned int new_len)
@@ -2584,7 +2583,7 @@ static bool __is_valid_xdp_access(int off, int size,
 		return false;
 	if (off % size != 0)
 		return false;
-	if (size != 4)
+	if (size != sizeof(__u32))
 		return false;
 
 	return true;
