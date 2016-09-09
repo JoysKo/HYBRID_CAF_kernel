@@ -2729,7 +2729,7 @@ static u32 bpf_net_convert_ctx_access(enum bpf_access_type type, int dst_reg,
 		break;
 
 	case offsetof(struct __sk_buff, data):
-		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(FIELD_SIZEOF(struct sk_buff, data)),
+		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct sk_buff, data),
 				      dst_reg, src_reg,
 				      offsetof(struct sk_buff, data));
 		break;
@@ -2738,8 +2738,8 @@ static u32 bpf_net_convert_ctx_access(enum bpf_access_type type, int dst_reg,
 		ctx_off -= offsetof(struct __sk_buff, data_end);
 		ctx_off += offsetof(struct sk_buff, cb);
 		ctx_off += offsetof(struct bpf_skb_data_end, data_end);
-		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(sizeof(void *)),
-				      dst_reg, src_reg, ctx_off);
+		*insn++ = BPF_LDX_MEM(BPF_SIZEOF(void *), dst_reg, src_reg,
+				      ctx_off);
 		break;
 
 	case offsetof(struct __sk_buff, tc_index):
@@ -2774,12 +2774,12 @@ static u32 xdp_convert_ctx_access(enum bpf_access_type type, int dst_reg,
 
 	switch (ctx_off) {
 	case offsetof(struct xdp_md, data):
-		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(FIELD_SIZEOF(struct xdp_buff, data)),
+		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct xdp_buff, data),
 				      dst_reg, src_reg,
 				      offsetof(struct xdp_buff, data));
 		break;
 	case offsetof(struct xdp_md, data_end):
-		*insn++ = BPF_LDX_MEM(bytes_to_bpf_size(FIELD_SIZEOF(struct xdp_buff, data_end)),
+		*insn++ = BPF_LDX_MEM(BPF_FIELD_SIZEOF(struct xdp_buff, data_end),
 				      dst_reg, src_reg,
 				      offsetof(struct xdp_buff, data_end));
 		break;
