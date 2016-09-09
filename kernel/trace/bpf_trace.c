@@ -76,9 +76,7 @@ EXPORT_SYMBOL_GPL(trace_call_bpf);
 
 BPF_CALL_3(bpf_probe_read, void *, dst, u32, size, const void *, unsafe_ptr)
 {
-	void *dst = (void *) (long) r1;
-	int ret, size = (int) r2;
-	void *unsafe_ptr = (void *) (long) r3;
+	int ret;
 
 	ret = probe_kernel_read(dst, unsafe_ptr, size);
 	if (unlikely(ret < 0))
@@ -96,12 +94,9 @@ static const struct bpf_func_proto bpf_probe_read_proto = {
 	.arg3_type	= ARG_ANYTHING,
 };
 
-static u64 bpf_probe_write_user(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
+BPF_CALL_3(bpf_probe_write_user, void *, unsafe_ptr, const void *, src,
+	   u32, size)
 {
-	void *unsafe_ptr = (void *) (long) r1;
-	void *src = (void *) (long) r2;
-	int size = (int) r3;
-
 	/*
 	 * Ensure we're in user context which is safe for the helper to
 	 * run. This helper has no business in a kthread.
@@ -324,11 +319,9 @@ __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 	return 0;
 }
 
-static u64 bpf_perf_event_output(u64 r1, u64 r2, u64 flags, u64 r4, u64 size)
+BPF_CALL_5(bpf_perf_event_output, struct pt_regs *, regs, struct bpf_map *, map,
+	   u64, flags, void *, data, u64, size)
 {
-	struct pt_regs *regs = (struct pt_regs *)(long) r1;
-	struct bpf_map *map  = (struct bpf_map *)(long) r2;
-	void *data = (void *)(long) r4;
 	struct perf_raw_record raw = {
 		.frag = {
 			.size = size,
@@ -379,7 +372,7 @@ u64 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
 	return __bpf_perf_event_output(regs, map, flags, &raw);
 }
 
-static u64 bpf_get_current_task(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
+BPF_CALL_0(bpf_get_current_task)
 {
 	return (long) current;
 }
@@ -390,16 +383,13 @@ static const struct bpf_func_proto bpf_get_current_task_proto = {
 	.ret_type	= RET_INTEGER,
 };
 
-static u64 bpf_current_task_under_cgroup(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
+BPF_CALL_2(bpf_current_task_under_cgroup, struct bpf_map *, map, u32, idx)
 {
-	struct bpf_map *map = (struct bpf_map *)(long)r1;
 	struct bpf_array *array = container_of(map, struct bpf_array, map);
 	struct cgroup *cgrp;
-	u32 idx = (u32)r2;
 
 	if (unlikely(in_interrupt()))
 		return -EINVAL;
-
 	if (unlikely(idx >= array->map.max_entries))
 		return -E2BIG;
 
@@ -493,16 +483,17 @@ static struct bpf_prog_type_list kprobe_tl = {
 	.type	= BPF_PROG_TYPE_KPROBE,
 };
 
-static u64 bpf_perf_event_output_tp(u64 r1, u64 r2, u64 index, u64 r4, u64 size)
+BPF_CALL_5(bpf_perf_event_output_tp, void *, tp_buff, struct bpf_map *, map,
+	   u64, flags, void *, data, u64, size)
 {
+	struct pt_regs *regs = *(struct pt_regs **)tp_buff;
+
 	/*
 	 * r1 points to perf tracepoint buffer where first 8 bytes are hidden
 	 * from bpf program and contain a pointer to 'struct pt_regs'. Fetch it
-	 * from there and call the same bpf_perf_event_output() helper
+	 * from there and call the same bpf_perf_event_output() helper inline.
 	 */
-	u64 ctx = *(long *)(uintptr_t)r1;
-
-	return bpf_perf_event_output(ctx, r2, index, r4, size);
+	return ____bpf_perf_event_output(regs, map, flags, data, size);
 }
 
 static const struct bpf_func_proto bpf_perf_event_output_proto_tp = {
@@ -516,11 +507,18 @@ static const struct bpf_func_proto bpf_perf_event_output_proto_tp = {
 	.arg5_type	= ARG_CONST_STACK_SIZE,
 };
 
-static u64 bpf_get_stackid_tp(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5)
+BPF_CALL_3(bpf_get_stackid_tp, void *, tp_buff, struct bpf_map *, map,
+	   u64, flags)
 {
-	u64 ctx = *(long *)(uintptr_t)r1;
+	struct pt_regs *regs = *(struct pt_regs **)tp_buff;
 
-	return bpf_get_stackid(ctx, r2, r3, r4, r5);
+	/*
+	 * Same comment as in bpf_perf_event_output_tp(), only that this time
+	 * the other helper's function body cannot be inlined due to being
+	 * external, thus we need to call raw helper function.
+	 */
+	return bpf_get_stackid((unsigned long) regs, (unsigned long) map,
+			       flags, 0, 0);
 }
 
 static const struct bpf_func_proto bpf_get_stackid_proto_tp = {
