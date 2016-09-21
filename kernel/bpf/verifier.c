@@ -127,49 +127,6 @@
  * are set to NOT_INIT to indicate that they are no longer readable.
  */
 
-struct reg_state {
-	enum bpf_reg_type type;
-	union {
-		/* valid when type == CONST_IMM | PTR_TO_STACK | UNKNOWN_VALUE */
-		s64 imm;
-
-		/* valid when type == PTR_TO_PACKET* */
-		struct {
-			u32 id;
-			u16 off;
-			u16 range;
-		};
-
-		/* valid when type == CONST_PTR_TO_MAP | PTR_TO_MAP_VALUE |
-		 *   PTR_TO_MAP_VALUE_OR_NULL
-		 */
-		struct bpf_map *map_ptr;
-	};
-};
-
-enum bpf_stack_slot_type {
-	STACK_INVALID,    /* nothing was stored in this stack slot */
-	STACK_SPILL,      /* register spilled into stack */
-	STACK_MISC	  /* BPF program wrote some data into this slot */
-};
-
-#define BPF_REG_SIZE 8	/* size of eBPF register in bytes */
-
-/* state of the program:
- * type of all registers and stack info
- */
-struct verifier_state {
-	struct reg_state regs[MAX_BPF_REG];
-	u8 stack_slot_type[MAX_BPF_STACK];
-	struct reg_state spilled_regs[MAX_BPF_STACK / BPF_REG_SIZE];
-};
-
-/* linked list of verifier states used to prune search */
-struct verifier_state_list {
-	struct verifier_state state;
-	struct verifier_state_list *next;
-};
-
 /* verifier_state + insn_idx are pushed to stack when branch is encountered */
 struct bpf_verifier_stack_elem {
 	/* verifer state is 'st'
@@ -179,30 +136,7 @@ struct bpf_verifier_stack_elem {
 	struct bpf_verifier_state st;
 	int insn_idx;
 	int prev_insn_idx;
-	struct verifier_stack_elem *next;
-};
-
-struct bpf_insn_aux_data {
-	enum bpf_reg_type ptr_type;	/* pointer type for load/store insns */
-};
-
-#define MAX_USED_MAPS 64 /* max number of maps accessed by one eBPF program */
-
-/* single container for all structs
- * one verifier_env per bpf_check() call
- */
-struct verifier_env {
-	struct bpf_prog *prog;		/* eBPF program being verified */
-	struct verifier_stack_elem *head; /* stack of verifier states to be processed */
-	int stack_size;			/* number of states to be processed */
-	struct verifier_state cur_state; /* current verifier state */
-	struct verifier_state_list **explored_states; /* search pruning optimization */
-	struct bpf_map *used_maps[MAX_USED_MAPS]; /* array of map's used by eBPF program */
-	u32 used_map_cnt;		/* number of used maps */
-	u32 id_gen;			/* used to generate unique reg IDs */
-	bool allow_ptr_leaks;
-	bool seen_direct_write;
-	struct bpf_insn_aux_data *insn_aux_data; /* array of per-insn state */
+	struct bpf_verifier_stack_elem *next;
 };
 
 #define BPF_COMPLEXITY_LIMIT_INSNS	65536
@@ -256,9 +190,9 @@ static const char * const reg_type_str[] = {
 	[PTR_TO_PACKET_END]	= "pkt_end",
 };
 
-static void print_verifier_state(struct verifier_state *state)
+static void print_verifier_state(struct bpf_verifier_state *state)
 {
-	struct reg_state *reg;
+	struct bpf_reg_state *reg;
 	enum bpf_reg_type t;
 	int i;
 
@@ -500,7 +434,7 @@ static void init_reg_state(struct bpf_reg_state *regs)
 	regs[BPF_REG_1].type = PTR_TO_CTX;
 }
 
-static void __mark_reg_unknown_value(struct bpf_reg_state *regs, u32 regno)
+static void mark_reg_unknown_value(struct bpf_reg_state *regs, u32 regno)
 {
 	regs[regno].type = UNKNOWN_VALUE;
 	regs[regno].id = 0;
@@ -573,8 +507,8 @@ static bool is_spillable_regtype(enum bpf_reg_type type)
 /* check_stack_read/write functions track spill/fill of registers,
  * stack boundary and alignment are checked in check_mem_access()
  */
-static int check_stack_write(struct verifier_state *state, int off, int size,
-			     int value_regno)
+static int check_stack_write(struct bpf_verifier_state *state, int off,
+			     int size, int value_regno)
 {
 	int i;
 	/* caller checked that off % size == 0 and -MAX_BPF_STACK <= off < 0,
@@ -599,7 +533,7 @@ static int check_stack_write(struct verifier_state *state, int off, int size,
 	} else {
 		/* regular write of data into stack */
 		state->spilled_regs[(MAX_BPF_STACK + off) / BPF_REG_SIZE] =
-			(struct reg_state) {};
+			(struct bpf_reg_state) {};
 
 		for (i = 0; i < size; i++)
 			state->stack_slot_type[MAX_BPF_STACK + off + i] = STACK_MISC;
@@ -663,7 +597,7 @@ static int check_map_access(struct bpf_verifier_env *env, u32 regno, int off,
 
 #define MAX_PACKET_OFF 0xffff
 
-static bool may_access_direct_pkt_data(struct verifier_env *env,
+static bool may_access_direct_pkt_data(struct bpf_verifier_env *env,
 				       const struct bpf_call_arg_meta *meta)
 {
 	switch (env->prog->type) {
@@ -680,11 +614,11 @@ static bool may_access_direct_pkt_data(struct verifier_env *env,
 	}
 }
 
-static int check_packet_access(struct verifier_env *env, u32 regno, int off,
+static int check_packet_access(struct bpf_verifier_env *env, u32 regno, int off,
 			       int size)
 {
-	struct reg_state *regs = env->cur_state.regs;
-	struct reg_state *reg = &regs[regno];
+	struct bpf_reg_state *regs = env->cur_state.regs;
+	struct bpf_reg_state *reg = &regs[regno];
 
 	off += reg->off;
 	if (off < 0 || size <= 0 || off + size > reg->range) {
@@ -696,7 +630,7 @@ static int check_packet_access(struct verifier_env *env, u32 regno, int off,
 }
 
 /* check access to 'struct bpf_context' fields */
-static int check_ctx_access(struct verifier_env *env, int off, int size,
+static int check_ctx_access(struct bpf_verifier_env *env, int off, int size,
 			    enum bpf_access_type t, enum bpf_reg_type *reg_type)
 {
 	/* for analyzer ctx accesses are already validated and converted */
@@ -715,8 +649,7 @@ static int check_ctx_access(struct verifier_env *env, int off, int size,
 	return -EACCES;
 }
 
-static bool __is_pointer_value(bool allow_ptr_leaks,
-			       const struct bpf_reg_state *reg)
+static bool is_pointer_value(struct bpf_verifier_env *env, int regno)
 {
 	if (allow_ptr_leaks)
 		return false;
@@ -730,12 +663,13 @@ static bool __is_pointer_value(bool allow_ptr_leaks,
 	}
 }
 
-static int check_ptr_alignment(struct verifier_env *env, struct reg_state *reg,
-			       int off, int size)
+static int check_ptr_alignment(struct bpf_verifier_env *env,
+			       struct bpf_reg_state *reg, int off, int size)
 {
 	if (reg->type != PTR_TO_PACKET) {
 		if (off % size != 0) {
-			verbose("misaligned access off %d size %d\n", off, size);
+			verbose("misaligned access off %d size %d\n",
+				off, size);
 			return -EACCES;
 		} else {
 			return 0;
@@ -776,12 +710,12 @@ static int check_ptr_alignment(struct verifier_env *env, struct reg_state *reg,
  * if t==write && value_regno==-1, some unknown value is stored into memory
  * if t==read && value_regno==-1, don't care what we read from memory
  */
-static int check_mem_access(struct verifier_env *env, u32 regno, int off,
+static int check_mem_access(struct bpf_verifier_env *env, u32 regno, int off,
 			    int bpf_size, enum bpf_access_type t,
 			    int value_regno)
 {
-	struct verifier_state *state = &env->cur_state;
-	struct reg_state *reg = &state->regs[regno];
+	struct bpf_verifier_state *state = &env->cur_state;
+	struct bpf_reg_state *reg = &state->regs[regno];
 	int size, err = 0;
 
 	if (reg->type == PTR_TO_STACK)
@@ -906,7 +840,7 @@ static int check_mem_access(struct verifier_env *env, u32 regno, int off,
 	return err;
 }
 
-static int check_xadd(struct verifier_env *env, struct bpf_insn *insn)
+static int check_xadd(struct bpf_verifier_env *env, struct bpf_insn *insn)
 {
 	struct bpf_reg_state *regs = env->cur_state.regs;
 	int err;
@@ -942,7 +876,7 @@ static int check_xadd(struct verifier_env *env, struct bpf_insn *insn)
  * bytes from that pointer, make sure that it's within stack boundary
  * and all elements of stack are initialized
  */
-static int check_stack_boundary(struct verifier_env *env, int regno,
+static int check_stack_boundary(struct bpf_verifier_env *env, int regno,
 				int access_size, bool zero_size_allowed,
 				struct bpf_call_arg_meta *meta)
 {
@@ -986,11 +920,11 @@ static int check_stack_boundary(struct verifier_env *env, int regno,
 	return 0;
 }
 
-static int check_func_arg(struct verifier_env *env, u32 regno,
+static int check_func_arg(struct bpf_verifier_env *env, u32 regno,
 			  enum bpf_arg_type arg_type,
 			  struct bpf_call_arg_meta *meta)
 {
-	struct reg_state *regs = env->cur_state.regs, *reg = &regs[regno];
+	struct bpf_reg_state *regs = env->cur_state.regs, *reg = &regs[regno];
 	enum bpf_reg_type expected_type, type = reg->type;
 	int err = 0;
 
@@ -1195,10 +1129,10 @@ static int check_raw_mode(const struct bpf_func_proto *fn)
 	return count > 1 ? -EINVAL : 0;
 }
 
-static void clear_all_pkt_pointers(struct verifier_env *env)
+static void clear_all_pkt_pointers(struct bpf_verifier_env *env)
 {
-	struct verifier_state *state = &env->cur_state;
-	struct reg_state *regs = state->regs, *reg;
+	struct bpf_verifier_state *state = &env->cur_state;
+	struct bpf_reg_state *regs = state->regs, *reg;
 	int i;
 
 	for (i = 0; i < MAX_BPF_REG; i++)
@@ -1218,12 +1152,12 @@ static void clear_all_pkt_pointers(struct verifier_env *env)
 	}
 }
 
-static int check_call(struct verifier_env *env, int func_id)
+static int check_call(struct bpf_verifier_env *env, int func_id)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
 	const struct bpf_func_proto *fn = NULL;
-	struct reg_state *regs = state->regs;
-	struct reg_state *reg;
+	struct bpf_reg_state *regs = state->regs;
+	struct bpf_reg_state *reg;
 	struct bpf_call_arg_meta meta;
 	bool changes_data;
 	int i, err;
@@ -1327,12 +1261,13 @@ static int check_call(struct verifier_env *env, int func_id)
 	return 0;
 }
 
-static int check_packet_ptr_add(struct verifier_env *env, struct bpf_insn *insn)
+static int check_packet_ptr_add(struct bpf_verifier_env *env,
+				struct bpf_insn *insn)
 {
-	struct reg_state *regs = env->cur_state.regs;
-	struct reg_state *dst_reg = &regs[insn->dst_reg];
-	struct reg_state *src_reg = &regs[insn->src_reg];
-	struct reg_state tmp_reg;
+	struct bpf_reg_state *regs = env->cur_state.regs;
+	struct bpf_reg_state *dst_reg = &regs[insn->dst_reg];
+	struct bpf_reg_state *src_reg = &regs[insn->src_reg];
+	struct bpf_reg_state tmp_reg;
 	s32 imm;
 
 	if (BPF_SRC(insn->code) == BPF_K) {
@@ -1400,10 +1335,10 @@ add_imm:
 	return 0;
 }
 
-static int evaluate_reg_alu(struct verifier_env *env, struct bpf_insn *insn)
+static int evaluate_reg_alu(struct bpf_verifier_env *env, struct bpf_insn *insn)
 {
-	struct reg_state *regs = env->cur_state.regs;
-	struct reg_state *dst_reg = &regs[insn->dst_reg];
+	struct bpf_reg_state *regs = env->cur_state.regs;
+	struct bpf_reg_state *dst_reg = &regs[insn->dst_reg];
 	u8 opcode = BPF_OP(insn->code);
 	s64 imm_log2;
 
@@ -1413,7 +1348,7 @@ static int evaluate_reg_alu(struct verifier_env *env, struct bpf_insn *insn)
 	 */
 
 	if (BPF_SRC(insn->code) == BPF_X) {
-		struct reg_state *src_reg = &regs[insn->src_reg];
+		struct bpf_reg_state *src_reg = &regs[insn->src_reg];
 
 		if (src_reg->type == UNKNOWN_VALUE && src_reg->imm > 0 &&
 		    dst_reg->imm && opcode == BPF_ADD) {
@@ -1502,11 +1437,12 @@ static int evaluate_reg_alu(struct verifier_env *env, struct bpf_insn *insn)
 	return 0;
 }
 
-static int evaluate_reg_imm_alu(struct verifier_env *env, struct bpf_insn *insn)
+static int evaluate_reg_imm_alu(struct bpf_verifier_env *env,
+				struct bpf_insn *insn)
 {
-	struct reg_state *regs = env->cur_state.regs;
-	struct reg_state *dst_reg = &regs[insn->dst_reg];
-	struct reg_state *src_reg = &regs[insn->src_reg];
+	struct bpf_reg_state *regs = env->cur_state.regs;
+	struct bpf_reg_state *dst_reg = &regs[insn->dst_reg];
+	struct bpf_reg_state *src_reg = &regs[insn->src_reg];
 	u8 opcode = BPF_OP(insn->code);
 
 	/* dst_reg->type == CONST_IMM here, simulate execution of 'add' insn.
@@ -1856,7 +1792,7 @@ static void adjust_reg_min_max_vals(struct bpf_verifier_env *env,
 /* check validity of 32-bit and 64-bit arithmetic operations */
 static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 {
-	struct reg_state *regs = env->cur_state.regs, *dst_reg;
+	struct bpf_reg_state *regs = env->cur_state.regs, *dst_reg;
 	u8 opcode = BPF_OP(insn->code);
 	int err;
 
@@ -2050,10 +1986,10 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 	}
 }
 
-static void find_good_pkt_pointers(struct verifier_state *state,
-				   const struct reg_state *dst_reg)
+static void find_good_pkt_pointers(struct bpf_verifier_state *state,
+				   struct bpf_reg_state *dst_reg)
 {
-	struct reg_state *regs = state->regs, *reg;
+	struct bpf_reg_state *regs = state->regs, *reg;
 	int i;
 
 	/* LLVM can generate two kind of checks:
@@ -2099,11 +2035,11 @@ static void find_good_pkt_pointers(struct verifier_state *state,
 	}
 }
 
-static int check_cond_jmp_op(struct verifier_env *env,
+static int check_cond_jmp_op(struct bpf_verifier_env *env,
 			     struct bpf_insn *insn, int *insn_idx)
 {
-	struct verifier_state *other_branch, *this_branch = &env->cur_state;
-	struct reg_state *regs = this_branch->regs, *dst_reg;
+	struct bpf_verifier_state *other_branch, *this_branch = &env->cur_state;
+	struct bpf_reg_state *regs = this_branch->regs, *dst_reg;
 	u8 opcode = BPF_OP(insn->code);
 	int err;
 
@@ -2164,23 +2100,6 @@ static int check_cond_jmp_op(struct verifier_env *env,
 	other_branch = push_stack(env, *insn_idx + insn->off + 1, *insn_idx);
 	if (!other_branch)
 		return -EFAULT;
-
-	/* detect if we are comparing against a constant value so we can adjust
-	 * our min/max values for our dst register.
-	 */
-	if (BPF_SRC(insn->code) == BPF_X) {
-		if (regs[insn->src_reg].type == CONST_IMM)
-			reg_set_min_max(&other_branch->regs[insn->dst_reg],
-					dst_reg, regs[insn->src_reg].imm,
-					opcode);
-		else if (dst_reg->type == CONST_IMM)
-			reg_set_min_max_inv(&other_branch->regs[insn->src_reg],
-					    &regs[insn->src_reg], dst_reg->imm,
-					    opcode);
-	} else {
-		reg_set_min_max(&other_branch->regs[insn->dst_reg],
-					dst_reg, insn->imm, opcode);
-	}
 
 	/* detect if R == 0 where R is returned from bpf_map_lookup_elem() */
 	if (BPF_SRC(insn->code) == BPF_K &&
@@ -2543,7 +2462,8 @@ err_free:
 /* the following conditions reduce the number of explored insns
  * from ~140k to ~80k for ultra large programs that use a lot of ptr_to_packet
  */
-static bool compare_ptrs_to_packet(struct reg_state *old, struct reg_state *cur)
+static bool compare_ptrs_to_packet(struct bpf_reg_state *old,
+				   struct bpf_reg_state *cur)
 {
 	if (old->id != cur->id)
 		return false;
@@ -2618,11 +2538,10 @@ static bool compare_ptrs_to_packet(struct reg_state *old, struct reg_state *cur)
  * whereas register type in current state is meaningful, it means that
  * the current state will reach 'bpf_exit' instruction safely
  */
-static bool states_equal(struct bpf_verifier_env *env,
-			 struct bpf_verifier_state *old,
+static bool states_equal(struct bpf_verifier_state *old,
 			 struct bpf_verifier_state *cur)
 {
-	struct reg_state *rold, *rcur;
+	struct bpf_reg_state *rold, *rcur;
 	int i;
 
 	for (i = 0; i < MAX_BPF_REG; i++) {
@@ -2711,15 +2630,6 @@ static int is_state_visited(struct bpf_verifier_env *env, int insn_idx)
 	new_sl->next = env->explored_states[insn_idx];
 	env->explored_states[insn_idx] = new_sl;
 	return 0;
-}
-
-static int ext_analyzer_insn_hook(struct bpf_verifier_env *env,
-				  int insn_idx, int prev_insn_idx)
-{
-	if (!env->analyzer_ops || !env->analyzer_ops->insn_hook)
-		return 0;
-
-	return env->analyzer_ops->insn_hook(env, insn_idx, prev_insn_idx);
 }
 
 static int do_check(struct bpf_verifier_env *env)
@@ -3202,7 +3112,7 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 	return 0;
 }
 
-static void free_states(struct verifier_env *env)
+static void free_states(struct bpf_verifier_env *env)
 {
 	struct bpf_verifier_state_list *sl, *sln;
 	int i;
