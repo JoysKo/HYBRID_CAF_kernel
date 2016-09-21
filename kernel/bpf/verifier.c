@@ -2632,6 +2632,15 @@ static int is_state_visited(struct bpf_verifier_env *env, int insn_idx)
 	return 0;
 }
 
+static int ext_analyzer_insn_hook(struct bpf_verifier_env *env,
+				  int insn_idx, int prev_insn_idx)
+{
+	if (!env->analyzer_ops || !env->analyzer_ops->insn_hook)
+		return 0;
+
+	return env->analyzer_ops->insn_hook(env, insn_idx, prev_insn_idx);
+}
+
 static int do_check(struct bpf_verifier_env *env)
 {
 	struct bpf_verifier_state *state = &env->cur_state;
@@ -2696,6 +2705,10 @@ static int do_check(struct bpf_verifier_env *env)
 			verbose("%d: ", insn_idx);
 			print_bpf_insn(insn);
 		}
+
+		err = ext_analyzer_insn_hook(env, insn_idx, prev_insn_idx);
+		if (err)
+			return err;
 
 		if (class == BPF_ALU || class == BPF_ALU64) {
 			err = check_alu_op(env, insn);
