@@ -3533,9 +3533,32 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 	struct cgroup *dsct;
 	struct cgroup_subsys_state *d_css;
 
-	cgroup_for_each_live_descendant_post(dsct, d_css, cgrp) {
-		dsct->subtree_control = dsct->old_subtree_control;
-		dsct->subtree_ss_mask = dsct->old_subtree_ss_mask;
+	/*
+	 * Except for the root, subtree_control must be zero for a cgroup
+	 * with tasks so that child cgroups don't compete against tasks.
+	 */
+	if (enable && cgroup_parent(cgrp)) {
+		struct cgrp_cset_link *link;
+
+		/*
+		 * Because namespaces pin csets too, @cgrp->cset_links
+		 * might not be empty even when @cgrp is empty.  Walk and
+		 * verify each cset.
+		 */
+		spin_lock_irq(&css_set_lock);
+
+		ret = 0;
+		list_for_each_entry(link, &cgrp->cset_links, cset_link) {
+			if (css_set_populated(link->cset)) {
+				ret = -EBUSY;
+				break;
+			}
+		}
+
+		spin_unlock_irq(&css_set_lock);
+
+		if (ret)
+			goto out_unlock;
 	}
 }
 
