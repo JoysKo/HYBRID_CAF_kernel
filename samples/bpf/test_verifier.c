@@ -2183,6 +2183,212 @@ static struct bpf_test tests[] = {
 		.errstr = "invalid access to packet",
 		.prog_type = BPF_PROG_TYPE_SCHED_CLS,
 	},
+	{
+		"valid map access into an array with a constant",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr_unpriv = "R0 leaks addr",
+		.result_unpriv = REJECT,
+		.result = ACCEPT,
+	},
+	{
+		"valid map access into an array with a register",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 4),
+			BPF_MOV64_IMM(BPF_REG_1, 4),
+			BPF_ALU64_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr_unpriv = "R0 leaks addr",
+		.result_unpriv = REJECT,
+		.result = ACCEPT,
+	},
+	{
+		"valid map access into an array with a variable",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 5),
+			BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0),
+			BPF_JMP_IMM(BPF_JGE, BPF_REG_1, MAX_ENTRIES, 3),
+			BPF_ALU64_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr_unpriv = "R0 leaks addr",
+		.result_unpriv = REJECT,
+		.result = ACCEPT,
+	},
+	{
+		"valid map access into an array with a signed variable",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 9),
+			BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0),
+			BPF_JMP_IMM(BPF_JSGT, BPF_REG_1, 0xffffffff, 1),
+			BPF_MOV32_IMM(BPF_REG_1, 0),
+			BPF_MOV32_IMM(BPF_REG_2, MAX_ENTRIES),
+			BPF_JMP_REG(BPF_JSGT, BPF_REG_2, BPF_REG_1, 1),
+			BPF_MOV32_IMM(BPF_REG_1, 0),
+			BPF_ALU32_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr_unpriv = "R0 leaks addr",
+		.result_unpriv = REJECT,
+		.result = ACCEPT,
+	},
+	{
+		"invalid map access into an array with a constant",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, (MAX_ENTRIES + 1) << 2,
+				   offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr = "invalid access to map value, value_size=48 off=48 size=8",
+		.result = REJECT,
+	},
+	{
+		"invalid map access into an array with a register",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 4),
+			BPF_MOV64_IMM(BPF_REG_1, MAX_ENTRIES + 1),
+			BPF_ALU64_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr = "R0 min value is outside of the array range",
+		.result = REJECT,
+	},
+	{
+		"invalid map access into an array with a variable",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 4),
+			BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0),
+			BPF_ALU64_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr = "R0 min value is negative, either use unsigned index or do a if (index >=0) check.",
+		.result = REJECT,
+	},
+	{
+		"invalid map access into an array with no floor check",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 7),
+			BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0),
+			BPF_MOV32_IMM(BPF_REG_2, MAX_ENTRIES),
+			BPF_JMP_REG(BPF_JSGT, BPF_REG_2, BPF_REG_1, 1),
+			BPF_MOV32_IMM(BPF_REG_1, 0),
+			BPF_ALU32_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr = "R0 min value is negative, either use unsigned index or do a if (index >=0) check.",
+		.result = REJECT,
+	},
+	{
+		"invalid map access into an array with a invalid max check",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 7),
+			BPF_LDX_MEM(BPF_W, BPF_REG_1, BPF_REG_0, 0),
+			BPF_MOV32_IMM(BPF_REG_2, MAX_ENTRIES + 1),
+			BPF_JMP_REG(BPF_JGT, BPF_REG_2, BPF_REG_1, 1),
+			BPF_MOV32_IMM(BPF_REG_1, 0),
+			BPF_ALU32_IMM(BPF_LSH, BPF_REG_1, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_1),
+			BPF_ST_MEM(BPF_DW, BPF_REG_0, 0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3},
+		.errstr = "invalid access to map value, value_size=48 off=44 size=8",
+		.result = REJECT,
+	},
+	{
+		"invalid map access into an array with a invalid max check",
+		.insns = {
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 10),
+			BPF_MOV64_REG(BPF_REG_8, BPF_REG_0),
+			BPF_ST_MEM(BPF_DW, BPF_REG_10, -8, 0),
+			BPF_MOV64_REG(BPF_REG_2, BPF_REG_10),
+			BPF_ALU64_IMM(BPF_ADD, BPF_REG_2, -8),
+			BPF_LD_MAP_FD(BPF_REG_1, 0),
+			BPF_RAW_INSN(BPF_JMP | BPF_CALL, 0, 0, 0, BPF_FUNC_map_lookup_elem),
+			BPF_JMP_IMM(BPF_JEQ, BPF_REG_0, 0, 2),
+			BPF_ALU64_REG(BPF_ADD, BPF_REG_0, BPF_REG_8),
+			BPF_LDX_MEM(BPF_W, BPF_REG_0, BPF_REG_0, offsetof(struct test_val, foo)),
+			BPF_EXIT_INSN(),
+		},
+		.test_val_map_fixup = {3, 11},
+		.errstr = "R0 min value is negative, either use unsigned index or do a if (index >=0) check.",
+		.result = REJECT,
+	},
 };
 
 static int probe_filter_length(struct bpf_insn *fp)
@@ -2196,12 +2402,12 @@ static int probe_filter_length(struct bpf_insn *fp)
 	return len + 1;
 }
 
-static int create_map(void)
+static int create_map(size_t val_size, int num)
 {
 	int map_fd;
 
 	map_fd = bpf_create_map(BPF_MAP_TYPE_HASH,
-				sizeof(long long), sizeof(long long), 1024, 0);
+				sizeof(long long), val_size, num, 0);
 	if (map_fd < 0)
 		printf("failed to create map '%s'\n", strerror(errno));
 
@@ -2231,12 +2437,13 @@ static int test(void)
 		int prog_len = probe_filter_length(prog);
 		int *fixup = tests[i].fixup;
 		int *prog_array_fixup = tests[i].prog_array_fixup;
+		int *test_val_map_fixup = tests[i].test_val_map_fixup;
 		int expected_result;
 		const char *expected_errstr;
-		int map_fd = -1, prog_array_fd = -1;
+		int map_fd = -1, prog_array_fd = -1, test_val_map_fd = -1;
 
 		if (*fixup) {
-			map_fd = create_map();
+			map_fd = create_map(sizeof(long long), 1024);
 
 			do {
 				prog[*fixup].imm = map_fd;
@@ -2251,6 +2458,18 @@ static int test(void)
 				prog_array_fixup++;
 			} while (*prog_array_fixup);
 		}
+		if (*test_val_map_fixup) {
+			/* Unprivileged can't create a hash map.*/
+			if (unpriv)
+				continue;
+			test_val_map_fd = create_map(sizeof(struct test_val),
+						     256);
+			do {
+				prog[*test_val_map_fixup].imm = test_val_map_fd;
+				test_val_map_fixup++;
+			} while (*test_val_map_fixup);
+		}
+
 		printf("#%d %s ", i, tests[i].descr);
 
 		prog_fd = bpf_prog_load(prog_type ?: BPF_PROG_TYPE_SOCKET_FILTER,
