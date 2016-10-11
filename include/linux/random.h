@@ -34,11 +34,8 @@ extern int random_int_secret_init(void);
 extern const struct file_operations random_fops, urandom_fops;
 #endif
 
-u32 get_random_u32(void);
-u64 get_random_u64(void);
-inline unsigned int get_random_int(void);
-inline unsigned long get_random_long(void);
-unsigned long randomize_range(unsigned long start, unsigned long end, unsigned long len);
+unsigned int get_random_int(void);
+unsigned long get_random_long(void);
 unsigned long randomize_page(unsigned long start, unsigned long range);
 
 /*
