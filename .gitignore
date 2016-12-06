@@ -127,3 +127,5 @@ android/configs/android-*.cfg
 #Ignoring Android.bp link file
 #
 Android.bp
+
+msm-4.4/
