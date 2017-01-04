@@ -3539,11 +3539,6 @@ static int msm_hs_probe(struct platform_device *pdev)
 		msm_uport->ipc_debug_mask = INFO_LEV;
 	}
 #endif
-	ret = sysfs_create_file(&pdev->dev.kobj,
-			&dev_attr_debug_mask.attr);
-	if (unlikely(ret))
-		MSM_HS_WARN("%s: Failed to create dev. attr", __func__);
-
 	uport->irq = core_irqres;
 	msm_uport->bam_irq = bam_irqres;
 	pdata->wakeup_irq = wakeup_irqres;
