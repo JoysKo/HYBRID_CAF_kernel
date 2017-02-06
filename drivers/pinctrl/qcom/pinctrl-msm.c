@@ -505,8 +505,10 @@ static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-		if ((i >= 0 && i <= 3) || (i >= 8 && i <= 11))
-			continue;
+		/* Bypass GPIO pins owned by TZ */
+		switch (gpio)
+			case 81 ... 84: continue;
+
 		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}
