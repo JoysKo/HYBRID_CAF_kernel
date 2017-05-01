@@ -682,7 +682,29 @@ emit_cond_jmp:
 	case BPF_STX | BPF_XADD | BPF_W:
 	/* STX XADD: lock *(u64 *)(dst + off) += src */
 	case BPF_STX | BPF_XADD | BPF_DW:
+<<<<<<< HEAD
 		goto notyet;
+=======
+		if (!off) {
+			reg = dst;
+		} else {
+			emit_a64_mov_i(1, tmp, off, ctx);
+			emit(A64_ADD(1, tmp, tmp, dst), ctx);
+			reg = tmp;
+		}
+		emit(A64_PRFM(tmp, PST, L1, STRM), ctx);
+		if (cpus_have_cap(ARM64_HAS_LSE_ATOMICS)) {
+			emit(A64_STADD(isdw, reg, src), ctx);
+		} else {
+			emit(A64_LDXR(isdw, tmp2, reg), ctx);
+			emit(A64_ADD(isdw, tmp2, tmp2, src), ctx);
+			emit(A64_STXR(isdw, tmp2, reg, tmp3), ctx);
+			jmp_offset = -3;
+			check_imm19(jmp_offset);
+			emit(A64_CBNZ(0, tmp3, jmp_offset), ctx);
+		}
+		break;
+>>>>>>> 2ca1b1fba62c... bpf, arm64: implement jiting of BPF_XADD
 
 	/* R0 = ntohx(*(size *)(((struct sk_buff *)R6)->data + imm)) */
 	case BPF_LD | BPF_ABS | BPF_W:
