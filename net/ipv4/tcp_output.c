@@ -896,6 +896,72 @@ out:
 	sk_free(sk);
 }
 
+/* Note: Called under hard irq.
+ * We can not call TCP stack right away.
+ */
+enum hrtimer_restart tcp_pace_kick(struct hrtimer *timer)
+{
+	struct tcp_sock *tp = container_of(timer, struct tcp_sock, pacing_timer);
+	struct sock *sk = (struct sock *)tp;
+	unsigned long nval, oval;
+
+	for (oval = READ_ONCE(sk->sk_tsq_flags);; oval = nval) {
+		struct tsq_tasklet *tsq;
+		bool empty;
+
+		if (oval & TSQF_QUEUED)
+			break;
+
+		nval = (oval & ~TSQF_THROTTLED) | TSQF_QUEUED | TCPF_TSQ_DEFERRED;
+		nval = cmpxchg(&sk->sk_tsq_flags, oval, nval);
+		if (nval != oval)
+			continue;
+
+		if (!atomic_inc_not_zero(&sk->sk_wmem_alloc))
+			break;
+		/* queue this socket to tasklet queue */
+		tsq = this_cpu_ptr(&tsq_tasklet);
+		empty = list_empty(&tsq->head);
+		list_add(&tp->tsq_node, &tsq->head);
+		if (empty)
+			tasklet_schedule(&tsq->tasklet);
+		break;
+	}
+	return HRTIMER_NORESTART;
+}
+
+/* BBR congestion control needs pacing.
+ * Same remark for SO_MAX_PACING_RATE.
+ * sch_fq packet scheduler is efficiently handling pacing,
+ * but is not always installed/used.
+ * Return true if TCP stack should pace packets itself.
+ */
+static bool tcp_needs_internal_pacing(const struct sock *sk)
+{
+	return smp_load_acquire(&sk->sk_pacing_status) == SK_PACING_NEEDED;
+}
+
+static void tcp_internal_pacing(struct sock *sk, const struct sk_buff *skb)
+{
+	u64 len_ns;
+	u32 rate;
+
+	if (!tcp_needs_internal_pacing(sk))
+		return;
+	rate = sk->sk_pacing_rate;
+	if (!rate || rate == ~0U)
+		return;
+
+	/* Should account for header sizes as sch_fq does,
+	 * but lets make things simple.
+	 */
+	len_ns = (u64)skb->len * NSEC_PER_SEC;
+	do_div(len_ns, rate);
+	hrtimer_start(&tcp_sk(sk)->pacing_timer,
+		      ktime_add_ns(ktime_get(), len_ns),
+		      HRTIMER_MODE_ABS_PINNED);
+}
+
 /* This routine actually transmits TCP packets queued in by
  * tcp_do_sendmsg().  This is used by both the initial
  * transmission and possible later retransmissions.
@@ -1013,8 +1079,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	if (likely(tcb->tcp_flags & TCPHDR_ACK))
 		tcp_event_ack_sent(sk, tcp_skb_pcount(skb), rcv_nxt);
 
-	if (skb->len != tcp_header_size)
+	if (skb->len != tcp_header_size) {
 		tcp_event_data_sent(tp, sk);
+		tcp_internal_pacing(sk, skb);
+	}
 
 	if (after(tcb->end_seq, tp->snd_nxt) || tcb->seq == tcb->end_seq)
 		TCP_ADD_STATS(sock_net(sk), TCP_MIB_OUTSEGS,
@@ -2040,6 +2108,95 @@ static int tcp_mtu_probe(struct sock *sk)
 	return -1;
 }
 
+static bool tcp_pacing_check(const struct sock *sk)
+{
+	return tcp_needs_internal_pacing(sk) &&
+	       hrtimer_active(&tcp_sk(sk)->pacing_timer);
+}
+
+/* TCP Small Queues :
+ * Control number of packets in qdisc/devices to two packets / or ~1 ms.
+ * (These limits are doubled for retransmits)
+ * This allows for :
+ *  - better RTT estimation and ACK scheduling
+ *  - faster recovery
+ *  - high rates
+ * Alas, some drivers / subsystems require a fair amount
+ * of queued bytes to ensure line rate.
+ * One example is wifi aggregation (802.11 AMPDU)
+ */
+static bool tcp_small_queue_check(struct sock *sk, const struct sk_buff *skb,
+				  unsigned int factor)
+{
+	unsigned int limit;
+
+	limit = max(2 * skb->truesize, sk->sk_pacing_rate >> 10);
+	limit = min_t(u32, limit, sysctl_tcp_limit_output_bytes);
+	limit <<= factor;
+
+	if (atomic_read(&sk->sk_wmem_alloc) > limit) {
+		/* Always send the 1st or 2nd skb in write queue.
+		 * No need to wait for TX completion to call us back,
+		 * after softirq/tasklet schedule.
+		 * This helps when TX completions are delayed too much.
+		 */
+		if (skb == sk->sk_write_queue.next ||
+		    skb->prev == sk->sk_write_queue.next)
+			return false;
+
+		set_bit(TSQ_THROTTLED, &sk->sk_tsq_flags);
+		/* It is possible TX completion already happened
+		 * before we set TSQ_THROTTLED, so we must
+		 * test again the condition.
+		 */
+		smp_mb__after_atomic();
+		if (atomic_read(&sk->sk_wmem_alloc) > limit)
+			return true;
+	}
+	return false;
+}
+
+static void tcp_chrono_set(struct tcp_sock *tp, const enum tcp_chrono new)
+{
+	const u32 now = tcp_time_stamp;
+
+	if (tp->chrono_type > TCP_CHRONO_UNSPEC)
+		tp->chrono_stat[tp->chrono_type - 1] += now - tp->chrono_start;
+	tp->chrono_start = now;
+	tp->chrono_type = new;
+}
+
+void tcp_chrono_start(struct sock *sk, const enum tcp_chrono type)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	/* If there are multiple conditions worthy of tracking in a
+	 * chronograph then the highest priority enum takes precedence
+	 * over the other conditions. So that if something "more interesting"
+	 * starts happening, stop the previous chrono and start a new one.
+	 */
+	if (type > tp->chrono_type)
+		tcp_chrono_set(tp, type);
+}
+
+void tcp_chrono_stop(struct sock *sk, const enum tcp_chrono type)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+
+	/* There are multiple conditions worthy of tracking in a
+	 * chronograph, so that the highest priority enum takes
+	 * precedence over the other conditions (see tcp_chrono_start).
+	 * If a condition stops, we only stop chrono tracking if
+	 * it's the "most interesting" or current chrono we are
+	 * tracking and starts busy chrono if we have pending data.
+	 */
+	if (tcp_write_queue_empty(sk))
+		tcp_chrono_set(tp, TCP_CHRONO_UNSPEC);
+	else if (type == tp->chrono_type)
+		tcp_chrono_set(tp, TCP_CHRONO_BUSY);
+}
+
 /* This routine writes packets to the network.  It advances the
  * send_head.  This happens as incoming acks open up the remote
  * window for us.
@@ -2080,6 +2237,9 @@ static bool tcp_write_xmit(struct sock *sk, unsigned int mss_now, int nonagle,
 	max_segs = tcp_tso_autosize(sk, mss_now);
 	while ((skb = tcp_send_head(sk))) {
 		unsigned int limit;
+
+		if (tcp_pacing_check(sk))
+			break;
 
 		tso_segs = tcp_init_tso_segs(skb, mss_now);
 		BUG_ON(!tso_segs);
@@ -2802,6 +2962,10 @@ void tcp_xmit_retransmit_queue(struct sock *sk)
 
 		if (skb == tcp_send_head(sk))
 			break;
+
+		if (tcp_pacing_check(sk))
+			break;
+
 		/* we could do better than to assign each time */
 		if (!hole)
 			tp->retransmit_skb_hint = skb;

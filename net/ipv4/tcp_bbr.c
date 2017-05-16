@@ -1100,13 +1100,6 @@ static void bbr_init(struct sock *sk)
 	bbr_reset_lt_bw_sampling(sk);
 	bbr_reset_startup_mode(sk);
 
-	bbr->ack_epoch_mstamp = tp->tcp_mstamp;
-	bbr->ack_epoch_acked = 0;
-	bbr->extra_acked_win_rtts = 0;
-	bbr->extra_acked_win_idx = 0;
-	bbr->extra_acked[0] = 0;
-	bbr->extra_acked[1] = 0;
-
 	cmpxchg(&sk->sk_pacing_status, SK_PACING_NONE, SK_PACING_NEEDED);
 }
 
