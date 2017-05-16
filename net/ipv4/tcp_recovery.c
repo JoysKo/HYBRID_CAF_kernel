@@ -3,7 +3,29 @@
 
 int sysctl_tcp_recovery __read_mostly = TCP_RACK_LOST_RETRANS;
 
-/* Marks a packet lost, if some packet sent later has been (s)acked.
+static void tcp_rack_mark_skb_lost(struct sock *sk, struct sk_buff *skb)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	tcp_skb_mark_lost_uncond_verify(tp, skb);
+	if (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_RETRANS) {
+		/* Account for retransmits that are lost again */
+		TCP_SKB_CB(skb)->sacked &= ~TCPCB_SACKED_RETRANS;
+		tp->retrans_out -= tcp_skb_pcount(skb);
+		NET_ADD_STATS(sock_net(sk), LINUX_MIB_TCPLOSTRETRANSMIT,
+			      tcp_skb_pcount(skb));
+	}
+}
+
+static bool tcp_rack_sent_after(u64 t1, u64 t2, u32 seq1, u32 seq2)
+{
+	return t1 > t2 || (t1 == t2 && after(seq1, seq2));
+}
+
+/* RACK loss detection (IETF draft draft-ietf-tcpm-rack-01):
+ *
+ * Marks a packet lost, if some packet sent later has been (s)acked.
+
  * The underlying idea is similar to the traditional dupthresh and FACK
  * but they look at different metrics:
  *
@@ -74,6 +96,21 @@ int tcp_rack_mark_lost(struct sock *sk)
 			 */
 			break;
 		}
+		if (tcp_rack_sent_after(tp->rack.mstamp, skb->skb_mstamp,
+					tp->rack.end_seq, scb->end_seq)) {
+			/* Step 3 in draft-cheng-tcpm-rack-00.txt:
+			 * A packet is lost if its elapsed time is beyond
+			 * the recent RTT plus the reordering window.
+			 */
+			u32 elapsed = tcp_stamp_us_delta(tp->tcp_mstamp,
+							 skb->skb_mstamp);
+			s32 remaining = tp->rack.rtt_us + reo_wnd - elapsed;
+
+			if (remaining < 0) {
+				tcp_rack_mark_skb_lost(sk, skb);
+				continue;
+			}
+		}
 	}
 	return prior_retrans - tp->retrans_out;
 }
@@ -105,5 +142,7 @@ void tcp_rack_advance(struct tcp_sock *tp,
 	}
 
 	tp->rack.mstamp = *xmit_time;
+	tp->rack.rtt_us = rtt_us;
+	tp->rack.end_seq = end_seq;
 	tp->rack.advanced = 1;
 }
