@@ -139,7 +139,7 @@ struct bpf_verifier_stack_elem {
 	struct bpf_verifier_stack_elem *next;
 };
 
-#define BPF_COMPLEXITY_LIMIT_INSNS	65536
+#define BPF_COMPLEXITY_LIMIT_INSNS	98304
 #define BPF_COMPLEXITY_LIMIT_STACK	1024
 
 struct bpf_call_arg_meta {
@@ -2625,6 +2625,12 @@ static bool states_equal(struct bpf_verifier_env *env,
 		     rcur->type != NOT_INIT))
 			continue;
 
+		/* Don't care about the reg->id in this case. */
+		if (rold->type == PTR_TO_MAP_VALUE_OR_NULL &&
+		    rcur->type == PTR_TO_MAP_VALUE_OR_NULL &&
+		    rold->map_ptr == rcur->map_ptr)
+			continue;
+
 		if (rold->type == PTR_TO_PACKET && rcur->type == PTR_TO_PACKET &&
 		    compare_ptrs_to_packet(rold, rcur))
 			continue;
@@ -2758,9 +2764,6 @@ static int do_check(struct bpf_verifier_env *env)
 			}
 			goto process_bpf_exit;
 		}
-
-		if (signal_pending(current))
-			return -EAGAIN;
 
 		if (need_resched())
 			cond_resched();
