@@ -386,32 +386,6 @@ static u16 cgroup_ss_mask(struct cgroup *cgrp)
 	return cgrp->root->subsys_mask;
 }
 
-/* subsystems visibly enabled on a cgroup */
-static u16 cgroup_control(struct cgroup *cgrp)
-{
-	struct cgroup *parent = cgroup_parent(cgrp);
-	u16 root_ss_mask = cgrp->root->subsys_mask;
-
-	if (parent)
-		return parent->subtree_control;
-
-	if (cgroup_on_dfl(cgrp))
-		root_ss_mask &= ~(cgrp_dfl_inhibit_ss_mask |
-				  cgrp_dfl_implicit_ss_mask);
-	return root_ss_mask;
-}
-
-/* subsystems enabled on a cgroup */
-static u16 cgroup_ss_mask(struct cgroup *cgrp)
-{
-	struct cgroup *parent = cgroup_parent(cgrp);
-
-	if (parent)
-		return parent->subtree_ss_mask;
-
-	return cgrp->root->subsys_mask;
-}
-
 /**
  * cgroup_css - obtain a cgroup's css for the specified subsystem
  * @cgrp: the cgroup of interest
@@ -501,17 +475,6 @@ out_unlock:
 static inline bool cgroup_is_dead(const struct cgroup *cgrp)
 {
 	return !(cgrp->self.flags & CSS_ONLINE);
-}
-
-static void cgroup_get(struct cgroup *cgrp)
-{
-	WARN_ON_ONCE(cgroup_is_dead(cgrp));
-	css_get(&cgrp->self);
-}
-
-static bool cgroup_tryget(struct cgroup *cgrp)
-{
-	return css_tryget(&cgrp->self);
 }
 
 struct cgroup_subsys_state *of_css(struct kernfs_open_file *of)
