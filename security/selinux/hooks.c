@@ -6011,39 +6011,6 @@ static u32 bpf_map_fmode_to_av(fmode_t fmode)
 	return av;
 }
 
-/* This function will check the file pass through unix socket or binder to see
- * if it is a bpf related object. And apply correspinding checks on the bpf
- * object based on the type. The bpf maps and programs, not like other files and
- * socket, are using a shared anonymous inode inside the kernel as their inode.
- * So checking that inode cannot identify if the process have privilege to
- * access the bpf object and that's why we have to add this additional check in
- * selinux_file_receive and selinux_binder_transfer_files.
- */
-static int bpf_fd_pass(struct file *file, u32 sid)
-{
-	struct bpf_security_struct *bpfsec;
-	struct bpf_prog *prog;
-	struct bpf_map *map;
-	int ret;
-
-	if (file->f_op == &bpf_map_fops) {
-		map = file->private_data;
-		bpfsec = map->security;
-		ret = avc_has_perm(sid, bpfsec->sid, SECCLASS_BPF,
-				   bpf_map_fmode_to_av(file->f_mode), NULL);
-		if (ret)
-			return ret;
-	} else if (file->f_op == &bpf_prog_fops) {
-		prog = file->private_data;
-		bpfsec = prog->aux->security;
-		ret = avc_has_perm(sid, bpfsec->sid, SECCLASS_BPF,
-				   BPF__PROG_RUN, NULL);
-		if (ret)
-			return ret;
-	}
-	return 0;
-}
-
 static int selinux_bpf_map(struct bpf_map *map, fmode_t fmode)
 {
 	u32 sid = current_sid();
