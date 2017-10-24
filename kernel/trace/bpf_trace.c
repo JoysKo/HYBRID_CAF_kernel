@@ -617,6 +617,65 @@ static const struct bpf_verifier_ops perf_event_prog_ops = {
 	.convert_ctx_access	= pe_prog_convert_ctx_access,
 };
 
+static DEFINE_MUTEX(bpf_event_mutex);
+
+int perf_event_attach_bpf_prog(struct perf_event *event,
+			       struct bpf_prog *prog)
+{
+	struct bpf_prog_array __rcu *old_array;
+	struct bpf_prog_array *new_array;
+	int ret = -EEXIST;
+
+	mutex_lock(&bpf_event_mutex);
+
+	if (event->prog)
+		goto out;
+
+	old_array = rcu_dereference_protected(event->tp_event->prog_array,
+					      lockdep_is_held(&bpf_event_mutex));
+	ret = bpf_prog_array_copy(old_array, NULL, prog, &new_array);
+	if (ret < 0)
+		goto out;
+
+	/* set the new array to event->tp_event and set event->prog */
+	event->prog = prog;
+	rcu_assign_pointer(event->tp_event->prog_array, new_array);
+	bpf_prog_array_free(old_array);
+
+out:
+	mutex_unlock(&bpf_event_mutex);
+	return ret;
+}
+
+void perf_event_detach_bpf_prog(struct perf_event *event)
+{
+	struct bpf_prog_array __rcu *old_array;
+	struct bpf_prog_array *new_array;
+	int ret;
+
+	mutex_lock(&bpf_event_mutex);
+
+	if (!event->prog)
+		goto out;
+
+	old_array = rcu_dereference_protected(event->tp_event->prog_array,
+					      lockdep_is_held(&bpf_event_mutex));
+
+	ret = bpf_prog_array_copy(old_array, event->prog, NULL, &new_array);
+	if (ret < 0) {
+		bpf_prog_array_delete_safe(old_array, event->prog);
+	} else {
+		rcu_assign_pointer(event->tp_event->prog_array, new_array);
+		bpf_prog_array_free(old_array);
+	}
+
+	bpf_prog_put(event->prog);
+	event->prog = NULL;
+
+out:
+	mutex_unlock(&bpf_event_mutex);
+}
+
 static struct bpf_prog_type_list perf_event_tl = {
 	.ops	= &perf_event_prog_ops,
 	.type	= BPF_PROG_TYPE_PERF_EVENT,
