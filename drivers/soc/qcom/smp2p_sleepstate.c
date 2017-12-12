@@ -35,12 +35,13 @@ static int sleepstate_pm_notifier(struct notifier_block *nb,
 {
 	switch (event) {
 	case PM_SUSPEND_PREPARE:
-		msleep(25); /* To be tuned based on SMP2P latencies */
+		gpio_set_value(slst_gpio_base_id + PROC_AWAKE_ID, 0);
 		msm_ipc_router_set_ws_allowed(true);
 		break;
 
 	case PM_POST_SUSPEND:
-		msleep(25); /* To be tuned based on SMP2P latencies */
+		gpio_set_value(slst_gpio_base_id + PROC_AWAKE_ID, 1);
+		usleep_range(10000, 10500); /* Tuned based on SMP2P latencies */
 		msm_ipc_router_set_ws_allowed(false);
 		break;
 	}
