@@ -1798,9 +1798,9 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 				imm = (u32)insn->imm;
 
 			regs[insn->dst_reg].type = CONST_IMM;
-			regs[insn->dst_reg].imm = insn->imm;
-			regs[insn->dst_reg].max_value = insn->imm;
-			regs[insn->dst_reg].min_value = insn->imm;
+			regs[insn->dst_reg].imm = imm;
+			regs[insn->dst_reg].max_value = imm;
+			regs[insn->dst_reg].min_value = imm;
 		}
 
 	} else if (opcode > BPF_END) {
