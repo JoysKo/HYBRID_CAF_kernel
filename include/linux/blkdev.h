@@ -1431,11 +1431,6 @@ int kblockd_schedule_delayed_work(struct delayed_work *dwork, unsigned long dela
 int kblockd_schedule_delayed_work_on(int cpu, struct delayed_work *dwork, unsigned long delay);
 
 #ifdef CONFIG_BLK_CGROUP
-/*
- * This should not be using sched_clock(). A real patch is in progress
- * to fix this up, until that is in place we need to disable preemption
- * around sched_clock() in this function and set_io_start_time_ns().
- */
 static inline void set_start_time_ns(struct request *req)
 {
 	req->start_time_ns = ktime_get_ns();
