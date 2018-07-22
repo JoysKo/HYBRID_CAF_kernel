@@ -84,8 +84,12 @@ static struct notifier_block panic_blk = {
 #define KASLR_OFFSET_PROP "qcom,msm-imem-kaslr_offset"
 #endif
 
-static int dload_type = SCM_DLOAD_BOTHDUMPS;
-static int download_mode = 1;
+static int dload_type = SCM_DLOAD_FULLDUMP;
+#if defined(CONFIG_KERNEL_CUSTOM_D2S) || defined(CONFIG_KERNEL_CUSTOM_E7T) || defined(CONFIG_KERNEL_CUSTOM_F7A)
+int download_mode = 0;
+#else
+int download_mode = 1;
+#endif
 static struct kobject dload_kobj;
 static void *dload_mode_addr, *dload_type_addr;
 static bool dload_mode_enabled;
