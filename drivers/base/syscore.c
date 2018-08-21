@@ -54,7 +54,7 @@ int syscore_suspend(void)
 	int ret = 0;
 	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 
-	trace_suspend_resume(TPS("syscore_suspend"), 0, true);
+//	trace_suspend_resume(TPS("syscore_suspend"), 0, true);
 	pr_debug("Checking wakeup interrupts\n");
 
 	/* Return error code if there are any wakeup interrupts pending. */
@@ -81,7 +81,7 @@ int syscore_suspend(void)
 				"Interrupts enabled after %pF\n", ops->suspend);
 		}
 
-	trace_suspend_resume(TPS("syscore_suspend"), 0, false);
+//	trace_suspend_resume(TPS("syscore_suspend"), 0, false);
 	return 0;
 
  err_out:
@@ -106,7 +106,7 @@ void syscore_resume(void)
 {
 	struct syscore_ops *ops;
 
-	trace_suspend_resume(TPS("syscore_resume"), 0, true);
+//	trace_suspend_resume(TPS("syscore_resume"), 0, true);
 	WARN_ONCE(!irqs_disabled(),
 		"Interrupts enabled before system core resume.\n");
 
@@ -118,7 +118,7 @@ void syscore_resume(void)
 			WARN_ONCE(!irqs_disabled(),
 				"Interrupts enabled after %pF\n", ops->resume);
 		}
-	trace_suspend_resume(TPS("syscore_resume"), 0, false);
+//	trace_suspend_resume(TPS("syscore_resume"), 0, false);
 }
 EXPORT_SYMBOL_GPL(syscore_resume);
 #endif /* CONFIG_PM_SLEEP */
