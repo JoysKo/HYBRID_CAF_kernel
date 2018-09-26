@@ -4344,7 +4344,7 @@ static void cfq_completed_request(struct request_queue *q, struct request *rq)
 		if (cfq_should_wait_busy(cfqd, cfqq)) {
 			u64 extend_sl = cfqd->cfq_slice_idle;
 			if (!cfqd->cfq_slice_idle)
-				extend_sl = cfqd->cfq_group_idle;
+				extend_sl = get_group_idle(cfqd);
 			cfqq->slice_end = now + extend_sl;
 			cfq_mark_cfqq_wait_busy(cfqq);
 			cfq_log_cfqq(cfqd, cfqq, "will busy wait");
