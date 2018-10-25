@@ -100,7 +100,6 @@ static inline int avc_hash(u32 ssid, u32 tsid, u16 tclass)
 {
 	return (ssid ^ (tsid<<2) ^ (tclass<<4)) & (AVC_CACHE_SLOTS - 1);
 }
-
 #ifdef CONFIG_AUDIT
 /**
  * avc_dump_av - Display an access vector in human-readable form.
@@ -742,6 +741,7 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 				 ad->selinux_audit_data->result ? 0 : 1);
 	}
 }
+
 
 /* This is the slow part of avc audit with big stack footprint */
 noinline int slow_avc_audit(u32 ssid, u32 tsid, u16 tclass,
