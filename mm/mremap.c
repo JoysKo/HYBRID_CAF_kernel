@@ -175,6 +175,7 @@ static void move_ptes(struct vm_area_struct *vma, pmd_t *old_pmd,
 		i_mmap_unlock_write(mapping);
 }
 
+#ifdef CONFIG_HAVE_MOVE_PMD
 int move_normal_pmd(struct vm_area_struct *vma, struct vm_area_struct *new_vma,
 		  unsigned long old_addr,
 		  unsigned long new_addr, unsigned long old_end,
@@ -194,7 +195,7 @@ int move_normal_pmd(struct vm_area_struct *vma, struct vm_area_struct *new_vma,
 	 * The destination pmd shouldn't be established, free_pgtables()
 	 * should have release it.
 	 */
-	if (WARN_ON_ONCE(!pmd_none(*new_pmd)))
+	if (WARN_ON(!pmd_none(*new_pmd)))
 		return 0;
 
 	/*
@@ -221,6 +222,7 @@ int move_normal_pmd(struct vm_area_struct *vma, struct vm_area_struct *new_vma,
 
 	return 1;
 }
+#endif
 
 #define LATENCY_LIMIT	(64 * PAGE_SIZE)
 
@@ -275,6 +277,7 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 			}
 			VM_BUG_ON(pmd_trans_huge(*old_pmd));
 		} else if (extent == PMD_SIZE) {
+#ifdef CONFIG_HAVE_MOVE_PMD
 			/*
 			 * If the extent is PMD-sized, try to speed the move by
 			 * moving at the PMD level if possible.
@@ -290,6 +293,7 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 				anon_vma_unlock_write(vma->anon_vma);
 			if (err)
 				continue;
+#endif
 		}
 
 		if (pmd_none(*new_pmd) && __pte_alloc(new_vma->vm_mm, new_vma,
