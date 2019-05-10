@@ -13,12 +13,13 @@
 #include <linux/bpf.h>
 #include <linux/jhash.h>
 #include <linux/filter.h>
+#include <linux/rculist_nulls.h>
 #include "percpu_freelist.h"
 #define HTAB_CREATE_FLAG_MASK						\
 	(BPF_F_NO_PREALLOC | BPF_F_RDONLY | BPF_F_WRONLY)
 
 struct bucket {
-	struct hlist_head head;
+	struct hlist_nulls_head head;
 	raw_spinlock_t lock;
 };
 
@@ -42,7 +43,7 @@ enum extra_elem_state {
 /* each htab element is struct htab_elem + key + value */
 struct htab_elem {
 	union {
-		struct hlist_node hash_node;
+		struct hlist_nulls_node hash_node;
 		struct {
 			void *padding;
 			union {
@@ -247,7 +248,7 @@ static struct bpf_map *htab_map_alloc(union bpf_attr *attr)
 		goto free_htab;
 
 	for (i = 0; i < htab->n_buckets; i++) {
-		INIT_HLIST_HEAD(&htab->buckets[i].head);
+		INIT_HLIST_NULLS_HEAD(&htab->buckets[i].head, i);
 		raw_spin_lock_init(&htab->buckets[i].lock);
 	}
 
@@ -284,12 +285,13 @@ static inline struct bucket *__select_bucket(struct bpf_htab *htab, u32 hash)
 	return &htab->buckets[hash & (htab->n_buckets - 1)];
 }
 
-static inline struct hlist_head *select_bucket(struct bpf_htab *htab, u32 hash)
+static inline struct hlist_nulls_head *select_bucket(struct bpf_htab *htab, u32 hash)
 {
 	return &__select_bucket(htab, hash)->head;
 }
 
-static struct htab_elem *lookup_elem_raw(struct hlist_head *head, u32 hash,
+/* this lookup function can only be called with bucket lock taken */
+static struct htab_elem *lookup_elem_raw(struct hlist_nulls_head *head, u32 hash,
 					 void *key, u32 key_size)
 {
 	struct hlist_nulls_node *n;
@@ -342,13 +344,6 @@ static void *__htab_map_lookup_elem(struct bpf_map *map, void *key)
 	head = select_bucket(htab, hash);
 
 	l = lookup_nulls_elem_raw(head, hash, key, key_size, htab->n_buckets);
-
-	return l;
-}
-
-static void *htab_map_lookup_elem(struct bpf_map *map, void *key)
-{
-	struct htab_elem *l = __htab_map_lookup_elem(map, key);
 
 	return l;
 }
@@ -566,7 +561,7 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
 {
 	struct bpf_htab *htab = container_of(map, struct bpf_htab, map);
 	struct htab_elem *l_new = NULL, *l_old;
-	struct hlist_head *head;
+	struct hlist_nulls_head *head;
 	unsigned long flags;
 	struct bucket *b;
 	u32 key_size, hash;
@@ -605,9 +600,9 @@ static int htab_map_update_elem(struct bpf_map *map, void *key, void *value,
 	/* add new element to the head of the list, so that
 	 * concurrent search will find it before old elem
 	 */
-	hlist_add_head_rcu(&l_new->hash_node, head);
+	hlist_nulls_add_head_rcu(&l_new->hash_node, head);
 	if (l_old) {
-		hlist_del_rcu(&l_old->hash_node);
+		hlist_nulls_del_rcu(&l_old->hash_node);
 		free_htab_elem(htab, l_old);
 	}
 	ret = 0;
@@ -622,7 +617,7 @@ static int __htab_percpu_map_update_elem(struct bpf_map *map, void *key,
 {
 	struct bpf_htab *htab = container_of(map, struct bpf_htab, map);
 	struct htab_elem *l_new = NULL, *l_old;
-	struct hlist_head *head;
+	struct hlist_nulls_head *head;
 	unsigned long flags;
 	struct bucket *b;
 	u32 key_size, hash;
@@ -674,7 +669,7 @@ static int __htab_percpu_map_update_elem(struct bpf_map *map, void *key,
 			ret = PTR_ERR(l_new);
 			goto err;
 		}
-		hlist_add_head_rcu(&l_new->hash_node, head);
+		hlist_nulls_add_head_rcu(&l_new->hash_node, head);
 	}
 	ret = 0;
 err:
@@ -692,7 +687,7 @@ static int htab_percpu_map_update_elem(struct bpf_map *map, void *key,
 static int htab_map_delete_elem(struct bpf_map *map, void *key)
 {
 	struct bpf_htab *htab = container_of(map, struct bpf_htab, map);
-	struct hlist_head *head;
+	struct hlist_nulls_head *head;
 	struct bucket *b;
 	struct htab_elem *l;
 	unsigned long flags;
@@ -712,7 +707,7 @@ static int htab_map_delete_elem(struct bpf_map *map, void *key)
 	l = lookup_elem_raw(head, hash, key, key_size);
 
 	if (l) {
-		hlist_del_rcu(&l->hash_node);
+		hlist_nulls_del_rcu(&l->hash_node);
 		free_htab_elem(htab, l);
 		ret = 0;
 	}
@@ -730,8 +725,8 @@ static void delete_all_elements(struct bpf_htab *htab)
 		struct hlist_nulls_node *n;
 		struct htab_elem *l;
 
-		hlist_for_each_entry_safe(l, n, head, hash_node) {
-			hlist_del_rcu(&l->hash_node);
+		hlist_nulls_for_each_entry_safe(l, n, head, hash_node) {
+			hlist_nulls_del_rcu(&l->hash_node);
 			if (l->state != HTAB_EXTRA_ELEM_USED)
 				htab_elem_free(htab, l);
 		}
