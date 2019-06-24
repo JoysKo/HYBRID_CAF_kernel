@@ -81,6 +81,10 @@
 #include <linux/cpufreq_times.h>
 #include <linux/cpu_input_boost.h>
 #include <linux/devfreq_boost.h>
+<<<<<<< HEAD
+=======
+#include <linux/cpufreq_times.h>
+>>>>>>> 8147d1dbc580... simple_lmk: Introduce Simple Low Memory Killer for Android
 #include <linux/simple_lmk.h>
 
 #include <asm/pgtable.h>
@@ -734,6 +738,7 @@ static inline void __mmput(struct mm_struct *mm)
 	}
 	if (mm->binfmt)
 		module_put(mm->binfmt->module);
+	simple_lmk_mm_freed(mm);
 	mmdrop(mm);
 }
 
