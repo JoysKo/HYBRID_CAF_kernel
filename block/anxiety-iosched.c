@@ -12,8 +12,13 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 
-/* For this many read requests, perform one write request */
-#define	DEFAULT_READ_RATIO	(4)
+/* Batch this many synchronous requests at a time */
+#define	DEFAULT_SYNC_RATIO	(4)
+
+enum {
+	SYNC,
+	ASYNC
+};
 
 struct anxiety_data {
 	struct list_head queue[2];
