@@ -2110,9 +2110,6 @@ u32 get_random_u32(void)
 	unsigned long flags = 0;
 	struct batched_entropy *batch;
 
-	if (arch_get_random_int(&ret))
-		return ret;
-
 	use_lock = READ_ONCE(crng_init) < 2;
 	batch = &get_cpu_var(batched_entropy_u32);
 	if (use_lock)
