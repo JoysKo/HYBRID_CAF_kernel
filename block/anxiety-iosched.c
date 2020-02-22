@@ -69,13 +69,9 @@ static uint16_t anxiety_dispatch_batch(struct request_queue *q)
 			dispatched++;
 	}
 
-	/* Submit one async request after the sync batch to avoid starvation */
-	if (!list_empty(&adata->queue[ASYNC])) {
-		ret = __anxiety_dispatch(q,
-			anxiety_next_entry(&adata->queue[ASYNC]));
-
-		if (!ret)
-			dispatched++;
+			if (!ret)
+				dispatched++;
+		}
 
 		dispatched++;
 	}
