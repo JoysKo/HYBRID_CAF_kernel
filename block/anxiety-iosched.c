@@ -13,12 +13,10 @@
 #include <linux/init.h>
 
 /* Batch this many synchronous requests at a time */
-#define	DEFAULT_SYNC_RATIO	(4)
+#define	DEFAULT_SYNC_RATIO	(8)
 
-enum {
-	SYNC,
-	ASYNC
-};
+/* Run each batch this many times*/
+#define DEFAULT_BATCH_COUNT	(4)
 
 struct anxiety_data {
 	struct list_head queue[2];
