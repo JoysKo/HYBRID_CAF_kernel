@@ -1118,6 +1118,13 @@ int smblib_set_icl_current(struct smb_charger *chg, int icl_ua)
 	if (icl_ua == INT_MAX)
 		goto override_suspend_config;
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	if (force_fast_charge > 0 &&
+			chg->real_charger_type == POWER_SUPPLY_TYPE_USB &&
+			icl_ua == USBIN_500MA)
+		icl_ua = USBIN_900MA;
+#endif
+
 	/* configure current */
 	if (chg->typec_mode == POWER_SUPPLY_TYPEC_SOURCE_DEFAULT
 		&& (chg->real_charger_type == POWER_SUPPLY_TYPE_USB)) {
@@ -3040,9 +3047,16 @@ static int smblib_handle_usb_current(struct smb_charger *chg,
 {
 	int rc = 0, rp_ua, typec_mode;
 
-	if (usb_current < USBIN_500MA
-			&& usb_current > 0)
-		usb_current = USBIN_500MA;
+#ifdef CONFIG_FORCE_FAST_CHARGE
+	if (force_fast_charge > 0 &&
+			chg->real_charger_type == POWER_SUPPLY_TYPE_USB) {
+		if (usb_current > 0 && usb_current < USBIN_500MA)
+			usb_current = USBIN_500MA;
+		else if (usb_current >= USBIN_500MA)
+			usb_current = USBIN_900MA;
+	}
+#endif
+
 	if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_FLOAT) {
 		if (usb_current == -ETIMEDOUT) {
 			/*
