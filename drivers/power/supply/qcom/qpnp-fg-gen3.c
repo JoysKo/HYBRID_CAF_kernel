@@ -1049,11 +1049,11 @@ static int fg_get_batt_profile(struct fg_chip *chip)
 	}
 
 	rc = of_property_read_u32(profile_node, "qcom,nom-batt-capacity-mah",
-                       &chip->bp.nom_cap_uah);
+			&chip->bp.nom_cap_uah);
 	if (rc < 0) {
-               pr_err("battery nominal capacity unavailable, rc:%d\n", rc);
-               chip->bp.nom_cap_uah = -EINVAL;
-       }
+		pr_err("battery nominal capacity unavailable, rc:%d\n", rc);
+		chip->bp.nom_cap_uah = -EINVAL;
+	}
 
 	data = of_get_property(profile_node, "qcom,fg-profile-data", &len);
 	if (!data) {
