@@ -3073,9 +3073,9 @@ static int get_lladdr(struct net_device *dev, struct in6_addr *addr,
 
 static int pick_local_ip6addrs(struct c4iw_dev *dev, struct iw_cm_id *cm_id)
 {
-	struct in6_addr uninitialized_var(addr);
 	struct sockaddr_in6 *la6 = (struct sockaddr_in6 *)&cm_id->local_addr;
 	struct sockaddr_in6 *ra6 = (struct sockaddr_in6 *)&cm_id->remote_addr;
+	struct in6_addr addr;
 
 	if (!get_lladdr(dev->rdev.lldi.ports[0], &addr, IFA_F_TENTATIVE)) {
 		memcpy(la6->sin6_addr.s6_addr, &addr, 16);

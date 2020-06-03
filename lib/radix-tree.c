@@ -641,7 +641,7 @@ void *radix_tree_tag_clear(struct radix_tree_root *root,
 	struct radix_tree_node *node = NULL;
 	struct radix_tree_node *slot = NULL;
 	unsigned int height, shift;
-	int uninitialized_var(offset);
+	int offset;
 
 	height = root->height;
 	if (index > radix_tree_maxindex(height))
