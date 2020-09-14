@@ -493,7 +493,7 @@ static int read_all_xattrs(struct inode *inode, struct page *ipage,
 	*base_addr = txattr_addr;
 	return 0;
 fail:
-	kvfree(txattr_addr);
+	kfree(txattr_addr);
 	return err;
 }
 
@@ -660,7 +660,7 @@ ssize_t f2fs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 	}
 	error = buffer_size - rest;
 cleanup:
-	kvfree(base_addr);
+	kfree(base_addr);
 	return error;
 }
 
@@ -801,7 +801,7 @@ static int __f2fs_setxattr(struct inode *inode, int index,
 	if (!error && S_ISDIR(inode->i_mode))
 		f2fs_inode_xattr_set(inode);
 exit:
-	kvfree(base_addr);
+	kfree(base_addr);
 	return error;
 }
 
