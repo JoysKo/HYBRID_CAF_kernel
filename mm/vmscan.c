@@ -147,7 +147,7 @@ struct scan_control {
  * From 0 .. 200.  Higher means more swappy.
  * By default, the highest setting is 100, 200 is only for emergencies.
  */
-int vm_swappiness = 60;
+int vm_swappiness = 100;
 /*
  * The total number of pages which are beyond the high watermark within all
  * zones.
