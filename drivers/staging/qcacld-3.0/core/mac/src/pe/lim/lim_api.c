@@ -63,8 +63,6 @@
 #include "cds_concurrency.h"
 #include "nan_datapath.h"
 
-#define NO_SESSION 0xff
-
 static void __lim_init_scan_vars(tpAniSirGlobal pMac)
 {
 	pMac->lim.gLimUseScanModeForLearnMode = 1;
@@ -1183,8 +1181,7 @@ void pe_register_callbacks_with_wma(tpAniSirGlobal pMac,
 
 	retStatus = wma_register_roaming_callbacks(p_cds_gctx,
 			ready_req->csr_roam_synch_cb,
-			ready_req->pe_roam_synch_cb,
-			ready_req->csr_roam_pmkid_req_cb);
+			ready_req->pe_roam_synch_cb);
 	if (retStatus != QDF_STATUS_SUCCESS)
 		pe_err("Registering roaming callbacks with WMA failed");
 

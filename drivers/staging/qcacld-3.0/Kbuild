@@ -37,8 +37,6 @@ endif
 # Make WLAN as open-source driver by default
 WLAN_OPEN_SOURCE := 1
 
-DEVELOPER_DISABLE_BUILD_TIMESTAMP := y
-
 ifeq ($(KERNEL_BUILD), 0)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
@@ -118,8 +116,6 @@ ifeq ($(KERNEL_BUILD), 0)
 
 	ifeq ($(CONFIG_ARCH_SDM660), y)
 	CONFIG_QCACLD_FEATURE_METERING := y
-	#Flag to enable FIPS
-	CONFIG_WLAN_FEATURE_FIPS := y
 	endif
 
 	ifeq ($(CONFIG_ARCH_SDM630), y)
@@ -248,6 +244,26 @@ endif
 
 endif
 
+
+# As per target team, build is done as follows:
+# Defconfig : build with default flags
+# Slub      : defconfig  + CONFIG_SLUB_DEBUG=y +
+#	      CONFIG_SLUB_DEBUG_ON=y + CONFIG_PAGE_POISONING=y
+# Perf      : Using appropriate msmXXXX-perf_defconfig
+#
+# Shipment builds (user variants) should not have any debug feature
+# enabled. This is identified using 'TARGET_BUILD_VARIANT'. Slub builds
+# are identified using the CONFIG_SLUB_DEBUG_ON configuration. Since
+# there is no other way to identify defconfig builds, QCOMs internal
+# representation of perf builds (identified using the string 'perf'),
+# is used to identify if the build is a slub or defconfig one. This
+# way no critical debug feature will be enabled for perf and shipment
+# builds. Other OEMs are also protected using the TARGET_BUILD_VARIANT
+# config.
+ifneq ($(TARGET_BUILD_VARIANT),user)
+	CONFIG_FEATURE_PKTLOG := y
+endif
+
 #enable spectral scan feature
 CONFIG_WLAN_SPECTRAL_SCAN := y
 
@@ -281,13 +297,10 @@ endif
 #Enable beacon reporting feature
 CONFIG_WLAN_BEACON_REPORTING := y
 
-#Enable/Disable FW thermal mitigation feature
-CONFIG_WLAN_FW_THERMAL_MITIGATION := n
-
 # Feature flags which are not (currently) configurable via Kconfig
 
 #Whether to build debug version
-BUILD_DEBUG_VERSION := 0
+BUILD_DEBUG_VERSION := 1
 
 #Enable this flag to build driver in diag version
 BUILD_DIAG_VERSION := 1
@@ -295,13 +308,10 @@ BUILD_DIAG_VERSION := 1
 #Do we panic on bug?  default is to warn
 ifeq ($(CONFIG_SLUB_DEBUG), y)
 	PANIC_ON_BUG := 1
-	WLAN_WARN_ON_ASSERT := 1
 else ifeq ($(CONFIG_PERF_DEBUG), y)
 	PANIC_ON_BUG := 1
-	WLAN_WARN_ON_ASSERT := 1
 else
 	PANIC_ON_BUG := 0
-	WLAN_WARN_ON_ASSERT := 0
 endif
 
 #Enable OL debug and wmi unified functions
@@ -703,6 +713,7 @@ DFS_INC :=	-I$(WLAN_ROOT)/$(DFS_INC_DIR) \
 
 DFS_OBJS :=	$(DFS_SRC_DIR)/dfs_bindetects.o \
 		$(DFS_SRC_DIR)/dfs.o \
+		$(DFS_SRC_DIR)/dfs_debug.o\
 		$(DFS_SRC_DIR)/dfs_fcc_bin5.o\
 		$(DFS_SRC_DIR)/dfs_init.o\
 		$(DFS_SRC_DIR)/dfs_misc.o\
@@ -1148,10 +1159,6 @@ ifeq ($(CONFIG_MPC_UT_FRAMEWORK),y)
 WMA_OBJS +=	$(WMA_SRC_DIR)/wma_utils_ut.o
 endif
 
-ifeq ($(CONFIG_WLAN_FW_THERMAL_MITIGATION), y)
-WMA_OBJS += $(WMA_SRC_DIR)/wma_thermal.o
-endif
-
 ############## PLD ##########
 PLD_DIR := core/pld
 PLD_INC_DIR := $(PLD_DIR)/inc
@@ -1273,6 +1280,7 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DANI_OS_TYPE_ANDROID=6 \
 		-DPTT_SOCK_SVC_ENABLE \
 		-Wall\
+		-Werror\
 		-D__linux__ \
 		-DHAL_SELF_STA_PER_BSS=1 \
 		-DFEATURE_WLAN_WAPI \
@@ -1281,7 +1289,9 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DWLAN_AP_STA_CONCURRENCY \
 		-DFEATURE_WLAN_SCAN_PNO \
 		-DWLAN_FEATURE_PACKET_FILTERING \
+		-DWLAN_FEATURE_P2P_DEBUG \
 		-DWLAN_ENABLE_AGEIE_ON_SCAN_RESULTS \
+		-DWLANTL_DEBUG\
 		-DWLAN_NS_OFFLOAD \
 		-DWLAN_SOFTAP_VSTA_FEATURE \
 		-DWLAN_FEATURE_GTK_OFFLOAD \
@@ -1300,10 +1310,6 @@ CDEFINES :=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DWMI_CMD_STRINGS \
 		-DCONFIG_HDD_INIT_WITH_RTNL_LOCK \
 		-DMWS_COEX
-
-ifeq ($(CONFIG_WLAN_FEATURE_FIPS), y)
-CDEFINES += -DWLAN_FEATURE_FIPS
-endif
 
 ifneq ($(CONFIG_HIF_USB), 1)
 CDEFINES += -DWLAN_LOGGING_SOCK_SVC_ENABLE
@@ -1463,10 +1469,6 @@ ifeq ($(CONFIG_WLAN_BEACON_REPORTING),y)
 CDEFINES += -DNTH_BEACON_OFFLOAD
 endif
 
-ifeq ($(CONFIG_WLAN_FW_THERMAL_MITIGATION),y)
-CDEFINES += -DFW_THERMAL_THROTTLE_SUPPORT
-endif
-
 ifeq ($(BUILD_DIAG_VERSION),1)
 CDEFINES += -DFEATURE_WLAN_DIAG_SUPPORT
 CDEFINES += -DFEATURE_WLAN_DIAG_SUPPORT_CSR
@@ -1498,7 +1500,7 @@ ifeq ($(CONFIG_WLAN_FEATURE_LPSS),y)
 CDEFINES += -DWLAN_FEATURE_LPSS
 endif
 
-ifeq ($(CONFIG_QCA_CLD_DEBUG),y)
+ifneq ($(TARGET_BUILD_VARIANT),user)
 CDEFINES += -DDESC_DUP_DETECT_DEBUG
 CDEFINES += -DDEBUG_RX_RING_BUFFER
 endif
@@ -1826,6 +1828,10 @@ ifeq (y,$(filter y,$(CONFIG_CNSS_EOS) $(CONFIG_ICNSS)))
 CONFIG_HELIUMPLUS := y
 CONFIG_64BIT_PADDR := y
 CONFIG_FEATURE_TSO := y
+CONFIG_FEATURE_TSO_DEBUG := y
+ifneq ($(CONFIG_FORCE_ALLOC_FROM_DMA_ZONE), y)
+CONFIG_ENABLE_DEBUG_ADDRESS_MARKING := y
+endif
 ifeq ($(CONFIG_HELIUMPLUS),y)
 CDEFINES += -DHELIUMPLUS
 CDEFINES += -DAR900B
@@ -1949,10 +1955,6 @@ ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard
 endif
 
-# To build without debug just ignore not used code.
-EXTRA_CFLAGS += $(call cc-disable-warning,unused-variable,)
-EXTRA_CFLAGS += $(call cc-disable-warning,unused-function,)
-
 # If the module name is not "wlan", then the define MULTI_IF_NAME to be the
 # same a the QCA CHIP name. The host driver will then append MULTI_IF_NAME to
 # any string that must be unique for all instances of the driver on the system.
@@ -1971,8 +1973,6 @@ endif
 ifdef WLAN_HDD_ADAPTER_MAGIC
 CDEFINES += -DWLAN_HDD_ADAPTER_MAGIC=$(WLAN_HDD_ADAPTER_MAGIC)
 endif
-
-ccflags-y += $(call cc-option, -g0)
 
 # inject some build related information
 ifeq ($(CONFIG_BUILD_TAG), y)
