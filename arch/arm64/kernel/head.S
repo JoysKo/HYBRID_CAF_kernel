@@ -417,67 +417,31 @@ ENDPROC(__create_page_tables)
  * The following fragment of code is executed with the MMU enabled.
  */
 	.set	initial_sp, init_thread_union + THREAD_START_SP
-__primary_switched:
-	mov	x28, lr				// preserve LR
+__mmap_switched:
+	adr_l	x6, __bss_start
+	adr_l	x7, __bss_stop
 
-	adr_l	x8, vectors			// load VBAR_EL1 with virtual
-	msr	vbar_el1, x8			// vector table address
-	isb
-
-	// Clear BSS
-	adr_l	x0, __bss_start
-	mov	x1, xzr
-	adr_l	x2, __bss_stop
-	sub	x2, x2, x0
-	bl	__pi_memset
-	dsb	ishst				// Make zero page visible to PTW
-
-#ifdef CONFIG_THREAD_INFO_IN_TASK
-        adrp    x4, init_thread_union
-        add     sp, x4, #THREAD_SIZE
-        adr_l   x5, init_task
-        msr     sp_el0, x5                      // Save thread_info
-#else
-	adr_l	sp, initial_sp, x4
-	mov	x4, sp
-	and	x4, x4, #~(THREAD_SIZE - 1)
-	msr	sp_el0, x4			// Save thread_info
-#endif
-
+1:	cmp	x6, x7
+	b.hs	2f
+	str	xzr, [x6], #8			// Clear BSS
+	b	1b
+2:
+	adrp	x4, initial_sp
+	add	sp, x4, :lo12:initial_sp
 	str_l	x21, __fdt_pointer, x5		// Save FDT pointer
-
-	ldr_l	x4, kimage_vaddr		// Save the offset between
-	sub	x4, x4, x24			// the kernel virtual and
-	str_l	x4, kimage_voffset, x5		// physical mappings
-
+	str_l	x24, memstart_addr, x6		// Save PHYS_OFFSET
 	mov	x29, #0
 #ifdef CONFIG_KASAN
 	bl	kasan_early_init
 #endif
-#ifdef CONFIG_RANDOMIZE_BASE
-	tst	x23, ~(MIN_KIMG_ALIGN - 1)	// already running randomized?
-	b.ne	0f
-	mov	x0, x21				// pass FDT address in x0
-	mov	x1, x23				// pass modulo offset in x1
-	bl	kaslr_early_init		// parse FDT for KASLR options
-	cbz	x0, 0f				// KASLR disabled? just proceed
-	orr	x23, x23, x0			// record KASLR offset
-	ret	x28				// we must enable KASLR, return
-						// to __enable_mmu()
-0:
-#endif
 	b	start_kernel
-ENDPROC(__primary_switched)
+ENDPROC(__mmap_switched)
 
 /*
  * end early head section, begin head code that is also used for
  * hotplug and needs to have the same protections as the text region
  */
-	.section ".idmap.text","ax"
-
-ENTRY(kimage_vaddr)
-	.quad		_text - TEXT_OFFSET
-
+	.section ".text","ax"
 /*
  * If we're fortunate enough to boot at EL2, ensure that the world is
  * sane before dropping to EL1.
