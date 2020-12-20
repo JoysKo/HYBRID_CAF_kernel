@@ -125,6 +125,7 @@ static struct xt_match bpf_mt_reg[] __read_mostly = {
 		.match		= bpf_mt,
 		.destroy	= bpf_mt_destroy,
 		.matchsize	= sizeof(struct xt_bpf_info),
+		.usersize	= offsetof(struct xt_bpf_info, filter),
 		.me		= THIS_MODULE,
 	},
 	{
