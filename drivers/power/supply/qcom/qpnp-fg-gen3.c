@@ -3954,7 +3954,6 @@ static int fg_psy_get_property(struct power_supply *psy,
 
 	return 0;
 }
-
 #define BCL_RESET_RETRY_COUNT 4
 static int fg_bcl_reset(struct fg_chip *chip)
 {

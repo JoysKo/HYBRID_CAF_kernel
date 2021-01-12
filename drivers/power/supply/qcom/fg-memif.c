@@ -1,4 +1,5 @@
 /* Copyright (c) 2016-2017, 2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -745,7 +746,6 @@ out:
 	/* Return the error we got before releasing memory access */
 	return rc;
 }
-
 int fg_dma_mem_req(struct fg_chip *chip, bool request)
 {
 	int ret, rc = 0, retry_count  = RETRY_COUNT;

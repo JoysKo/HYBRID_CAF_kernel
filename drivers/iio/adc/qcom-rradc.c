@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2017, 2020, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -685,7 +686,6 @@ static const struct rradc_channels rradc_chans[] = {
 			FG_ADC_RR_SKIN_TOO_HOT, FG_ADC_RR_SKIN_TOO_HOT,
 			FG_ADC_RR_AUX_THERM_STS)
 };
-
 static bool rradc_is_batt_psy_available(struct rradc_chip *chip)
 {
 	if (!chip->batt_psy)
@@ -1123,7 +1123,6 @@ static int rradc_read_raw(struct iio_dev *indio_dev,
 
 	return rc;
 }
-
 static void psy_notify_work(struct work_struct *work)
 {
 	struct rradc_chip *chip = container_of(work,
