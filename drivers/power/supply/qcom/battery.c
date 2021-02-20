@@ -823,7 +823,7 @@ static int pl_fv_vote_callback(struct votable *votable, void *data,
 	rc = power_supply_set_property(chip->main_psy,
 			POWER_SUPPLY_PROP_VOLTAGE_MAX, &pval);
 	if (rc < 0) {
-		pr_err("Couldn't set main fv, rc=%d\n", rc);
+		pr_debug("Couldn't set main fv, rc=%d\n", rc);
 		return rc;
 	}
 
@@ -832,7 +832,7 @@ static int pl_fv_vote_callback(struct votable *votable, void *data,
 		rc = power_supply_set_property(chip->pl_psy,
 				POWER_SUPPLY_PROP_VOLTAGE_MAX, &pval);
 		if (rc < 0) {
-			pr_err("Couldn't set float on parallel rc=%d\n", rc);
+			pr_debug("Couldn't set float on parallel rc=%d\n", rc);
 			return rc;
 		}
 	}

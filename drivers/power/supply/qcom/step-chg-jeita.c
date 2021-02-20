@@ -275,7 +275,6 @@ static int handle_jeita(struct step_chg_info *chip)
 	union power_supply_propval pval = {0, };
 	int rc = 0, fcc_ua = 0, fv_uv = 0;
 	u64 elapsed_us;
-
 	rc = power_supply_get_property(chip->batt_psy,
 		POWER_SUPPLY_PROP_SW_JEITA_ENABLED, &pval);
 	if (rc < 0)
@@ -342,7 +341,7 @@ static int handle_jeita(struct step_chg_info *chip)
 	if (fv_uv > 0)
 		vote(chip->fv_votable, JEITA_VOTER, true, fv_uv);
 
-	pr_err("%s = %d FCC = %duA FV = %duV\n",
+	pr_debug("%s = %d FCC = %duA FV = %duV\n",
 		jeita_fv_config.prop_name, pval.intval, fcc_ua, fv_uv);
 
 update_time:
