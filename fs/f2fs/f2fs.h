@@ -3818,8 +3818,7 @@ static inline bool f2fs_force_buffered_io(struct inode *inode,
 	if (test_opt(sbi, LFS) && (rw == WRITE) &&
 				block_unaligned_IO(inode, iocb, iter))
 		return true;
-	if (is_sbi_flag_set(F2FS_I_SB(inode), SBI_CP_DISABLED) &&
-					!(inode->i_flags & S_SWAPFILE))
+	if (is_sbi_flag_set(F2FS_I_SB(inode), SBI_CP_DISABLED))
 		return true;
 
 	return false;
