@@ -1716,26 +1716,6 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 			return -EINVAL;
 		}
 
-		if ((opcode == BPF_LSH || opcode == BPF_RSH ||
-		     opcode == BPF_ARSH) && BPF_SRC(insn->code) == BPF_K) {
-			int size = BPF_CLASS(insn->code) == BPF_ALU64 ? 64 : 32;
-
-			if (insn->imm < 0 || insn->imm >= size) {
-				verbose("invalid shift %d\n", insn->imm);
-				return -EINVAL;
-			}
-		}
-
-		/* check dest operand */
-		err = check_reg_arg(regs, insn->dst_reg, DST_OP_NO_MARK);
-		if (err)
-			return err;
-
-		dst_reg = &regs[insn->dst_reg];
-
-		/* first we want to adjust our ranges. */
-		adjust_reg_min_max_vals(env, insn);
-
 		/* pattern match 'bpf_add Rx, imm' instruction */
 		if (opcode == BPF_ADD && BPF_CLASS(insn->code) == BPF_ALU64 &&
 		    dst_reg->type == FRAME_PTR && BPF_SRC(insn->code) == BPF_K) {
