@@ -2954,9 +2954,7 @@ static int do_check(struct bpf_verifier_env *env)
 			if (err)
 				return err;
 
-			reset_reg_range_values(regs, insn->dst_reg);
-			if (BPF_SIZE(insn->code) != BPF_W &&
-			    BPF_SIZE(insn->code) != BPF_DW) {
+			if (BPF_SIZE(insn->code) != BPF_W) {
 				insn_idx++;
 				continue;
 			}
@@ -3369,12 +3367,9 @@ static int convert_ctx_accesses(struct bpf_verifier_env *env)
 
 	insn = env->prog->insnsi + delta;
 
-	for (i = 0; i < insn_cnt; i++, insn++) {
-		if (insn->code == (BPF_LDX | BPF_MEM | BPF_W) ||
-		    insn->code == (BPF_LDX | BPF_MEM | BPF_DW))
+		if (insn->code == (BPF_LDX | BPF_MEM | BPF_W))
 			type = BPF_READ;
-		else if (insn->code == (BPF_STX | BPF_MEM | BPF_W) ||
-			 insn->code == (BPF_STX | BPF_MEM | BPF_DW))
+		else if (insn->code == (BPF_STX | BPF_MEM | BPF_W))
 			type = BPF_WRITE;
 		else
 			continue;
