@@ -7454,6 +7454,11 @@ static void perf_event_free_bpf_prog(struct perf_event *event)
 	if (event->attr.type != PERF_TYPE_TRACEPOINT) {
 		perf_event_free_bpf_handler(event);
 		return;
+
+	prog = event->tp_event->prog;
+	if (prog && event->tp_event->bpf_prog_owner == event) {
+		event->tp_event->prog = NULL;
+		bpf_prog_put_rcu(prog);
 	}
 	perf_event_detach_bpf_prog(event);
 }
