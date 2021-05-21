@@ -339,34 +339,7 @@ static struct ctl_table net_core_table[] = {
 		.data		= &bpf_jit_enable,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax_bpf_enable,
-# ifdef CONFIG_BPF_JIT_ALWAYS_ON
-		.extra1		= &one,
-		.extra2		= &one,
-# else
-		.extra1		= &zero,
-		.extra2		= &two,
-# endif
-	},
-# ifdef CONFIG_HAVE_EBPF_JIT
-	{
-		.procname	= "bpf_jit_harden",
-		.data		= &bpf_jit_harden,
-		.maxlen		= sizeof(int),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax_bpf_restricted,
-		.extra1		= &zero,
-		.extra2		= &two,
-	},
-# endif
-	{
-		.procname	= "bpf_jit_limit",
-		.data		= &bpf_jit_limit,
-		.maxlen		= sizeof(long),
-		.mode		= 0600,
-		.proc_handler	= proc_dolongvec_minmax_bpf_restricted,
-		.extra1		= &long_one,
-		.extra2		= &long_max,
+		.proc_handler	= proc_dointvec
 	},
 #endif
 	{
