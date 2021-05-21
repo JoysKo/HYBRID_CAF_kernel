@@ -51,11 +51,8 @@ static int bpf_array_alloc_percpu(struct bpf_array *array)
 /* Called from syscall */
 static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 {
-	bool percpu = attr->map_type == BPF_MAP_TYPE_PERCPU_ARRAY;
-	u32 elem_size, index_mask, max_entries;
-	bool unpriv = !capable(CAP_SYS_ADMIN);
-	u64 cost, array_size, mask64;
 	struct bpf_array *array;
+	u32 elem_size, array_size;
 
 	/* check sanity of attributes */
 	if (attr->max_entries == 0 || attr->key_size != 4 ||
@@ -71,24 +68,9 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 
 	elem_size = round_up(attr->value_size, 8);
 
-	max_entries = attr->max_entries;
-	index_mask = roundup_pow_of_two(max_entries) - 1;
-
-	if (unpriv)
-		/* round up array size to nearest power of 2,
-		 * since cpu will speculate within index_mask limits
-		 */
-		max_entries = index_mask + 1;
-
-	array_size = sizeof(*array);
-	if (percpu)
-		array_size += (u64) max_entries * sizeof(void *);
-	else
-		array_size += (u64) max_entries * elem_size;
-
-	/* make sure there is no u32 overflow later in round_up() */
-	cost = array_size;
-	if (cost >= U32_MAX - PAGE_SIZE)
+	/* check round_up into zero and u32 overflow */
+	if (elem_size == 0 ||
+	    attr->max_entries > (U32_MAX - PAGE_SIZE - sizeof(*array)) / elem_size)
 		return ERR_PTR(-ENOMEM);
 	if (percpu) {
 		cost += (u64)attr->max_entries * elem_size * num_possible_cpus();
@@ -97,16 +79,15 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	}
 	cost = round_up(cost, PAGE_SIZE) >> PAGE_SHIFT;
 
-	ret = bpf_map_precharge_memlock(cost);
-	if (ret < 0)
-		return ERR_PTR(ret);
+	array_size = sizeof(*array) + attr->max_entries * elem_size;
 
 	/* allocate all map elements and zero-initialize them */
-	array = bpf_map_area_alloc(array_size);
-	if (!array)
-		return ERR_PTR(-ENOMEM);
-	array->index_mask = index_mask;
-	array->map.unpriv_array = unpriv;
+	array = kzalloc(array_size, GFP_USER | __GFP_NOWARN);
+	if (!array) {
+		array = vzalloc(array_size);
+		if (!array)
+			return ERR_PTR(-ENOMEM);
+	}
 
 	/* copy mandatory map attributes */
 	array->map.map_type = attr->map_type;
@@ -136,7 +117,7 @@ static void *array_map_lookup_elem(struct bpf_map *map, void *key)
 	if (unlikely(index >= array->map.max_entries))
 		return NULL;
 
-	return array->value + array->elem_size * (index & array->index_mask);
+	return array->value + array->elem_size * index;
 }
 
 /* Called from eBPF program */
@@ -215,51 +196,7 @@ static int array_map_update_elem(struct bpf_map *map, void *key, void *value,
 		/* all elements already exist */
 		return -EEXIST;
 
-	if (array->map.map_type == BPF_MAP_TYPE_PERCPU_ARRAY)
-		memcpy(this_cpu_ptr(array->pptrs[index & array->index_mask]),
-		       value, map->value_size);
-	else
-		memcpy(array->value +
-		       array->elem_size * (index & array->index_mask),
-		       value, map->value_size);
-	return 0;
-}
-
-int bpf_percpu_array_update(struct bpf_map *map, void *key, void *value,
-			    u64 map_flags)
-{
-	struct bpf_array *array = container_of(map, struct bpf_array, map);
-	u32 index = *(u32 *)key;
-	void __percpu *pptr;
-	int cpu, off = 0;
-	u32 size;
-
-	if (unlikely(map_flags > BPF_EXIST))
-		/* unknown flags */
-		return -EINVAL;
-
-	if (unlikely(index >= array->map.max_entries))
-		/* all elements were pre-allocated, cannot insert a new one */
-		return -E2BIG;
-
-	if (unlikely(map_flags == BPF_NOEXIST))
-		/* all elements already exist */
-		return -EEXIST;
-
-	/* the user space will provide round_up(value_size, 8) bytes that
-	 * will be copied into per-cpu area. bpf programs can only access
-	 * value_size of it. During lookup the same extra bytes will be
-	 * returned or zeros which were zero-filled by percpu_alloc,
-	 * so no kernel data leaks possible
-	 */
-	size = round_up(map->value_size, 8);
-	rcu_read_lock();
-	pptr = array->pptrs[index & array->index_mask];
-	for_each_possible_cpu(cpu) {
-		bpf_long_memcpy(per_cpu_ptr(pptr, cpu), value + off, size);
-		off += size;
-	}
-	rcu_read_unlock();
+	memcpy(array->value + array->elem_size * index, value, map->value_size);
 	return 0;
 }
 
