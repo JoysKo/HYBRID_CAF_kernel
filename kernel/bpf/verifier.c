@@ -705,50 +705,6 @@ static bool __is_pointer_value(bool allow_ptr_leaks,
 	}
 }
 
-static bool is_pointer_value(struct bpf_verifier_env *env, int regno)
-{
-	return __is_pointer_value(env->allow_ptr_leaks, &env->cur_state.regs[regno]);
-}
-
-static bool is_ctx_reg(struct bpf_verifier_env *env, int regno)
-{
-	const struct bpf_reg_state *reg = &env->cur_state.regs[regno];
-
-	return reg->type == PTR_TO_CTX;
-}
-
-static int check_ptr_alignment(struct bpf_verifier_env *env,
-			       struct bpf_reg_state *reg, int off, int size)
-{
-	if (reg->type != PTR_TO_PACKET && reg->type != PTR_TO_MAP_VALUE_ADJ) {
-		if (off % size != 0) {
-			verbose("misaligned access off %d size %d\n",
-				off, size);
-			return -EACCES;
-		} else {
-			return 0;
-		}
-	}
-
-	if (IS_ENABLED(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS))
-		/* misaligned access to packet is ok on x86,arm,arm64 */
-		return 0;
-
-	if (reg->id && size != 1) {
-		verbose("Unknown packet alignment. Only byte-sized access allowed\n");
-		return -EACCES;
-	}
-
-	/* skb->data is NET_IP_ALIGN-ed */
-	if (reg->type == PTR_TO_PACKET &&
-	    (NET_IP_ALIGN + reg->off + off) % size != 0) {
-		verbose("misaligned packet access off %d+%d+%d size %d\n",
-			NET_IP_ALIGN, reg->off, off, size);
-		return -EACCES;
-	}
-	return 0;
-}
-
 /* check whether memory at (regno + off) is accessible for t = (read | write)
  * if t==write, value_regno is a register which value is stored into memory
  * if t==read, value_regno is a register which will receive the value from memory
@@ -908,12 +864,6 @@ static int check_xadd(struct verifier_env *env, struct bpf_insn *insn)
 
 	if (is_pointer_value(env, insn->src_reg)) {
 		verbose("R%d leaks addr into mem\n", insn->src_reg);
-		return -EACCES;
-	}
-
-	if (is_ctx_reg(env, insn->dst_reg)) {
-		verbose("BPF_XADD stores into R%d context is not allowed\n",
-			insn->dst_reg);
 		return -EACCES;
 	}
 
@@ -3032,12 +2982,6 @@ static int do_check(struct bpf_verifier_env *env)
 			err = check_reg_arg(regs, insn->dst_reg, SRC_OP);
 			if (err)
 				return err;
-
-			if (is_ctx_reg(env, insn->dst_reg)) {
-				verbose("BPF_ST stores into R%d context is not allowed\n",
-					insn->dst_reg);
-				return -EACCES;
-			}
 
 			/* check that memory (dst_reg + off) is writeable */
 			err = check_mem_access(env, insn->dst_reg, insn->off,
