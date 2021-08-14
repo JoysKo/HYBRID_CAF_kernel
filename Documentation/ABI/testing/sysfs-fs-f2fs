@@ -28,8 +28,17 @@ Description:
 What:		/sys/fs/f2fs/<disk>/reclaim_segments
 Date:		October 2013
 Contact:	"Jaegeuk Kim" <jaegeuk.kim@samsung.com>
-Description:
-		 Controls the issue rate of segment discard commands.
+Description:	This parameter controls the number of prefree segments to be
+		reclaimed. If the number of prefree segments is larger than
+		the number of segments in the proportion to the percentage
+		over total volume size, f2fs tries to conduct checkpoint to
+		reclaim the prefree segments to free segments.
+		By default, 5% over total # of segments.
+
+What:		/sys/fs/f2fs/<disk>/main_blkaddr
+Date:		November 2019
+Contact:	"Ramon Pantin" <pantin@google.com>
+Description:	Shows first block address of MAIN area.
 
 What:		/sys/fs/f2fs/<disk>/ipu_policy
 Date:		November 2013
