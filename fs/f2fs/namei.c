@@ -1016,8 +1016,7 @@ put_out_dir:
 	if (new_page)
 		f2fs_put_page(new_page, 0);
 out_whiteout:
-	if (whiteout)
-		iput(whiteout);
+	iput(whiteout);
 out_dir:
 	if (old_dir_entry)
 		f2fs_put_page(old_dir_page, 0);
