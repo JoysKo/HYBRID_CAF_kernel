@@ -718,6 +718,12 @@ loff_t ext4_llseek(struct file *file, loff_t offset, int whence)
 	case SEEK_HOLE:
 		return ext4_seek_hole(file, offset, maxbytes);
 	}
+	/*
+	 * Make sure inline data cannot be created anymore since we are going
+	 * to allocate blocks for DIO. We know the inode does not have any
+	 * inline data now because ext4_dio_supported() checked for that.
+	 */
+	ext4_clear_inode_state(inode, EXT4_STATE_MAY_INLINE_DATA);
 
 	return -EINVAL;
 }
