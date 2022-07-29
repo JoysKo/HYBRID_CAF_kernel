@@ -194,6 +194,8 @@ static irqreturn_t cdns_uart_isr(int irq, void *dev_id)
 	 */
 	isrstatus = readl(port->membase + CDNS_UART_ISR_OFFSET);
 
+	isrstatus &= port->read_status_mask;
+	isrstatus &= ~port->ignore_status_mask;
 	/*
 	 * There is no hardware break detection, so we interpret framing
 	 * error with all-zeros data as a break sequence. Most of the time,
