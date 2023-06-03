@@ -916,13 +916,14 @@ static void dwc3_core_exit_mode(struct dwc3 *dwc)
 		/* do nothing */
 		break;
 	}
+	/* de-assert DRVVBUS for HOST and OTG mode */
+       dwc3_set_mode(dwc, DWC3_GCTL_PRTCAP_DEVICE);
 }
 
 /* XHCI reset, resets other CORE registers as well, re-init those */
 void dwc3_post_host_reset_core_init(struct dwc3 *dwc)
 {
-	dwc3_core_init(dwc);
-	dwc3_gadget_restart(dwc);
+	
 }
 
 static void (*notify_event)(struct dwc3 *, unsigned, unsigned);
