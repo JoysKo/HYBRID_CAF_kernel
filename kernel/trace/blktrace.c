@@ -876,7 +876,7 @@ static void blk_add_trace_bio(struct request_queue *q, struct bio *bio,
 	rcu_read_unlock();
  }
 
-sutatic void blk_add_trace_bio_bounce(void *ignore,
+static void blk_add_trace_bio_bounce(void *ignore,
 				     struct request_queue *q, struct bio *bio)
 {
 	blk_add_trace_bio(q, bio, BLK_TA_BOUNCE, 0);
