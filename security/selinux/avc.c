@@ -1148,7 +1148,7 @@ inline int avc_has_perm_noaudit(u32 ssid, u32 tsid,
 int avc_has_perm(u32 ssid, u32 tsid, u16 tclass,
 		 u32 requested, struct common_audit_data *auditdata)
 {
-	struct av_decision avd;
+	struct av_decision avd = { .auditdeny = 0xffffffff };
 	int rc, rc2;
 
 	rc = avc_has_perm_noaudit(ssid, tsid, tclass, requested, 0, &avd);
@@ -1163,7 +1163,7 @@ int avc_has_perm_flags(u32 ssid, u32 tsid, u16 tclass,
 		       u32 requested, struct common_audit_data *auditdata,
 		       int flags)
 {
-	struct av_decision avd;
+	struct av_decision avd = { .auditdeny = 0xffffffff };
 	int rc, rc2;
 
 	rc = avc_has_perm_noaudit(ssid, tsid, tclass, requested, 0, &avd);
