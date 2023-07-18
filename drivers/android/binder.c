@@ -3568,29 +3568,6 @@ static int binder_thread_write(struct binder_proc *proc,
 					proc->pid, thread->pid,
 					target, rdata.desc);
 			}
-			if (target == 0 && binder_context_mgr_node &&
-			    (cmd == BC_INCREFS || cmd == BC_ACQUIRE)) {
-				if (binder_context_mgr_node->proc == proc) {
-					binder_user_error("%d:%d context manager tried to acquire desc 0\n",
-							  proc->pid, thread->pid);
-					return -EINVAL;
-				}
-				ref = binder_get_ref_for_node(proc,
-					       binder_context_mgr_node);
-				if (ref->desc != target) {
-					binder_user_error("%d:%d tried to acquire reference to desc 0, got %d instead\n",
-						proc->pid, thread->pid,
-						ref->desc);
-				}
-			} else
-				ref = binder_get_ref(proc, target,
-						     cmd == BC_ACQUIRE ||
-						     cmd == BC_RELEASE);
-			if (ref == NULL) {
-				binder_user_error("%d:%d refcount change on invalid ref %d\n",
-					proc->pid, thread->pid, target);
-				break;
-			}
 			switch (cmd) {
 			case BC_INCREFS:
 				debug_string = "IncRefs";
