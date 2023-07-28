@@ -398,12 +398,9 @@ static struct avc_xperms_node *avc_xperms_alloc(void)
 {
 	struct avc_xperms_node *xp_node;
 
-<<<<<<< HEAD
 	xp_node = kmem_cache_zalloc(avc_xperms_cachep,
 			GFP_NOWAIT | __GFP_NOWARN);
-=======
-	xp_node = kmem_cache_zalloc(avc_xperms_cachep, GFP_NOWAIT | __GFP_NOWARN);
->>>>>>> 08feb4b0e25f (selinux: use __GFP_NOWARN with GFP_NOWAIT in the AVC)
+
 	if (!xp_node)
 		return xp_node;
 	INIT_LIST_HEAD(&xp_node->xpd_head);
