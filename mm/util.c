@@ -472,3 +472,9 @@ out_mm:
 out:
 	return res;
 }
+
+void *kvmalloc(unsigned long size, gfp_t flags)
+{
+    return kmalloc_track_caller(size, flags | __GFP_ZERO, _RET_IP_);
+}
+EXPORT_SYMBOL_GPL(kvmalloc);
