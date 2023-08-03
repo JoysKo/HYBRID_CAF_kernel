@@ -130,6 +130,8 @@ extern long strncpy_from_unsafe_user(char *dst, const void __user *unsafe_addr,
 				     long count);
 extern long strnlen_unsafe_user(const void __user *unsafe_addr, long count);
 
+extern __must_check int check_zeroed_user(const void __user *from, size_t size);
+
 /**
  * probe_kernel_address(): safely attempt to read from a location
  * @addr: address to read from
