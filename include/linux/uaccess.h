@@ -78,6 +78,22 @@ static inline unsigned long __copy_from_user_nocache(void *to,
 
 #endif		/* ARCH_HAS_NOCACHE_UACCESS */
 
+bool copy_from_kernel_nofault_allowed(const void *unsafe_src, size_t size);
+
+long copy_from_kernel_nofault(void *dst, const void *src, size_t size);
+long notrace copy_to_kernel_nofault(void *dst, const void *src, size_t size);
+
+long copy_from_user_nofault(void *dst, const void __user *src, size_t size);
+long notrace copy_to_user_nofault(void __user *dst, const void *src,
+		size_t size);
+
+long strncpy_from_kernel_nofault(char *dst, const void *unsafe_addr,
+		long count);
+
+long strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr,
+		long count);
+long strnlen_user_nofault(const void __user *unsafe_addr, long count);
+
 /*
  * probe_kernel_read(): safely attempt to read from a location
  * @dst: pointer to the buffer that shall take the data
