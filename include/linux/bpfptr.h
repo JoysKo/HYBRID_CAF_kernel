@@ -67,7 +67,7 @@ static inline int copy_to_bpfptr_offset(bpfptr_t dst, size_t offset,
 
 static inline void *kvmemdup_bpfptr(bpfptr_t src, size_t len)
 {
-	void *p = kvmalloc(len, GFP_USER | __GFP_NOWARN);
+	void *p = kmalloc(len, GFP_USER | __GFP_NOWARN);
 
 	if (!p)
 		return ERR_PTR(-ENOMEM);
