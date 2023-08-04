@@ -356,7 +356,9 @@ struct sock {
 #define sk_flags		__sk_common.skc_flags
 #define sk_rxhash		__sk_common.skc_rxhash
 
-	socket_lock_t		sk_lock;
+        u32			sk_pacing_status; /* see enum sk_pacing */
+
+        socket_lock_t		sk_lock;
 	struct sk_buff_head	sk_receive_queue;
 	/*
 	 * The backlog queue is special, it is always used with
@@ -465,6 +467,12 @@ struct sock {
 						  struct sk_buff *skb);
 	void                    (*sk_destruct)(struct sock *sk);
 	struct rcu_head		sk_rcu;
+};
+
+enum sk_pacing {
+	SK_PACING_NONE		= 0,
+	SK_PACING_NEEDED	= 1,
+	SK_PACING_FQ		= 2,
 };
 
 #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))

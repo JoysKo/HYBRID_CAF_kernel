@@ -37,6 +37,8 @@ unsigned int get_random_int(void);
 unsigned long get_random_long(void);
 unsigned long randomize_range(unsigned long start, unsigned long end, unsigned long len);
 
+u32 __get_random_u32_below(u32 ceil);
+
 /*
  * This is designed to be standalone for just prandom
  * users, but for now we include it from <linux/random.h>
