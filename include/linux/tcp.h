@@ -228,7 +228,11 @@ struct tcp_sock {
 		is_cwnd_limited:1;/* forward progress limited by snd_cwnd? */
 	u32	tlp_high_seq;	/* snd_nxt at the time of TLP */
 
+        u64	tcp_wstamp_ns;	/* departure time for next sent data packet */
+        u64	tcp_clock_cache; /* cache last tcp_clock_ns() (see tcp_mstamp_refresh()) */
+
 /* RTT measurement */
+        u64	tcp_mstamp;	/* most recent packet received/sent */
 	u32	srtt_us;	/* smoothed round trip time << 3 in usecs */
 	u32	mdev_us;	/* medium deviation			*/
 	u32	mdev_max_us;	/* maximal mdev for the last rtt period	*/
@@ -267,7 +271,10 @@ struct tcp_sock {
 	u32	prr_delivered;	/* Number of newly delivered packets to
 				 * receiver in Recovery. */
 	u32	prr_out;	/* Total number of pkts sent during Recovery. */
+        u32	delivered;	/* Total data packets delivered incl. rexmits */
+        u32	lost;		/* Total data packets lost incl. rexmits */
         u32	app_limited;	/* limited until "delivered" reaches this val */
+        u64	delivered_mstamp; /* time we reached "delivered" */
 
  	u32	rcv_wnd;	/* Current receiver window		*/
 	u32	write_seq;	/* Tail(+1) of data held in tcp send buffer */
