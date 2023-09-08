@@ -404,12 +404,14 @@ struct sock {
 				sk_no_check_tx : 1,
 				sk_no_check_rx : 1,
 				sk_userlocks : 4,
+				sk_pacing_shift : 8,
 				sk_protocol  : 8,
 				sk_type      : 16;
 #define SK_PROTOCOL_MAX U8_MAX
 	kmemcheck_bitfield_end(flags);
 	int			sk_wmem_queued;
 	gfp_t			sk_allocation;
+	u32			sk_pacing_status; /* see enum sk_pacing */
 	u32			sk_pacing_rate; /* bytes per second */
 	u32			sk_max_pacing_rate;
 	netdev_features_t	sk_route_caps;
@@ -465,6 +467,12 @@ struct sock {
 	void                    (*sk_destruct)(struct sock *sk);
 	struct rcu_head		sk_rcu;
 	struct sock_reuseport __rcu	*sk_reuseport_cb;
+};
+
+enum sk_pacing {
+	SK_PACING_NONE		= 0,
+	SK_PACING_NEEDED	= 1,
+	SK_PACING_FQ		= 2,
 };
 
 #define __sk_user_data(sk) ((*((void __rcu **)&(sk)->sk_user_data)))

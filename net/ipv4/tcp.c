@@ -403,6 +403,9 @@ void tcp_init_sock(struct sock *sk)
 	 * efficiently to them.  -DaveM
 	 */
 	tp->snd_cwnd = TCP_INIT_CWND;
+	
+	/* There's a bubble in the pipe until at least the first ACK. */
+	tp->app_limited = ~0U;
 
 	/* See draft-stevens-tcpca-spec-01 for discussion of the
 	 * initialization of these values.

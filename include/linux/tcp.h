@@ -213,6 +213,12 @@ struct tcp_sock {
 	u16	advmss;		/* Advertised MSS			*/
 	u8	tlp_retrans:1,	/* TLP is a retransmission */
 		unused_1:7;
+	u8	chrono_type:2,	/* current chronograph type */
+		rate_app_limited:1,  /* rate_{delivered,interval_us} limited? */
+		fastopen_connect:1, /* FASTOPEN_CONNECT sockopt */
+		fastopen_no_cookie:1, /* Allow send/recv SYN+data without a cookie */
+		is_sack_reneg:1,    /* in recovery from loss with SACK reneg? */
+		fastopen_client_fail:2; /* reason why fastopen failed */
 	u8	nonagle     : 4,/* Disable Nagle algorithm?             */
 		thin_lto    : 1,/* Use linear timeouts for thin streams */
 		thin_dupack : 1,/* Fast retransmit on first dupack      */
@@ -227,8 +233,11 @@ struct tcp_sock {
 		save_syn:1,	/* Save headers of SYN packet */
 		is_cwnd_limited:1;/* forward progress limited by snd_cwnd? */
 	u32	tlp_high_seq;	/* snd_nxt at the time of TLP */
+	u64	tcp_wstamp_ns;	/* departure time for next sent data packet */
+	u64	tcp_clock_cache; /* cache last tcp_clock_ns() (see tcp_mstamp_refresh()) */
 
 /* RTT measurement */
+	u64	tcp_mstamp;	/* most recent packet received/sent */
 	u32	srtt_us;	/* smoothed round trip time << 3 in usecs */
 	u32	mdev_us;	/* medium deviation			*/
 	u32	mdev_max_us;	/* maximal mdev for the last rtt period	*/
@@ -266,7 +275,11 @@ struct tcp_sock {
 	u32	prior_cwnd;	/* Congestion window at start of Recovery. */
 	u32	prr_delivered;	/* Number of newly delivered packets to
 				 * receiver in Recovery. */
+	u32	app_limited;	/* limited until "delivered" reaches this val */
 	u32	prr_out;	/* Total number of pkts sent during Recovery. */
+	u32	delivered;	/* Total data packets delivered incl. rexmits */
+	u32	lost;		/* Total data packets lost incl. rexmits */
+	u64	delivered_mstamp; /* time we reached "delivered" */
 
  	u32	rcv_wnd;	/* Current receiver window		*/
 	u32	write_seq;	/* Tail(+1) of data held in tcp send buffer */
