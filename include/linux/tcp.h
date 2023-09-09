@@ -163,6 +163,9 @@ struct tcp_sock {
 	u32	segs_in;	/* RFC4898 tcpEStatsPerfSegsIn
 				 * total number of segments in.
 				 */
+	u32	data_segs_in;	/* RFC4898 tcpEStatsPerfDataSegsIn
+				 * total number of data segments in.
+				 */
  	u32	rcv_nxt;	/* What we want to receive next 	*/
 	u32	copied_seq;	/* Head of yet unread data		*/
 	u32	rcv_wup;	/* rcv_nxt on last window update sent	*/
@@ -213,6 +216,8 @@ struct tcp_sock {
 	u16	advmss;		/* Advertised MSS			*/
 	u8	tlp_retrans:1,	/* TLP is a retransmission */
 		unused_1:7;
+	u32	chrono_start;	/* Start time in jiffies of a TCP chrono */
+	u32	chrono_stat[3];	/* Time in jiffies for chrono_stat stats */
 	u8	chrono_type:2,	/* current chronograph type */
 		rate_app_limited:1,  /* rate_{delivered,interval_us} limited? */
 		fastopen_connect:1, /* FASTOPEN_CONNECT sockopt */
@@ -379,6 +384,12 @@ enum tsq_flags {
 	TCP_MTU_REDUCED_DEFERRED,  /* tcp_v{4|6}_err() could not call
 				    * tcp_v{4|6}_mtu_reduced()
 				    */
+	TSQF_THROTTLED			= (1UL << TSQ_THROTTLED),
+	TSQF_QUEUED			= (1UL << TSQ_QUEUED),
+	TCPF_TSQ_DEFERRED		= (1UL << TCP_TSQ_DEFERRED),
+	TCPF_WRITE_TIMER_DEFERRED	= (1UL << TCP_WRITE_TIMER_DEFERRED),
+	TCPF_DELACK_TIMER_DEFERRED	= (1UL << TCP_DELACK_TIMER_DEFERRED),
+	TCPF_MTU_REDUCED_DEFERRED	= (1UL << TCP_MTU_REDUCED_DEFERRED),
 };
 
 static inline struct tcp_sock *tcp_sk(const struct sock *sk)

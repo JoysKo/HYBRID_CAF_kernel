@@ -1516,6 +1516,20 @@ struct sock *tcp_try_fastopen(struct sock *sk, struct sk_buff *skb,
 void tcp_fastopen_init_key_once(bool publish);
 #define TCP_FASTOPEN_KEY_LENGTH 16
 
+/* Latencies incurred by various limits for a sender. They are
+ * chronograph-like stats that are mutually exclusive.
+ */
+enum tcp_chrono {
+	TCP_CHRONO_UNSPEC,
+	TCP_CHRONO_BUSY, /* Actively sending data (non-empty write queue) */
+	TCP_CHRONO_RWND_LIMITED, /* Stalled by insufficient receive window */
+	TCP_CHRONO_SNDBUF_LIMITED, /* Stalled by insufficient send buffer */
+	__TCP_CHRONO_MAX,
+};
+
+void tcp_chrono_start(struct sock *sk, const enum tcp_chrono type);
+void tcp_chrono_stop(struct sock *sk, const enum tcp_chrono type);
+
 static inline void tcp_init_send_head(struct sock *sk)
 {
 	sk->sk_send_head = NULL;
