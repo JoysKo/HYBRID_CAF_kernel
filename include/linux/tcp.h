@@ -122,12 +122,11 @@ struct tcp_request_sock_ops;
 struct tcp_request_sock {
 	struct inet_request_sock 	req;
 	const struct tcp_request_sock_ops *af_specific;
-	u64                snt_synack; /* first SYNACK sent time */
+	struct skb_mstamp		snt_synack; /* first SYNACK sent time */
 	bool				tfo_listener;
 	u32				txhash;
 	u32				rcv_isn;
 	u32				snt_isn;
-	u32				ts_off;
 	u32				last_oow_ack_time; /* last SYNACK */
 	u32				rcv_nxt; /* the ack # by SYNACK. For
 						  * FastOpen it's the seq#
@@ -143,8 +142,6 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
 struct tcp_sock {
 	/* inet_connection_sock has to be the first member of tcp_sock */
 	struct inet_connection_sock	inet_conn;
-	u64     first_tx_mstamp;  /* start of window send phase */
-    u64     delivered_mstamp; /* time we reached "delivered" */
 	u16	tcp_header_len;	/* Bytes of tcp header to send		*/
 	u16	gso_segs;	/* Max number of segs per GSO packet	*/
 
@@ -212,9 +209,7 @@ struct tcp_sock {
 
 	/* Information of the most recently (s)acked skb */
 	struct tcp_rack {
-		u64 mstamp; /* (Re)sent time of the skb */
-		u32 rtt_us;  /* Associated RTT */
-		u32 end_seq; /* Ending TCP sequence of the skb */
+		struct skb_mstamp mstamp; /* (Re)sent time of the skb */
 		u8 advanced; /* mstamp advanced since last lost marking */
 		u8 reord;    /* reordering detected */
 	} rack;
@@ -289,7 +284,8 @@ struct tcp_sock {
 	u32	prr_out;	/* Total number of pkts sent during Recovery. */
 	u32	delivered;	/* Total data packets delivered incl. rexmits */
 	u32	lost;		/* Total data packets lost incl. rexmits */
-	
+	u64	delivered_mstamp; /* time we reached "delivered" */
+
  	u32	rcv_wnd;	/* Current receiver window		*/
 	u32	write_seq;	/* Tail(+1) of data held in tcp send buffer */
 	u32	notsent_lowat;	/* TCP_NOTSENT_LOWAT */
@@ -341,17 +337,16 @@ struct tcp_sock {
 
 /* Receiver side RTT estimation */
 	struct {
-		u32     rtt_us;
 		u32	rtt;
-        u32     seq;
-        u64     time;
+		u32	seq;
+		u32	time;
 	} rcv_rtt_est;
 
 /* Receiver queue space */
 	struct {
-		int     space;
-        u32     seq;
-        u64     time;
+		u32	space;
+		u32	seq;
+		u32	time;
 	} rcvq_space;
 
 /* TCP-specific MTU probe information. */

@@ -613,7 +613,6 @@ struct __sk_buff {
 	__u32 tc_classid;
 	__u32 data;
 	__u32 data_end;
-	__u64 tstamp;
 };
 
 struct bpf_tunnel_key {

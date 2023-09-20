@@ -19,11 +19,7 @@ int sysctl_tcp_recovery __read_mostly = TCP_RACK_LOST_RETRANS;
  * The current version is only used after recovery starts but can be
  * easily extended to detect the first loss.
  */
-static bool tcp_rack_sent_after(u64 t1, u64 t2, u32 seq1, u32 seq2)
-{
-	return t1 > t2 || (t1 == t2 && after(seq1, seq2));
-}
-int tcp_rack_mark_lost(struct sock *sk, u32 *reo_timeout)
+int tcp_rack_mark_lost(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
@@ -83,13 +79,16 @@ int tcp_rack_mark_lost(struct sock *sk, u32 *reo_timeout)
 }
 
 /* Record the most recently (re)sent time among the (s)acked packets */
-void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
-		      u64 xmit_time)
+void tcp_rack_advance(struct tcp_sock *tp,
+		      const struct skb_mstamp *xmit_time, u8 sacked)
 {
-	u32 rtt_us;
+	if (tp->rack.mstamp.v64 &&
+	    !skb_mstamp_after(xmit_time, &tp->rack.mstamp))
+		return;
 
-	rtt_us = tcp_stamp_us_delta(tp->tcp_mstamp, xmit_time);
-	if (rtt_us < tcp_min_rtt(tp) && (sacked & TCPCB_RETRANS)) {
+	if (sacked & TCPCB_RETRANS) {
+		struct skb_mstamp now;
+
 		/* If the sacked packet was retransmitted, it's ambiguous
 		 * whether the retransmission or the original (or the prior
 		 * retransmission) was sacked.
@@ -100,13 +99,11 @@ void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
 		 * so it's at least one RTT (i.e., retransmission is at least
 		 * an RTT later).
 		 */
-		return;
+		skb_mstamp_get(&now);
+		if (skb_mstamp_us_delta(&now, xmit_time) < tcp_min_rtt(tp))
+			return;
 	}
+
+	tp->rack.mstamp = *xmit_time;
 	tp->rack.advanced = 1;
-	tp->rack.rtt_us = rtt_us;
-	if (tcp_rack_sent_after(xmit_time, tp->rack.mstamp,
-				end_seq, tp->rack.end_seq)) {
-		tp->rack.mstamp = xmit_time;
-		tp->rack.end_seq = end_seq;
-	}
 }
