@@ -2125,36 +2125,6 @@ static bool tcp_pacing_check(const struct sock *sk)
  * of queued bytes to ensure line rate.
  * One example is wifi aggregation (802.11 AMPDU)
  */
-static bool tcp_small_queue_check(struct sock *sk, const struct sk_buff *skb,
-				  unsigned int factor)
-{
-	unsigned int limit;
-
-	limit = max(2 * skb->truesize, sk->sk_pacing_rate >> 10);
-	limit = min_t(u32, limit, sysctl_tcp_limit_output_bytes);
-	limit <<= factor;
-
-	if (atomic_read(&sk->sk_wmem_alloc) > limit) {
-		/* Always send the 1st or 2nd skb in write queue.
-		 * No need to wait for TX completion to call us back,
-		 * after softirq/tasklet schedule.
-		 * This helps when TX completions are delayed too much.
-		 */
-		if (skb == sk->sk_write_queue.next ||
-		    skb->prev == sk->sk_write_queue.next)
-			return false;
-
-		set_bit(TSQ_THROTTLED, &sk->sk_tsq_flags);
-		/* It is possible TX completion already happened
-		 * before we set TSQ_THROTTLED, so we must
-		 * test again the condition.
-		 */
-		smp_mb__after_atomic();
-		if (atomic_read(&sk->sk_wmem_alloc) > limit)
-			return true;
-	}
-	return false;
-}
 
 static void tcp_chrono_set(struct tcp_sock *tp, const enum tcp_chrono new)
 {
