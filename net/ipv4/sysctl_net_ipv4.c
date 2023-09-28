@@ -616,7 +616,7 @@ static struct ctl_table ipv4_table[] = {
 	},
 	{
 		.procname	= "tcp_min_rtt_wlen",
-		.data		= &sysctl_tcp_min_rtt_wlen,
+		.data		= &init_net.ipv4.sysctl_tcp_min_rtt_wlen,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,

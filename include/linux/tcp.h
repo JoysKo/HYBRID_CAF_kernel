@@ -19,6 +19,7 @@
 
 
 #include <linux/skbuff.h>
+#include <linux/win_minmax.h>
 #include <net/sock.h>
 #include <net/inet_connection_sock.h>
 #include <net/inet_timewait_sock.h>
@@ -173,23 +174,34 @@ struct tcp_sock {
 	u32	segs_out;	/* RFC4898 tcpEStatsPerfSegsOut
 				 * The total number of segments sent.
 				 */
+	u32	data_segs_out;	/* RFC4898 tcpEStatsPerfDataSegsOut
+				 * total number of data segments sent.
+				 */
+	u64	bytes_sent;	/* RFC4898 tcpEStatsPerfHCDataOctetsOut
+				 * total number of data bytes sent.
+				 */
 	u64	bytes_acked;	/* RFC4898 tcpEStatsAppHCThruOctetsAcked
 				 * sum(delta(snd_una)), or how many bytes
 				 * were acked.
 				 */
 	struct u64_stats_sync syncp; /* protects 64bit vars (cf tcp_get_info()) */
-
+	u32	dsack_dups;	/* RFC4898 tcpEStatsStackDSACKDups
+				 * total number of DSACK blocks received
+				 */
  	u32	snd_una;	/* First byte we want an ack for	*/
  	u32	snd_sml;	/* Last byte of the most recently transmitted small packet */
 	u32	rcv_tstamp;	/* timestamp of last received ACK (for keepalives) */
 	u32	lsndtime;	/* timestamp of last sent data packet (for restart window) */
 	u32	last_oow_ack_time;  /* timestamp of last out-of-window ACK */
+	u32	compressed_ack_rcv_nxt;
 
 	u32	tsoffset;	/* timestamp offset */
 
 	struct list_head tsq_node; /* anchor in tsq_tasklet.head list */
+	struct list_head tsorted_sent_queue; /* time-sorted sent but un-SACKed skbs */
+	
 	unsigned long	tsq_flags;
-
+	
 	/* Data for direct copy to user */
 	struct {
 		struct sk_buff_head	prequeue;
@@ -209,13 +221,23 @@ struct tcp_sock {
 
 	/* Information of the most recently (s)acked skb */
 	struct tcp_rack {
-		struct skb_mstamp mstamp; /* (Re)sent time of the skb */
-		u8 advanced; /* mstamp advanced since last lost marking */
+		u64 mstamp; /* (Re)sent time of the skb */
+		u32 rtt_us;  /* Associated RTT */
+		u32 end_seq; /* Ending TCP sequence of the skb */
+		u32 last_delivered; /* tp->delivered at last reo_wnd adj */
+		u8 reo_wnd_steps;   /* Allowed reordering window */
+#define TCP_RACK_RECOVERY_THRESH 16
+		u8 reo_wnd_persist:5, /* No. of recovery since last adj */
+		   dsack_seen:1, /* Whether DSACK seen after last adj */
+		   advanced:1;	 /* mstamp advanced since last lost marking */
 		u8 reord;    /* reordering detected */
 	} rack;
 	u16	advmss;		/* Advertised MSS			*/
-	u8	tlp_retrans:1,	/* TLP is a retransmission */
-		unused_1:7;
+	u8	compressed_ack;
+	u8	dup_ack_counter:2,
+		tlp_retrans:1,	/* TLP is a retransmission */
+		fast_ack_mode:2, /* which fast ack mode ? */
+		unused:3;
 	u32	chrono_start;	/* Start time in jiffies of a TCP chrono */
 	u32	chrono_stat[3];	/* Time in jiffies for chrono_stat stats */
 	u8	chrono_type:2,	/* current chronograph type */
@@ -227,17 +249,21 @@ struct tcp_sock {
 	u8	nonagle     : 4,/* Disable Nagle algorithm?             */
 		thin_lto    : 1,/* Use linear timeouts for thin streams */
 		thin_dupack : 1,/* Fast retransmit on first dupack      */
+		recvmsg_inq : 1,/* Indicate # of bytes in queue upon recvmsg */
 		repair      : 1,
 		frto        : 1;/* F-RTO (RFC5682) activated in CA_Loss */
 	u8	repair_queue;
-	u8	do_early_retrans:1,/* Enable RFC5827 early-retransmit  */
+	u8	save_syn:2,	/* Save headers of SYN packet */
+		do_early_retrans:1,/* Enable RFC5827 early-retransmit  */
 		syn_data:1,	/* SYN includes data */
 		syn_fastopen:1,	/* SYN includes Fast Open option */
 		syn_fastopen_exp:1,/* SYN includes Fast Open exp. option */
+		syn_fastopen_ch:1, /* Active TFO re-enabling probe */
 		syn_data_acked:1,/* data in SYN is acked by SYN-ACK */
-		save_syn:1,	/* Save headers of SYN packet */
 		is_cwnd_limited:1;/* forward progress limited by snd_cwnd? */
 	u32	tlp_high_seq;	/* snd_nxt at the time of TLP */
+
+	u32	tcp_tx_delay;	/* delay (in usec) added to TX packets */
 	u64	tcp_wstamp_ns;	/* departure time for next sent data packet */
 	u64	tcp_clock_cache; /* cache last tcp_clock_ns() (see tcp_mstamp_refresh()) */
 
@@ -248,9 +274,7 @@ struct tcp_sock {
 	u32	mdev_max_us;	/* maximal mdev for the last rtt period	*/
 	u32	rttvar_us;	/* smoothed mdev_max			*/
 	u32	rtt_seq;	/* sequence number to update rttvar	*/
-	struct rtt_meas {
-		u32 rtt, ts;	/* RTT in usec and sampling time in jiffies. */
-	} rtt_min[3];
+	struct  minmax rtt_min;
 
 	u32	packets_out;	/* Packets which are "in flight"	*/
 	u32	retrans_out;	/* Retransmitted packets out		*/
@@ -261,6 +285,7 @@ struct tcp_sock {
 	u8	ecn_flags;	/* ECN status bits.			*/
 	u8	keepalive_probes; /* num of allowed keep alive probes	*/
 	u32	reordering;	/* Packet reordering metric.		*/
+	u32	reord_seen;	/* number of data packet reordering events */
 	u32	snd_up;		/* Urgent pointer		*/
 
 /*
@@ -277,14 +302,18 @@ struct tcp_sock {
 	u32	snd_cwnd_clamp; /* Do not allow snd_cwnd to grow above this */
 	u32	snd_cwnd_used;
 	u32	snd_cwnd_stamp;
-	u32	prior_cwnd;	/* Congestion window at start of Recovery. */
+	u32	prior_cwnd;	/* cwnd right before starting loss recovery */
 	u32	prr_delivered;	/* Number of newly delivered packets to
 				 * receiver in Recovery. */
-	u32	app_limited;	/* limited until "delivered" reaches this val */
 	u32	prr_out;	/* Total number of pkts sent during Recovery. */
 	u32	delivered;	/* Total data packets delivered incl. rexmits */
+	u32	delivered_ce;	/* Like the above but only ECE marked packets */
 	u32	lost;		/* Total data packets lost incl. rexmits */
+	u32	app_limited;	/* limited until "delivered" reaches this val */
+	u64	first_tx_mstamp;  /* start of window send phase */
 	u64	delivered_mstamp; /* time we reached "delivered" */
+	u32	rate_delivered;    /* saved rate sample: packets delivered */
+	u32	rate_interval_us;  /* saved rate sample: time elapsed */
 
  	u32	rcv_wnd;	/* Current receiver window		*/
 	u32	write_seq;	/* Tail(+1) of data held in tcp send buffer */
@@ -295,6 +324,7 @@ struct tcp_sock {
 	u32	fackets_out;	/* FACK'd packets			*/
 
 	struct hrtimer	pacing_timer;
+	struct hrtimer	compressed_ack_timer;
 
 	/* from STCP, retrans queue hinting */
 	struct sk_buff* lost_skb_hint;
@@ -327,6 +357,9 @@ struct tcp_sock {
 				 * the first SYN. */
 	u32	undo_marker;	/* snd_una upon a new recovery episode. */
 	int	undo_retrans;	/* number of undoable retransmissions. */
+	u64	bytes_retrans;	/* RFC4898 tcpEStatsPerfOctetsRetrans
+				 * Total data bytes retransmitted
+				 */
 	u32	total_retrans;	/* Total retransmits for entire connection */
 
 	u32	urg_seq;	/* Seq of received urgent pointer */
@@ -335,18 +368,34 @@ struct tcp_sock {
 
 	int			linger2;
 
+
+/* Sock_ops bpf program related variables */
+#ifdef CONFIG_BPF
+	u8	bpf_sock_ops_cb_flags;  /* Control calling BPF programs
+					 * values defined in uapi/linux/tcp.h
+					 */
+#define BPF_SOCK_OPS_TEST_FLAG(TP, ARG) (TP->bpf_sock_ops_cb_flags & ARG)
+#else
+#define BPF_SOCK_OPS_TEST_FLAG(TP, ARG) 0
+#endif
+
+	u16 timeout_rehash;	/* Timeout-triggered rehash attempts */
+
+	u32 rcv_ooopack; /* Received out-of-order packets, for tcpinfo */
+
 /* Receiver side RTT estimation */
+	u32 rcv_rtt_last_tsecr;
 	struct {
-		u32	rtt;
+		u32	rtt_us;
 		u32	seq;
-		u32	time;
+		u64	time;
 	} rcv_rtt_est;
 
 /* Receiver queue space */
 	struct {
 		u32	space;
 		u32	seq;
-		u32	time;
+		u64	time;
 	} rcvq_space;
 
 /* TCP-specific MTU probe information. */
@@ -357,6 +406,12 @@ struct tcp_sock {
 	u32	mtu_info; /* We received an ICMP_FRAG_NEEDED / ICMPV6_PKT_TOOBIG
 			   * while socket was owned by user.
 			   */
+#if IS_ENABLED(CONFIG_MPTCP)
+	bool	is_mptcp;
+#endif
+#if IS_ENABLED(CONFIG_SMC)
+	bool	syn_smc;	/* SYN includes SMC */
+#endif
 
 #ifdef CONFIG_TCP_MD5SIG
 /* TCP AF-Specific parts; only used by MD5 Signature support so far */
@@ -371,8 +426,11 @@ struct tcp_sock {
 	/* fastopen_rsk points to request_sock that resulted in this big
 	 * socket. Used to retransmit SYNACKs etc.
 	 */
-	struct request_sock *fastopen_rsk;
+	struct request_sock __rcu *fastopen_rsk;
 	u32	*saved_syn;
+
+/* Rerouting information */
+	u16	ecn_rehash;	/* PLB triggered rehash attempts */
 };
 
 enum tsq_flags {

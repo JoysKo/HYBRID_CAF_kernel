@@ -33,7 +33,7 @@ static inline u32 minmax_reset(struct minmax *m, u32 t, u32 meas)
 }
 
 /* As time advances, update the 1st, 2nd, and 3rd choices. */
-static u32 minmax_subwin_update(struct minmax *m, u32 win,
+static inline u32 minmax_subwin_update(struct minmax *m, u32 win,
 				const struct minmax_sample *val)
 {
 	u32 dt = val->t - m->s[0].t;
@@ -71,7 +71,7 @@ static u32 minmax_subwin_update(struct minmax *m, u32 win,
 }
 
 /* Check if new measurement updates the 1st, 2nd or 3rd choice max. */
-u32 minmax_running_max(struct minmax *m, u32 win, u32 t, u32 meas)
+static inline u32 minmax_running_max(struct minmax *m, u32 win, u32 t, u32 meas)
 {
 	struct minmax_sample val = { .t = t, .v = meas };
 
@@ -89,7 +89,7 @@ u32 minmax_running_max(struct minmax *m, u32 win, u32 t, u32 meas)
 EXPORT_SYMBOL(minmax_running_max);
 
 /* Check if new measurement updates the 1st, 2nd or 3rd choice min. */
-u32 minmax_running_min(struct minmax *m, u32 win, u32 t, u32 meas)
+static inline u32 minmax_running_min(struct minmax *m, u32 win, u32 t, u32 meas)
 {
 	struct minmax_sample val = { .t = t, .v = meas };
 
@@ -104,5 +104,7 @@ u32 minmax_running_min(struct minmax *m, u32 win, u32 t, u32 meas)
 
 	return minmax_subwin_update(m, win, &val);
 }
+
+EXPORT_SYMBOL(minmax_running_min);
 
 #endif

@@ -56,7 +56,7 @@ MODULE_PARM_DESC(use_shadow, "use shadow window heuristic");
 module_param(use_tolerance, bool, 0644);
 MODULE_PARM_DESC(use_tolerance, "use loss tolerance heuristic");
 
-struct minmax {
+struct cdg_minmax {
 	union {
 		struct {
 			s32 min;
@@ -74,10 +74,10 @@ enum cdg_state {
 };
 
 struct cdg {
-	struct minmax rtt;
-	struct minmax rtt_prev;
-	struct minmax *gradients;
-	struct minmax gsum;
+	struct cdg_minmax rtt;
+	struct cdg_minmax rtt_prev;
+	struct cdg_minmax *gradients;
+	struct cdg_minmax gsum;
 	bool gfilled;
 	u8  tail;
 	u8  state;

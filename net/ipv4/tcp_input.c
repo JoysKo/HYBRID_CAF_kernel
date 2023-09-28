@@ -119,6 +119,7 @@ int sysctl_tcp_default_init_rwnd __read_mostly = TCP_INIT_CWND * 2;
 #define FLAG_SACK_RENEGING	0x2000 /* snd_una advanced to a sacked seq */
 #define FLAG_UPDATE_TS_RECENT	0x4000 /* tcp_replace_ts_recent() */
 #define FLAG_NO_CHALLENGE_ACK	0x8000 /* do not call tcp_send_challenge_ack()	*/
+#define FLAG_ACK_MAYBE_DELAYED	0x10000 /* Likely a delayed ACK */
 
 #define FLAG_ACKED		(FLAG_DATA_ACKED|FLAG_SYN_ACKED)
 #define FLAG_NOT_DUP		(FLAG_DATA|FLAG_WIN_UPDATE|FLAG_ACKED)
@@ -499,7 +500,7 @@ EXPORT_SYMBOL(tcp_initialize_rcv_mss);
  */
 static void tcp_rcv_rtt_update(struct tcp_sock *tp, u32 sample, int win_dep)
 {
-	u32 new_sample = tp->rcv_rtt_est.rtt;
+	u32 new_sample = tp->rcv_rtt_est.rtt_us;
 	long m = sample;
 
 	if (m == 0)
@@ -529,8 +530,7 @@ static void tcp_rcv_rtt_update(struct tcp_sock *tp, u32 sample, int win_dep)
 		new_sample = m << 3;
 	}
 
-	if (tp->rcv_rtt_est.rtt != new_sample)
-		tp->rcv_rtt_est.rtt = new_sample;
+	tp->rcv_rtt_est.rtt_us = new_sample;
 }
 
 static inline void tcp_rcv_rtt_measure(struct tcp_sock *tp)
@@ -567,7 +567,7 @@ void tcp_rcv_space_adjust(struct sock *sk)
 	int time;
 
 	time = tcp_time_stamp - tp->rcvq_space.time;
-	if (time < (tp->rcv_rtt_est.rtt >> 3) || tp->rcv_rtt_est.rtt == 0)
+	if (time < (tp->rcv_rtt_est.rtt_us >> 3) || tp->rcv_rtt_est.rtt_us == 0)
 		return;
 
 	/* Number of bytes copied to user in last RTT */
@@ -2923,49 +2923,20 @@ static void tcp_fastretrans_alert(struct sock *sk, const int acked,
  * and overwrites 2nd & 3rd choices. The same property holds for 2nd & 3rd
  * best.
  */
-static void tcp_update_rtt_min(struct sock *sk, u32 rtt_us)
+static void tcp_update_rtt_min(struct sock *sk, u32 rtt_us, const int flag)
 {
-	const u32 now = tcp_time_stamp, wlen = sysctl_tcp_min_rtt_wlen * HZ;
-	struct rtt_meas *m = tcp_sk(sk)->rtt_min;
-	struct rtt_meas rttm = {
-		.rtt = likely(rtt_us) ? rtt_us : jiffies_to_usecs(1),
-		.ts = now,
-	};
-	u32 elapsed;
+	u32 wlen = sock_net(sk)->ipv4.sysctl_tcp_min_rtt_wlen * HZ;
+	struct tcp_sock *tp = tcp_sk(sk);
 
-	/* Check if the new measurement updates the 1st, 2nd, or 3rd choices */
-	if (unlikely(rttm.rtt <= m[0].rtt))
-		m[0] = m[1] = m[2] = rttm;
-	else if (rttm.rtt <= m[1].rtt)
-		m[1] = m[2] = rttm;
-	else if (rttm.rtt <= m[2].rtt)
-		m[2] = rttm;
-
-	elapsed = now - m[0].ts;
-	if (unlikely(elapsed > wlen)) {
-		/* Passed entire window without a new min so make 2nd choice
-		 * the new min & 3rd choice the new 2nd. So forth and so on.
+	if ((flag & FLAG_ACK_MAYBE_DELAYED) && rtt_us > tcp_min_rtt(tp)) {
+		/* If the remote keeps returning delayed ACKs, eventually
+		 * the min filter would pick it up and overestimate the
+		 * prop. delay when it expires. Skip suspected delayed ACKs.
 		 */
-		m[0] = m[1];
-		m[1] = m[2];
-		m[2] = rttm;
-		if (now - m[0].ts > wlen) {
-			m[0] = m[1];
-			m[1] = rttm;
-			if (now - m[0].ts > wlen)
-				m[0] = rttm;
-		}
-	} else if (m[1].ts == m[0].ts && elapsed > wlen / 4) {
-		/* Passed a quarter of the window without a new min so
-		 * take 2nd choice from the 2nd quarter of the window.
-		 */
-		m[2] = m[1] = rttm;
-	} else if (m[2].ts == m[1].ts && elapsed > wlen / 2) {
-		/* Passed half the window without a new min so take the 3rd
-		 * choice from the last half of the window.
-		 */
-		m[2] = rttm;
+		return;
 	}
+	minmax_running_min(&tp->rtt_min, wlen, tcp_jiffies32,
+			   rtt_us ? : jiffies_to_usecs(1));
 }
 
 static inline bool tcp_ack_update_rtt(struct sock *sk, const int flag,
@@ -2999,7 +2970,7 @@ static inline bool tcp_ack_update_rtt(struct sock *sk, const int flag,
 	 * always taken together with ACK, SACK, or TS-opts. Any negative
 	 * values will be skipped with the seq_rtt_us < 0 check above.
 	 */
-	tcp_update_rtt_min(sk, ca_rtt_us);
+	tcp_update_rtt_min(sk, ca_rtt_us, flag);
 	tcp_rtt_estimator(sk, seq_rtt_us);
 	tcp_set_rto(sk);
 

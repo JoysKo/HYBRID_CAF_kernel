@@ -471,7 +471,7 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 
 		newtp->srtt_us = 0;
 		newtp->mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT);
-		newtp->rtt_min[0].rtt = ~0U;
+		newtp->rcv_rtt_est.rtt_us = ~0U;
 		newicsk->icsk_rto = TCP_TIMEOUT_INIT;
 		newicsk->icsk_ack.lrcvtime = tcp_time_stamp;
 
@@ -550,7 +550,7 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
 		newtp->fastopen_req = NULL;
 		newtp->fastopen_rsk = NULL;
 		newtp->syn_data_acked = 0;
-		newtp->rack.mstamp.value = 0;
+		newtp->rack.mstamp = 0;
 		newtp->rack.advanced = 0;
 
 		TCP_INC_STATS_BH(sock_net(sk), TCP_MIB_PASSIVEOPENS);

@@ -395,7 +395,7 @@ void tcp_init_sock(struct sock *sk)
 
 	icsk->icsk_rto = TCP_TIMEOUT_INIT;
 	tp->mdev_us = jiffies_to_usecs(TCP_TIMEOUT_INIT);
-	tp->rtt_min[0].rtt = ~0U;
+	minmax_reset(&tp->rtt_min, tcp_jiffies32, ~0U);
 
 	/* So many TCP implementations out there (incorrectly) count the
 	 * initial SYN frame in their delayed-ACK and congestion control
@@ -2738,7 +2738,7 @@ void tcp_get_info(struct sock *sk, struct tcp_info *info)
 	info->tcpi_advmss = tp->advmss;
 	info->tcpi_reordering = tp->reordering;
 
-	info->tcpi_rcv_rtt = jiffies_to_usecs(tp->rcv_rtt_est.rtt)>>3;
+	info->tcpi_rcv_rtt = tp->rcv_rtt_est.rtt_us >> 3;
 	info->tcpi_rcv_space = tp->rcvq_space.space;
 
 	info->tcpi_total_retrans = tp->total_retrans;
