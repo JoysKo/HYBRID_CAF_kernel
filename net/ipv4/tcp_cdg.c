@@ -357,12 +357,14 @@ static void tcp_cdg_cwnd_event(struct sock *sk, const enum tcp_ca_event ev)
 
 	switch (ev) {
 	case CA_EVENT_CWND_RESTART:
-		gradients = ca->gradients;
+		gradients->s[0].v = (unsigned int)ca->gradients->min;
+    	gradients->s[1].v = (unsigned int)ca->gradients->max;
 		if (gradients)
 			memset(gradients, 0, window * sizeof(gradients[0]));
 		memset(ca, 0, sizeof(*ca));
 
-		ca->gradients = gradients;
+		ca->gradients->min = (s32)gradients->s[0].v;
+		ca->gradients->max = (s32)gradients->s[1].v;
 		ca->rtt_seq = tp->snd_nxt;
 		ca->shadow_wnd = tp->snd_cwnd;
 		break;
