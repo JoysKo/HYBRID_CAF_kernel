@@ -221,7 +221,7 @@ struct tcp_sock {
 
 	/* Information of the most recently (s)acked skb */
 	struct tcp_rack {
-		u64 mstamp; /* (Re)sent time of the skb */
+		struct skb_mstamp mstamp; /* (Re)sent time of the skb */
 		u32 rtt_us;  /* Associated RTT */
 		u32 end_seq; /* Ending TCP sequence of the skb */
 		u32 last_delivered; /* tp->delivered at last reo_wnd adj */

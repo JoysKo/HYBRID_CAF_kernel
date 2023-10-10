@@ -82,8 +82,8 @@ int tcp_rack_mark_lost(struct sock *sk)
 void tcp_rack_advance(struct tcp_sock *tp,
 		      const struct skb_mstamp *xmit_time, u8 sacked)
 {
-	if (tp->rack.mstamp &&
-	    !skb_mstamp_after(&xmit_time, &tp->rack.mstamp))
+	if (tp->rack.mstamp.v64 &&
+	    !skb_mstamp_after(xmit_time, &tp->rack.mstamp))
 		return;
 
 	if (sacked & TCPCB_RETRANS) {
@@ -104,6 +104,6 @@ void tcp_rack_advance(struct tcp_sock *tp,
 			return;
 	}
 
-	tp->rack.mstamp = xmit_time;
+	tp->rack.mstamp = *xmit_time;
 	tp->rack.advanced = 1;
 }
