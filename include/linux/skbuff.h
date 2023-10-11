@@ -22,6 +22,7 @@
 #include <linux/cache.h>
 #include <linux/rbtree.h>
 #include <linux/socket.h>
+#include <linux/ktime.h>
 
 #include <linux/atomic.h>
 #include <asm/types.h>
@@ -437,7 +438,7 @@ struct skb_mstamp {
  */
 static inline void skb_mstamp_get(struct skb_mstamp *cl)
 {
-	u64 val = local_clock();
+	u64 val = ktime_get_ns();
 
 	do_div(val, NSEC_PER_USEC);
 	cl->stamp_us = (u32)val;
