@@ -732,7 +732,7 @@ u32 __tcp_select_window(struct sock *sk);
 void tcp_send_window_probe(struct sock *sk);
 
 /* TCP uses 32bit jiffies to save some space.
- * Note that this is different from tcp_time_stamp, which
+ * Note that this is different from tcp_jiffies32, which
  * historically has been the same until linux-4.13.
  */
 #define tcp_jiffies32 ((u32)jiffies)
@@ -749,10 +749,11 @@ static inline u64 tcp_clock_ns(void)
 	return ktime_get_ns();
 }
 
-/* Generator for TCP TS option (RFC 7323)
- * Currently tied to 'jiffies' but will soon be driven by 1 ms clock.
- */
-#define tcp_time_stamp		((__u32)(jiffies))
+/* This should only be used in contexts where tp->tcp_mstamp is up to date */
+static inline u32 tcp_time_stamp(const struct tcp_sock *tp)
+{
+	return div_u64(tp->tcp_mstamp, USEC_PER_SEC / TCP_TS_HZ);
+}
 
 /* Convert a nsec timestamp into TCP TSval timestamp (ms based currently) */
 static inline u32 tcp_ns_to_ts(u64 ns)
@@ -1330,7 +1331,7 @@ static inline void tcp_slow_start_after_idle_check(struct sock *sk)
 
 	if (!sysctl_tcp_slow_start_after_idle || tp->packets_out)
 		return;
-	delta = tcp_time_stamp - tp->lsndtime;
+	delta = tcp_jiffies32 - tp->lsndtime;
 	if (delta > inet_csk(sk)->icsk_rto)
 		tcp_cwnd_restart(sk, delta);
 }
@@ -1386,8 +1387,8 @@ static inline u32 keepalive_time_elapsed(const struct tcp_sock *tp)
 {
 	const struct inet_connection_sock *icsk = &tp->inet_conn;
 
-	return min_t(u32, tcp_time_stamp - icsk->icsk_ack.lrcvtime,
-			  tcp_time_stamp - tp->rcv_tstamp);
+	return min_t(u32, tcp_jiffies32 - icsk->icsk_ack.lrcvtime,
+			  tcp_jiffies32 - tp->rcv_tstamp);
 }
 
 static inline int tcp_fin_time(const struct sock *sk)

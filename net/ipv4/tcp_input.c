@@ -424,7 +424,7 @@ void tcp_init_buffer_space(struct sock *sk)
 		tcp_sndbuf_expand(sk);
 
 	tp->rcvq_space.space = tp->rcv_wnd;
-	tp->rcvq_space.time = tcp_time_stamp;
+	tp->rcvq_space.time = tcp_jiffies32;
 	tp->rcvq_space.seq = tp->copied_seq;
 
 	maxwin = tcp_full_space(sk);
@@ -445,7 +445,7 @@ void tcp_init_buffer_space(struct sock *sk)
 		tp->window_clamp = max(2 * tp->advmss, maxwin - tp->advmss);
 
 	tp->rcv_ssthresh = min(tp->rcv_ssthresh, tp->window_clamp);
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+	tp->snd_cwnd_stamp = tcp_jiffies32;
 }
 
 /* 5. Recalculate window clamp after socket hit its memory bounds. */
@@ -539,11 +539,11 @@ static inline void tcp_rcv_rtt_measure(struct tcp_sock *tp)
 		goto new_measure;
 	if (before(tp->rcv_nxt, tp->rcv_rtt_est.seq))
 		return;
-	tcp_rcv_rtt_update(tp, tcp_time_stamp - tp->rcv_rtt_est.time, 1);
+	tcp_rcv_rtt_update(tp, tcp_jiffies32 - tp->rcv_rtt_est.time, 1);
 
 new_measure:
 	tp->rcv_rtt_est.seq = tp->rcv_nxt + tp->rcv_wnd;
-	tp->rcv_rtt_est.time = tcp_time_stamp;
+	tp->rcv_rtt_est.time = tcp_jiffies32;
 }
 
 static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
@@ -553,7 +553,7 @@ static inline void tcp_rcv_rtt_measure_ts(struct sock *sk,
 	if (tp->rx_opt.rcv_tsecr &&
 	    (TCP_SKB_CB(skb)->end_seq -
 	     TCP_SKB_CB(skb)->seq >= inet_csk(sk)->icsk_ack.rcv_mss))
-		tcp_rcv_rtt_update(tp, tcp_time_stamp - tp->rx_opt.rcv_tsecr, 0);
+		tcp_rcv_rtt_update(tp, tcp_jiffies32 - tp->rx_opt.rcv_tsecr, 0);
 }
 
 /*
@@ -566,7 +566,7 @@ void tcp_rcv_space_adjust(struct sock *sk)
 	u32 copied;
 	int time;
 
-	time = tcp_time_stamp - tp->rcvq_space.time;
+	time = tcp_jiffies32 - tp->rcvq_space.time;
 	if (time < (tp->rcv_rtt_est.rtt_us >> 3) || tp->rcv_rtt_est.rtt_us == 0)
 		return;
 
@@ -625,7 +625,7 @@ void tcp_rcv_space_adjust(struct sock *sk)
 
 new_measure:
 	tp->rcvq_space.seq = tp->copied_seq;
-	tp->rcvq_space.time = tcp_time_stamp;
+	tp->rcvq_space.time = tcp_jiffies32;
 }
 
 /* There is something which you must keep in mind when you analyze the
@@ -650,7 +650,7 @@ static void tcp_event_data_recv(struct sock *sk, struct sk_buff *skb)
 
 	tcp_rcv_rtt_measure(tp);
 
-	now = tcp_time_stamp;
+	now = tcp_jiffies32;
 
 	if (!icsk->icsk_ack.ato) {
 		/* The _first_ data packet received, initialize
@@ -1918,7 +1918,7 @@ void tcp_enter_loss(struct sock *sk)
 	}
 	tp->snd_cwnd	   = 1;
 	tp->snd_cwnd_cnt   = 0;
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+	tp->snd_cwnd_stamp = tcp_jiffies32;
 
 	tp->retrans_out = 0;
 	tp->lost_out = 0;
@@ -2279,7 +2279,7 @@ static inline void tcp_moderate_cwnd(struct tcp_sock *tp)
 {
 	tp->snd_cwnd = min(tp->snd_cwnd,
 			   tcp_packets_in_flight(tp) + tcp_max_burst(tp));
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+	tp->snd_cwnd_stamp = tcp_jiffies32;
 }
 
 static bool tcp_tsopt_ecr_before(const struct tcp_sock *tp, u32 when)
@@ -2398,7 +2398,7 @@ static void tcp_undo_cwnd_reduction(struct sock *sk, bool unmark_loss)
 	} else {
 		tp->snd_cwnd = max(tp->snd_cwnd, tp->snd_ssthresh);
 	}
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+	tp->snd_cwnd_stamp = tcp_jiffies32;
 	tp->undo_marker = 0;
 }
 
@@ -2535,7 +2535,7 @@ static inline void tcp_end_cwnd_reduction(struct sock *sk)
 	if (tp->snd_ssthresh < TCP_INFINITE_SSTHRESH &&
 	    (inet_csk(sk)->icsk_ca_state == TCP_CA_CWR || tp->undo_marker)) {
 		tp->snd_cwnd = tp->snd_ssthresh;
-		tp->snd_cwnd_stamp = tcp_time_stamp;
+		tp->snd_cwnd_stamp = tcp_jiffies32;
 	}
 	tcp_ca_event(sk, CA_EVENT_COMPLETE_CWR);
 }
@@ -2607,7 +2607,7 @@ static void tcp_mtup_probe_success(struct sock *sk)
 		       tcp_mss_to_mtu(sk, tp->mss_cache) /
 		       icsk->icsk_mtup.probe_size;
 	tp->snd_cwnd_cnt = 0;
-	tp->snd_cwnd_stamp = tcp_time_stamp;
+	tp->snd_cwnd_stamp = tcp_jiffies32;
 	tp->snd_ssthresh = tcp_current_ssthresh(sk);
 
 	icsk->icsk_mtup.search_low = icsk->icsk_mtup.probe_size;
@@ -2961,7 +2961,7 @@ static inline bool tcp_ack_update_rtt(struct sock *sk, const int flag,
 	 */
 	if (seq_rtt_us < 0 && tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
 	    flag & FLAG_ACKED)
-		seq_rtt_us = ca_rtt_us = jiffies_to_usecs(tcp_time_stamp -
+		seq_rtt_us = ca_rtt_us = jiffies_to_usecs(tcp_jiffies32 -
 							  tp->rx_opt.rcv_tsecr);
 	if (seq_rtt_us < 0)
 		return false;
@@ -3000,7 +3000,7 @@ static void tcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 	const struct inet_connection_sock *icsk = inet_csk(sk);
 
 	icsk->icsk_ca_ops->cong_avoid(sk, ack, acked);
-	tcp_sk(sk)->snd_cwnd_stamp = tcp_time_stamp;
+	tcp_sk(sk)->snd_cwnd_stamp = tcp_jiffies32;
 }
 
 /* Restart timer after forward progress on connection.
@@ -3027,7 +3027,7 @@ void tcp_rearm_rto(struct sock *sk)
 			struct sk_buff *skb = tcp_write_queue_head(sk);
 			const u32 rto_time_stamp =
 				tcp_skb_timestamp(skb) + rto;
-			s32 delta = (s32)(rto_time_stamp - tcp_time_stamp);
+			s32 delta = (s32)(rto_time_stamp - tcp_jiffies32);
 			/* delta may not be positive if the socket is locked
 			 * when the retrans timer fires and is rescheduled.
 			 */
@@ -3405,7 +3405,7 @@ static bool __tcp_oow_rate_limited(struct net *net, int mib_idx,
 				   u32 *last_oow_ack_time)
 {
 	if (*last_oow_ack_time) {
-		s32 elapsed = (s32)(tcp_time_stamp - *last_oow_ack_time);
+		s32 elapsed = (s32)(tcp_jiffies32 - *last_oow_ack_time);
 
 		if (0 <= elapsed && elapsed < sysctl_tcp_invalid_ratelimit) {
 			NET_INC_STATS_BH(net, mib_idx);
@@ -3413,7 +3413,7 @@ static bool __tcp_oow_rate_limited(struct net *net, int mib_idx,
 		}
 	}
 
-	*last_oow_ack_time = tcp_time_stamp;
+	*last_oow_ack_time = tcp_jiffies32;
 
 	return false;	/* not rate-limited: go ahead, send dupack now! */
 }
@@ -3628,7 +3628,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	 */
 	sk->sk_err_soft = 0;
 	icsk->icsk_probes_out = 0;
-	tp->rcv_tstamp = tcp_time_stamp;
+	tp->rcv_tstamp = tcp_jiffies32;
 	if (!prior_packets)
 		goto no_queue;
 
@@ -5055,7 +5055,7 @@ static void tcp_new_space(struct sock *sk)
 
 	if (tcp_should_expand_sndbuf(sk)) {
 		tcp_sndbuf_expand(sk);
-		tp->snd_cwnd_stamp = tcp_time_stamp;
+		tp->snd_cwnd_stamp = tcp_jiffies32;
 	}
 
 	sk->sk_write_space(sk);
@@ -5562,7 +5562,7 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
 	tcp_set_state(sk, TCP_ESTABLISHED);
-	icsk->icsk_ack.lrcvtime = tcp_time_stamp;
+	icsk->icsk_ack.lrcvtime = tcp_jiffies32;
 
 	if (skb) {
 		icsk->icsk_af_ops->sk_rx_dst_set(sk, skb);
@@ -5579,7 +5579,7 @@ void tcp_finish_connect(struct sock *sk, struct sk_buff *skb)
 	/* Prevent spurious tcp_cwnd_restart() on first data
 	 * packet.
 	 */
-	tp->lsndtime = tcp_time_stamp;
+	tp->lsndtime = tcp_jiffies32;
 
 	tcp_init_buffer_space(sk);
 
@@ -5675,7 +5675,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 
 		if (tp->rx_opt.saw_tstamp && tp->rx_opt.rcv_tsecr &&
 		    !between(tp->rx_opt.rcv_tsecr, tp->retrans_stamp,
-			     tcp_time_stamp)) {
+			     tcp_jiffies32)) {
 			NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_PAWSACTIVEREJECTED);
 			goto reset_and_undo;
 		}
@@ -6022,7 +6022,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		tcp_update_pacing_rate(sk);
 
 		/* Prevent spurious tcp_cwnd_restart() on first data packet */
-		tp->lsndtime = tcp_time_stamp;
+		tp->lsndtime = tcp_jiffies32;
 
 		tcp_initialize_rcv_mss(sk);
 		tcp_fast_path_on(tp);
