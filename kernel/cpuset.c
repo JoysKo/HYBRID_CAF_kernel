@@ -2132,7 +2132,7 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
 	.attach		= cpuset_attach,
 	.post_attach	= cpuset_post_attach,
 	.bind		= cpuset_bind,
-	.fork		= cpuset_fork,
+	.fork 		= (void (*)(struct task_struct *))cpuset_fork,
 	.legacy_cftypes	= files,
 	.early_init	= 1,
 };

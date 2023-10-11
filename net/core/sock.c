@@ -2335,8 +2335,8 @@ void __receive_sock(struct file *file)
 	 */
 	sock = sock_from_file(file, &error);
 	if (sock) {
-		sock_update_netprioidx(sock->sk);
-		sock_update_classid(sock->sk);
+		sock_update_netprioidx((struct sock_cgroup_data *)sock->sk);
+		sock_update_classid((struct sock_cgroup_data *)sock->sk);
 	}
 }
 
