@@ -776,6 +776,50 @@ static inline u32 tcp_skb_timestamp(const struct sk_buff *skb)
 	return skb->skb_mstamp.stamp_jiffies;
 }
 
+/**
+ * skb_mstamp_get - get current timestamp
+ * @cl: place to store timestamps
+ */
+static inline void skb_mstamp_get(struct skb_mstamp *cl)
+{
+	u64 val = ktime_get_ns();
+
+	do_div(val, NSEC_PER_USEC);
+	cl->stamp_us = (u32)val;
+	cl->stamp_jiffies = (u32)jiffies;
+}
+
+/**
+ * skb_mstamp_delta - compute the difference in usec between two skb_mstamp
+ * @t1: pointer to newest sample
+ * @t0: pointer to oldest sample
+ */
+static inline u32 skb_mstamp_us_delta(const struct skb_mstamp *t1,
+				      const struct skb_mstamp *t0)
+{
+	s32 delta_us = t1->stamp_us - t0->stamp_us;
+	u32 delta_jiffies = t1->stamp_jiffies - t0->stamp_jiffies;
+
+	/* If delta_us is negative, this might be because interval is too big,
+	 * or local_clock() drift is too big : fallback using jiffies.
+	 */
+	if (delta_us <= 0 ||
+	    delta_jiffies >= (INT_MAX / (USEC_PER_SEC / HZ)))
+
+		delta_us = jiffies_to_usecs(delta_jiffies);
+
+	return delta_us;
+}
+
+static inline bool skb_mstamp_after(const struct skb_mstamp *t1,
+				    const struct skb_mstamp *t0)
+{
+	s32 diff = t1->stamp_jiffies - t0->stamp_jiffies;
+
+	if (!diff)
+		diff = t1->stamp_us - t0->stamp_us;
+	return diff > 0;
+}
 
 #define tcp_flag_byte(th) (((u_int8_t *)th)[13])
 
