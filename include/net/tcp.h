@@ -749,6 +749,11 @@ static inline u64 tcp_clock_ns(void)
 	return ktime_get_ns();
 }
 
+static inline u64 tcp_clock_us(void)
+{
+	return div_u64(tcp_clock_ns(), NSEC_PER_USEC);
+}
+
 /* This should only be used in contexts where tp->tcp_mstamp is up to date */
 static inline u32 tcp_time_stamp(const struct tcp_sock *tp)
 {
@@ -783,10 +788,7 @@ static inline u32 tcp_skb_timestamp(const struct sk_buff *skb)
  */
 static inline void skb_mstamp_get(struct skb_mstamp *cl)
 {
-	u64 val = ktime_get_ns();
-
-	do_div(val, NSEC_PER_USEC);
-	cl->stamp_us = (u32)val;
+	cl->stamp_us =(u32)tcp_clock_us();
 	cl->stamp_jiffies = (u32)jiffies;
 }
 
