@@ -511,6 +511,7 @@ struct sk_buff {
 
 			union {
 				ktime_t		tstamp;
+				u64 skb_mstamp_ns;
 				struct skb_mstamp skb_mstamp;
 			};
 		};

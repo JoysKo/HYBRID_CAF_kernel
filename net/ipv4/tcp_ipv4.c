@@ -367,8 +367,8 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 	struct sock *sk;
 	struct sk_buff *skb;
 	struct request_sock *fastopen;
-	__u32 seq, snd_una;
-	__u32 remaining;
+	u32 seq, snd_una;
+	u32 remaining;
 	int err;
 	struct net *net = dev_net(icmp_skb->dev);
 
