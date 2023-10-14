@@ -116,6 +116,8 @@ enum {
 #define TCP_SAVE_SYN		27	/* Record SYN headers for new connections */
 #define TCP_SAVED_SYN		28	/* Get SYN headers recorded for connection */
 
+#define TCP_TX_DELAY		37	/* delay outgoing packets by XX usec */
+
 struct tcp_repair_opt {
 	__u32	opt_code;
 	__u32	opt_val;

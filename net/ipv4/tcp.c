@@ -2358,6 +2358,21 @@ static int tcp_repair_options_est(struct tcp_sock *tp,
 	return 0;
 }
 
+DEFINE_STATIC_KEY_FALSE(tcp_tx_delay_enabled);
+EXPORT_SYMBOL(tcp_tx_delay_enabled);
+
+static void tcp_enable_tx_delay(void)
+{
+	if (!static_branch_unlikely(&tcp_tx_delay_enabled)) {
+		static int __tcp_tx_delay_enabled = 0;
+
+		if (cmpxchg(&__tcp_tx_delay_enabled, 0, 1) == 0) {
+			static_branch_enable(&tcp_tx_delay_enabled);
+			pr_info("TCP_TX_DELAY enabled\n");
+		}
+	}
+}
+
 /*
  *	Socket option code for TCP.
  */
@@ -2638,6 +2653,11 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		tp->notsent_lowat = val;
 		sk->sk_write_space(sk);
 		break;
+	case TCP_TX_DELAY:
+		if (val)
+			tcp_enable_tx_delay();
+		WRITE_ONCE(tp->tcp_tx_delay, val);
+		break;
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -2904,6 +2924,10 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 
 	case TCP_FASTOPEN:
 		val = icsk->icsk_accept_queue.fastopenq.max_qlen;
+		break;
+		
+	case TCP_TX_DELAY:
+		val = READ_ONCE(tp->tcp_tx_delay);
 		break;
 
 	case TCP_TIMESTAMP:
