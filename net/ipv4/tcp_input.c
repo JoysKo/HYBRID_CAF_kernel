@@ -1221,6 +1221,7 @@ static u8 tcp_sacktag_one(struct sock *sk,
 		sacked |= TCPCB_SACKED_ACKED;
 		state->flag |= FLAG_DATA_SACKED;
 		tp->sacked_out += pcount;
+		tp->delivered += pcount;  /* Out-of-order packets delivered */
 
 		fack_count += pcount;
 
@@ -1641,8 +1642,10 @@ tcp_sacktag_write_queue(struct sock *sk, const struct sk_buff *ack_skb,
 
 	found_dup_sack = tcp_check_dsack(sk, ack_skb, sp_wire,
 					 num_sacks, prior_snd_una);
-	if (found_dup_sack)
+	if (found_dup_sack) {
 		state->flag |= FLAG_DSACKING_ACK;
+		tp->delivered++; /* A spurious retransmission is delivered */
+	}
 
 	/* Eliminate too old ACKs, but take into
 	 * account more or less fresh ones, they can
@@ -1851,8 +1854,12 @@ static void tcp_check_reno_reordering(struct sock *sk, const int addend)
 static void tcp_add_reno_sack(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
+	u32 prior_sacked = tp->sacked_out;
+	
 	tp->sacked_out++;
 	tcp_check_reno_reordering(sk, 0);
+	if (tp->sacked_out > prior_sacked)
+		tp->delivered++; /* Some out-of-order packet is delivered */
 	tcp_verify_left_out(tp);
 }
 
@@ -1864,6 +1871,7 @@ static void tcp_remove_reno_sacks(struct sock *sk, int acked)
 
 	if (acked > 0) {
 		/* One ACK acked hole. The rest eat duplicate ACKs. */
+		tp->delivered += max_t(int, acked - tp->sacked_out, 1);
 		if (acked - 1 >= tp->sacked_out)
 			tp->sacked_out = 0;
 		else
@@ -3157,8 +3165,10 @@ static int tcp_clean_rtx_queue(struct sock *sk, int prior_fackets,
 
 		if (sacked & TCPCB_SACKED_ACKED)
 			tp->sacked_out -= acked_pcount;
-		else if (tcp_is_sack(tp) && !tcp_skb_spurious_retrans(tp, skb))
+		else if (tcp_is_sack(tp) && !tcp_skb_spurious_retrans(tp, skb)) {
+			tp->delivered += acked_pcount;
 			tcp_rack_advance(tp, &skb->skb_mstamp, sacked);
+		}
 		if (sacked & TCPCB_LOST)
 			tp->lost_out -= acked_pcount;
 
@@ -3542,6 +3552,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 	bool is_dupack = false;
 	u32 prior_fackets;
 	int prior_packets = tp->packets_out;
+	u32 delivered = tp->delivered;
 	const int prior_unsacked = tp->packets_out - tp->sacked_out;
 	int acked = 0; /* Number of packets newly acked */
 
@@ -3658,6 +3669,7 @@ static int tcp_ack(struct sock *sk, const struct sk_buff *skb, int flag)
 
 	if (icsk->icsk_pending == ICSK_TIME_RETRANS)
 		tcp_schedule_loss_probe(sk);
+	delivered = tp->delivered - delivered;	/* freshly ACKed or SACKed */
 	tcp_update_pacing_rate(sk);
 	return 1;
 
