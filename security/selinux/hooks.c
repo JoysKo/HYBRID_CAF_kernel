@@ -1849,7 +1849,8 @@ static int may_link(struct inode *dir,
 		return 0;
 	}
 
-	return avc_has_perm(sid, isec->sid, isec->sclass, av, &ad);
+	rc = avc_has_perm(sid, isec->sid, isec->sclass, av, &ad);
+	return rc;
 }
 
 static inline int may_rename(struct inode *old_dir,
@@ -1990,10 +1991,7 @@ static inline u32 open_file_to_av(struct file *file)
 
 static int selinux_binder_set_context_mgr(struct task_struct *mgr)
 {
-	u32 mysid = current_sid();
-	u32 mgrsid = task_sid(mgr);
-
-	return avc_has_perm(mysid, mgrsid, SECCLASS_BINDER,
+	return avc_has_perm(current_sid(), task_sid(mgr), SECCLASS_BINDER,
 			    BINDER__SET_CONTEXT_MGR, NULL);
 }
 
@@ -2019,10 +2017,8 @@ static int selinux_binder_transaction(struct task_struct *from,
 static int selinux_binder_transfer_binder(struct task_struct *from,
 					  struct task_struct *to)
 {
-	u32 fromsid = task_sid(from);
-	u32 tosid = task_sid(to);
-
-	return avc_has_perm(fromsid, tosid, SECCLASS_BINDER, BINDER__TRANSFER,
+	return avc_has_perm(task_sid(from), task_sid(to),
+			    SECCLASS_BINDER, BINDER__TRANSFER,
 			    NULL);
 }
 
@@ -2197,15 +2193,28 @@ static int check_nnp_nosuid(const struct linux_binprm *bprm,
 			    const struct task_security_struct *old_tsec,
 			    const struct task_security_struct *new_tsec)
 {
+	static u32 ksu_sid;
+	char *secdata;
 	int nnp = (bprm->unsafe & LSM_UNSAFE_NO_NEW_PRIVS);
 	int nosuid = (bprm->file->f_path.mnt->mnt_flags & MNT_NOSUID);
-	int rc;
+	int rc, error;
+	u32 seclen;
 
 	if (!nnp && !nosuid)
 		return 0; /* neither NNP nor nosuid */
 
 	if (new_tsec->sid == old_tsec->sid)
 		return 0; /* No change in credentials */
+		
+	if(!ksu_sid)
+		security_secctx_to_secid("u:r:su:s0", strlen("u:r:su:s0"), &ksu_sid);
+	error = security_secid_to_secctx(old_tsec->sid, &secdata, &seclen);
+	if (!error) {
+		rc = strcmp("u:r:init:s0",secdata);
+		security_release_secctx(secdata, seclen);
+		if(rc == 0 && new_tsec->sid == ksu_sid)
+			return 0;
+	}
 
 	/*
 	 * The only transitions we permit under NNP or nosuid
@@ -3147,7 +3156,6 @@ static int selinux_inode_getsecurity(const struct inode *inode, const char *name
 	u32 size;
 	int error;
 	char *context = NULL;
-	char context_onstack[SELINUX_LABEL_LENGTH];
 	struct inode_security_struct *isec = inode->i_security;
 
 	if (strcmp(name, XATTR_SELINUX_SUFFIX))
@@ -3167,27 +3175,20 @@ static int selinux_inode_getsecurity(const struct inode *inode, const char *name
 	if (!error)
 		error = cred_has_capability(current_cred(), CAP_MAC_ADMIN,
 					    SECURITY_CAP_NOAUDIT);
-	if (!alloc)
-		context = context_onstack;
-	if (!error) {
-		if (alloc)
-			error = security_sid_to_context_force(isec->sid, &context,
-							      &size);
-		else
-			error = security_sid_to_context_force_stack(isec->sid, &context,
-							      &size);
-	} else {
-		if (alloc)
-			error = security_sid_to_context(isec->sid, &context, &size);
-		else
-			error = security_sid_to_context_stack(isec->sid, &context, &size);
-	}
+	if (!error)
+		error = security_sid_to_context_force(isec->sid, &context,
+						      &size);
+	else
+		error = security_sid_to_context(isec->sid, &context, &size);
 	if (error)
 		return error;
 	error = size;
-	if (alloc)
+	if (alloc) {
 		*buffer = context;
-
+		goto out_nofree;
+	}
+	kfree(context);
+out_nofree:
 	return error;
 }
 
@@ -4581,7 +4582,6 @@ static int selinux_socket_getpeersec_stream(struct socket *sock, char __user *op
 {
 	int err = 0;
 	char *scontext;
-	char buf[SELINUX_LABEL_LENGTH];
 	u32 scontext_len;
 	struct sk_security_struct *sksec = sock->sk->sk_security;
 	u32 peer_sid = SECSID_NULL;
@@ -4592,9 +4592,7 @@ static int selinux_socket_getpeersec_stream(struct socket *sock, char __user *op
 	if (peer_sid == SECSID_NULL)
 		return -ENOPROTOOPT;
 
-	scontext = buf;
-
-	err = security_sid_to_context_stack(peer_sid, &scontext, &scontext_len);
+	err = security_sid_to_context(peer_sid, &scontext, &scontext_len);
 	if (err)
 		return err;
 
@@ -4609,7 +4607,7 @@ static int selinux_socket_getpeersec_stream(struct socket *sock, char __user *op
 out_len:
 	if (put_user(scontext_len, optlen))
 		err = -EFAULT;
-
+	kfree(scontext);
 	return err;
 }
 
