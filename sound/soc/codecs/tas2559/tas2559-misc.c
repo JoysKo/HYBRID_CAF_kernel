@@ -47,7 +47,7 @@
 #include <linux/mfd/spk-id.h>
 
 
-static int g_logEnable = 1;
+static int g_logEnable = 0;
 static struct tas2559_priv *g_tas2559;
 
 static int tas2559_file_open(struct inode *inode, struct file *file)
