@@ -5370,7 +5370,7 @@ static int ext4_expand_extra_isize(struct inode *inode,
 	 * initialized. Here we can be called with various locks held so we
 	 * cannot affort to initialize quotas ourselves. So just bail.
 	 */
-	if (dquot_initialize_needed(inode))
+	if (dquot_initialize(inode))
 		return -EAGAIN;
 
 	/* try to expand with EAs present */
