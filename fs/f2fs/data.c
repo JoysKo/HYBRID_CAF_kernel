@@ -2962,7 +2962,7 @@ static int check_swap_activate_fast(struct swap_info_struct *sis,
 	sector_t highest_pblock = 0;
 	int nr_extents = 0;
 	unsigned long nr_pblocks;
-	u64 len;
+	unsigned long len;
 	int ret;
 
 	/*
