@@ -843,7 +843,6 @@ static void xhci_kill_endpoint_urbs(struct xhci_hcd *xhci,
 	struct xhci_ring *ring;
 
 	ep = &xhci->devs[slot_id]->eps[ep_index];
-
 	if ((ep->ep_state & EP_HAS_STREAMS) ||
 			(ep->ep_state & EP_GETTING_NO_STREAMS)) {
 		int stream_id;
