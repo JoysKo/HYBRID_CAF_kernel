@@ -140,7 +140,7 @@ static char *execute_command;
 static char *ramdisk_execute_command;
 
 bool wired_btn_altmode = false;
-static int __init set_wiredbtnmode(char *val)
+static int __init set_wired_buttonmode(char *val)
 {
 	unsigned int temp;
 
@@ -148,15 +148,12 @@ static int __init set_wiredbtnmode(char *val)
 
 	if (temp) {
 		wired_btn_altmode = true;
-		pr_info("Kernel: alternate wired button mode = 1");
-	} else {
-		wired_btn_altmode = false;
-		pr_info("Kernel: alternate wired button mode = 0");
+		pr_info("Kernel: alternate wired button mode is enabled\n");
 	}
 
 	return 0;
 }
-__setup("androidboot.wiredbtnaltmode=", set_wiredbtnmode);
+__setup("wired.buttonmode=", set_wired_buttonmode);
 
 bool cpu_clock_speed = false;
 static int __init set_cpuclockspeed(char *val)
