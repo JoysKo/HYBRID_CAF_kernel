@@ -648,6 +648,14 @@ config TCP_CONG_BBR
 	bufferbloat, policers, or AQM schemes that do not provide a delay
 	signal. It requires the fq ("Fair Queue") pacing packet scheduler.
 
+config TCP_CONG_TSUNAMI
+        tristate "Tsunami - BBR Based TCP Congestion with magic optimiztion"
+        default n
+        ---help---
+
+	Tsunami TCP Congestion Control - BBR Based TCP Congedtion with magic optimiztion
+	Modified by Yankee.
+
 config TCP_CONG_BBR2
 	tristate "BBR2 TCP"
 	default m
@@ -702,6 +710,9 @@ choice
 
 	config DEFAULT_BBR
 		bool "BBR" if TCP_CONG_BBR=y
+	
+	config DEFAULT_TSUNAMI
+		bool "TSUNAMI" if TCP_CONG_TSUNAMI=y
 
 	config DEFAULT_BBR2
 		bool "BBR2" if TCP_CONG_BBR2=y
@@ -730,6 +741,7 @@ config DEFAULT_TCP_CONG
 	default "dctcp" if DEFAULT_DCTCP
 	default "cdg" if DEFAULT_CDG
 	default "bbr" if DEFAULT_BBR
+	default "tsunami" if DEFAULT_TSUNAMI
 	default "bbr2" if DEFAULT_BBR2
 	default "cubic"
 
