@@ -2162,7 +2162,7 @@ bool bpf_helper_changes_skb_data(void *func)
 }
 
 static unsigned long bpf_skb_copy(void *dst_buff, const void *skb,
-				  unsigned long len)
+				  unsigned long off, unsigned long len)
 {
 	void *ptr = skb_header_pointer(skb, 0, len, dst_buff);
 
