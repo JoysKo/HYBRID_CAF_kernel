@@ -740,10 +740,10 @@ static int parse_options(struct super_block *sb, char *options)
 				F2FS_OPTION(sbi).fsync_mode =
 							FSYNC_MODE_NOBARRIER;
 			} else {
-				kvfree(name);
+				kfree(name);
 				return -EINVAL;
 			}
-			kvfree(name);
+			kfree(name);
 			break;
 		case Opt_test_dummy_encryption:
 #ifdef CONFIG_F2FS_FS_ENCRYPTION
