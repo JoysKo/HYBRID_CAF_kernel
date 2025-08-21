@@ -282,7 +282,6 @@ free_map:
 	bpf_map_uncharge_memlock(map);
 free_map_sec:
 	security_bpf_map_free(map);
-free_map_nouncharge:
 	map->ops->map_free(map);
 	return err;
 }
