@@ -1234,7 +1234,6 @@ static int reverse_path_check(void)
 
 static int ep_create_wakeup_source(struct epitem *epi)
 {
-	char *event_name;
 	struct name_snapshot n;
 	struct wakeup_source *ws;
 	char task_comm_buf[TASK_COMM_LEN];
