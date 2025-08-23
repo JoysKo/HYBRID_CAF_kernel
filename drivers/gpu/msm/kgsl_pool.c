@@ -85,10 +85,8 @@ _kgsl_pool_add_page(struct kgsl_page_pool *pool, struct page *p)
 {
 	_kgsl_pool_zero_page(p, pool->pool_order);
 
-	spin_lock(&pool->list_lock);
-	list_add_tail(&p->lru, &pool->page_list);
-	pool->page_count++;
-	spin_unlock(&pool->list_lock);
+	llist_add((struct llist_node *)&p->lru, &pool->page_list);
+	atomic_inc(&pool->page_count);
 }
 
 /* Returns a page from specified pool */
