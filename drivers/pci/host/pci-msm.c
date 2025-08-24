@@ -6645,9 +6645,7 @@ static struct platform_driver msm_pcie_driver = {
 int __init pcie_init(void)
 {
 	int ret = 0, i;
-#ifdef CONFIG_IPC_LOGGING
 	char rc_name[MAX_RC_NAME_LEN];
-#endif
 
 	pr_alert("pcie:%s.\n", __func__);
 
@@ -6657,7 +6655,6 @@ int __init pcie_init(void)
 	mutex_init(&enumerate_lock);
 
 	for (i = 0; i < MAX_RC_NUM; i++) {
-#ifdef CONFIG_IPC_LOGGING
 		snprintf(rc_name, MAX_RC_NAME_LEN, "pcie%d-short", i);
 #ifdef CONFIG_IPC_LOGGING
 		msm_pcie_dev[i].ipc_log =
