@@ -35,6 +35,7 @@
 #include "mdss_debug.h"
 #include "mdss_dsi_phy.h"
 #include "mdss_dba_utils.h"
+#include "mdss_smmu.h"
 #include "dsi_access.h"
 #include "mdss_livedisplay.h"
 
