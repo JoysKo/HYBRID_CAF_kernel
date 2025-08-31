@@ -267,20 +267,20 @@ static u32 bbr_min_tso_segs(struct sock *sk)
 	return sk->sk_pacing_rate < (bbr_min_tso_rate >> 3) ? 1 : 2;
 }
 
-static u32 bbr_tso_segs_goal(struct sock *sk)
+/* static u32 bbr_tso_segs_goal(struct sock *sk)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
-	u32 segs, bytes;
+	u32 segs, bytes; */
 
 	/* Sort of tcp_tso_autosize() but ignoring
 	 * driver provided sk_gso_max_size.
 	 */
-	bytes = min_t(u32, sk->sk_pacing_rate >> sk->sk_pacing_shift,
+	/* bytes = min_t(u32, sk->sk_pacing_rate >> sk->sk_pacing_shift,
 		      GSO_MAX_SIZE - 1 - MAX_TCP_HEADER);
 	segs = max_t(u32, bytes / tp->mss_cache, bbr_min_tso_segs(sk));
 
 	return min(segs, 0x7FU);
-}
+} */
 
 /* Save "last known good" cwnd so we can restore it after losses or PROBE_RTT */
 static void bbr_save_cwnd(struct sock *sk)

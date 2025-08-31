@@ -21,6 +21,8 @@
  *
  * Unless CUBIC is enabled and congestion window is large
  * this behaves the same as the original Reno.
+ *
+ * Modified with help of DeepSeek, 2025
  */
 
 #include <linux/mm.h>
@@ -225,29 +227,30 @@ static u32 cubic_root(u64 a)
  */
 static inline void bictcp_update(struct bictcp *ca, u32 cwnd, u32 acked)
 {
-	u32 delta, bic_target, max_cnt;
-	u64 offs, t;
+    u32 delta, bic_target, max_cnt;
+    u64 offs, t;
+    u32 now = tcp_jiffies32;  // Получаем текущее время один раз
 
-	ca->ack_cnt += acked;	/* count the number of ACKed packets */
+    ca->ack_cnt += acked;   /* count the number of ACKed packets */
 
-	if (ca->last_cwnd == cwnd &&
-	    (s32)(tcp_time_stamp - ca->last_time) <= HZ / 32)
-		return;
+    if (ca->last_cwnd == cwnd &&
+        (s32)(now - ca->last_time) <= HZ / 32)
+        return;
 
 	/* The CUBIC function can update ca->cnt at most once per jiffy.
 	 * On all cwnd reduction events, ca->epoch_start is set to 0,
 	 * which will force a recalculation of ca->cnt.
 	 */
-	if (ca->epoch_start && tcp_time_stamp == ca->last_time)
-		goto tcp_friendliness;
+	if (ca->epoch_start && now == ca->last_time)
+        goto tcp_friendliness;
 
-	ca->last_cwnd = cwnd;
-	ca->last_time = tcp_time_stamp;
+    ca->last_cwnd = cwnd;
+    ca->last_time = now;
 
-	if (ca->epoch_start == 0) {
-		ca->epoch_start = tcp_time_stamp;	/* record beginning */
-		ca->ack_cnt = acked;			/* start counting */
-		ca->tcp_cwnd = cwnd;			/* syn with cubic */
+    if (ca->epoch_start == 0) {
+        ca->epoch_start = now;           /* record beginning */
+        ca->ack_cnt = acked;             /* start counting */
+        ca->tcp_cwnd = cwnd;             /* syn with cubic */
 
 		if (ca->last_max_cwnd <= cwnd) {
 			ca->bic_K = 0;
@@ -276,7 +279,7 @@ static inline void bictcp_update(struct bictcp *ca, u32 cwnd, u32 acked)
 	 * if the cwnd < 1 million packets !!!
 	 */
 
-	t = (s32)(tcp_time_stamp - ca->epoch_start);
+	t = (s32)(now - ca->epoch_start);
 	t += msecs_to_jiffies(ca->delay_min >> 3);
 	/* change the unit from HZ to bictcp_HZ */
 	t <<= BICTCP_HZ;
@@ -443,6 +446,7 @@ static void bictcp_acked(struct sock *sk, const struct ack_sample *sample)
 {
 	const struct tcp_sock *tp = tcp_sk(sk);
 	struct bictcp *ca = inet_csk_ca(sk);
+	u32 now = tcp_jiffies32;  // Получаем текущее время один раз
 	u32 delay;
 
 	/* Some calls are for duplicates without timetamps */
@@ -450,7 +454,7 @@ static void bictcp_acked(struct sock *sk, const struct ack_sample *sample)
 		return;
 
 	/* Discard delay samples right after fast recovery */
-	if (ca->epoch_start && (s32)(tcp_time_stamp - ca->epoch_start) < HZ)
+	if (ca->epoch_start && (s32)(now - ca->epoch_start) < HZ)
 		return;
 
 	delay = (sample->rtt_us << 3) / USEC_PER_MSEC;
