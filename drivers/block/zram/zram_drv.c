@@ -4,6 +4,8 @@
  * Copyright (C) 2008, 2009, 2010  Nitin Gupta
  *               2012, 2013 Minchan Kim
  *
+ * Modified 2025 DeepSeek & BPRGroup
+ *
  * This code is released using a dual license strategy: BSD/GPL
  * You can choose the licence that better fits your requirements.
  *
@@ -654,10 +656,17 @@ static ssize_t writeback_store(struct device *dev,
 			continue;
 		}
 
-		bio_init(&bio, &bio_vec, 1);
-		bio_set_dev(&bio, zram->bdev);
+		/* Инициализация bio с помощью bio_init() */
+		bio_init(&bio); /* Только один аргумент! */
+
+		/* Ручное заполнение полей bio для создания односегментного BIO */
+		bio.bi_io_vec = &bio_vec;
+		bio.bi_vcnt = 1;
+		bio.bi_max_vecs = 1; /* Или другое значение, если выделялось с запасом */
+		/* Замена bio_set_dev(&bio, zram->bdev); на прямое присвоение */
+		bio.bi_bdev = zram->bdev; // ✅ Адаптация для ядра 4.4
 		bio.bi_iter.bi_sector = blk_idx * (PAGE_SIZE >> 9);
-		bio.bi_opf = REQ_OP_WRITE | REQ_SYNC;
+		bio.bi_rw = WRITE | REQ_SYNC;
 
 		bio_add_page(&bio, bvec.bv_page, bvec.bv_len,
 				bvec.bv_offset);
@@ -665,7 +674,7 @@ static ssize_t writeback_store(struct device *dev,
 		 * XXX: A single page IO would be inefficient for write
 		 * but it would be not bad as starter.
 		 */
-		ret = submit_bio_wait(&bio);
+		ret = submit_bio_wait(bio.bi_rw, &bio);
 		if (ret) {
 			zram_slot_lock(zram, index);
 			zram_clear_flag(zram, index, ZRAM_UNDER_WB);
