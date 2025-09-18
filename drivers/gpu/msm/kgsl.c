@@ -1923,20 +1923,20 @@ long kgsl_ioctl_drawctxt_destroy(struct kgsl_device_private *dev_priv,
 
 static long gpumem_free_entry(struct kgsl_mem_entry *entry)
 {
-	if (!kgsl_mem_entry_set_pend(entry))
-		return -EBUSY;
+    if (!kgsl_mem_entry_set_pend(entry))
+        return -EBUSY;
 
-	trace_kgsl_mem_free(entry);
+    trace_kgsl_mem_free(entry);
 
-	kgsl_memfree_add(entry->priv->pid,
-			entry->memdesc.pagetable ?
-				entry->memdesc.pagetable->name : 0,
-			entry->memdesc.gpuaddr, entry->memdesc.size,
-			entry->memdesc.flags);
+    kgsl_memfree_add(pid_vnr(entry->priv->pid),  // Преобразование struct pid* в pid_t
+            entry->memdesc.pagetable ?
+                entry->memdesc.pagetable->name : 0,
+            entry->memdesc.gpuaddr, entry->memdesc.size,
+            entry->memdesc.flags);
 
-	kgsl_mem_entry_put(entry);
+    kgsl_mem_entry_put(entry);
 
-	return 0;
+    return 0;
 }
 
 static void gpumem_free_func(struct kgsl_device *device,
@@ -1951,7 +1951,7 @@ static void gpumem_free_func(struct kgsl_device *device,
 	/* Free the memory for all event types */
 	trace_kgsl_mem_timestamp_free(device, entry, KGSL_CONTEXT_ID(context),
 		timestamp, 0);
-	kgsl_memfree_add(entry->priv->pid,
+	kgsl_memfree_add(pid_vnr(entry->priv->pid),  // Преобразование struct pid* в pid_t
 			entry->memdesc.pagetable ?
 				entry->memdesc.pagetable->name : 0,
 			entry->memdesc.gpuaddr, entry->memdesc.size,
@@ -2051,7 +2051,7 @@ static void gpuobj_free_fence_func(void *priv)
 	struct kgsl_mem_entry *entry = priv;
 
 	trace_kgsl_mem_free(entry);
-	kgsl_memfree_add(entry->priv->pid,
+	kgsl_memfree_add(pid_vnr(entry->priv->pid),  // Преобразование struct pid* в pid_t
 			entry->memdesc.pagetable ?
 				entry->memdesc.pagetable->name : 0,
 			entry->memdesc.gpuaddr, entry->memdesc.size,
