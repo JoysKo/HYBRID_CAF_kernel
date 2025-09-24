@@ -1,6 +1,8 @@
 /*
  * Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *
+ * Modified 2025, DeepSeek & BPRGroup
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
@@ -140,10 +142,36 @@ static struct syscore_ops walt_syscore_ops = {
 	.suspend = walt_suspend
 };
 
+/* Глобальная переменная для максимальной capacity */
+unsigned long max_capacity = 1;
+
+/* Функция инициализации max_capacity */
+void __init walt_init_max_capacity(void)
+{
+    int cpu;
+    unsigned long capacity, max = 0;
+
+    /* Проходим по всем возможным CPU и находим максимальную capacity */
+    for_each_possible_cpu(cpu) {
+        capacity = capacity_curr_of(cpu);
+        if (capacity > max)
+            max = capacity;
+    }
+
+    if (max) {
+        max_capacity = max;
+    }
+    pr_info("WALT: max_capacity initialized to %lu\n", max_capacity);
+}
+
+/* Модифицируем существующую функцию инициализации */
 static int __init walt_init_ops(void)
 {
-	register_syscore_ops(&walt_syscore_ops);
-	return 0;
+    /* Инициализируем max_capacity */
+    walt_init_max_capacity();
+    
+    register_syscore_ops(&walt_syscore_ops);
+    return 0;
 }
 late_initcall(walt_init_ops);
 

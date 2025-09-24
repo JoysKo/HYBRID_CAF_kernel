@@ -16,6 +16,9 @@
 
 #ifdef CONFIG_SCHED_WALT
 
+extern unsigned long max_capacity;
+extern void __init walt_init_max_capacity(void);
+
 void walt_update_task_ravg(struct task_struct *p, struct rq *rq, int event,
 		u64 wallclock, u64 irqtime);
 void walt_inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p);
