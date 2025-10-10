@@ -860,8 +860,6 @@ static void bbr_init(struct sock *sk)
 	bbr->cycle_idx = 0;
 	bbr_reset_lt_bw_sampling(sk);
 	bbr_reset_startup_mode(sk);
-
-	cmpxchg(&sk->sk_pacing_status, SK_PACING_NONE, SK_PACING_NEEDED);
 }
 
 static u32 bbr_sndbuf_expand(struct sock *sk)

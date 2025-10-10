@@ -1981,14 +1981,7 @@ static int check_alu_op(struct bpf_verifier_env *env, struct bpf_insn *insn)
 			mark_reg_unknown_value(regs, insn->dst_reg);
 	}
 
-	check_reg_overflow(false_reg);
-	check_reg_overflow(true_reg);
-	if (is_range) {
-		if (__is_pointer_value(false, false_reg))
-			reset_reg_range_values(false_reg, 0);
-		if (__is_pointer_value(false, true_reg))
-			reset_reg_range_values(true_reg, 0);
-	}
+	return 0;
 }
 
 static void find_good_pkt_pointers(struct bpf_verifier_state *state,

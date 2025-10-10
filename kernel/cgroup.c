@@ -3430,7 +3430,8 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 	u16 enable = 0, disable = 0;
 	struct cgroup *cgrp, *child;
 	struct cgroup_subsys *ss;
-	int ssid;
+	char *tok;
+	int ssid, ret;
 
 	/*
 	 * Parse input - space separated list of subsystem names prefixed
@@ -3459,17 +3460,17 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 		if (ssid == CGROUP_SUBSYS_COUNT)
 			return -EINVAL;
 	}
-}
 
 	cgrp = cgroup_kn_lock_live(of->kn, true);
 	if (!cgrp)
 		return -ENODEV;
 
-	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
-		dsct->old_subtree_control = dsct->subtree_control;
-		dsct->old_subtree_ss_mask = dsct->subtree_ss_mask;
-	}
-}
+	for_each_subsys(ss, ssid) {
+		if (enable & (1 << ssid)) {
+			if (cgrp->subtree_control & (1 << ssid)) {
+				enable &= ~(1 << ssid);
+				continue;
+			}
 
 			if (!(cgroup_control(cgrp) & (1 << ssid))) {
 				ret = -ENOENT;
@@ -3481,25 +3482,20 @@ static ssize_t cgroup_subtree_control_write(struct kernfs_open_file *of,
 				continue;
 			}
 
-	cgroup_for_each_live_descendant_pre(dsct, d_css, cgrp) {
-		dsct->subtree_control &= cgroup_control(dsct);
-		dsct->subtree_ss_mask =
-			cgroup_calc_subtree_ss_mask(dsct->subtree_control,
-						    cgroup_ss_mask(dsct));
+			/* a child has it enabled? */
+			cgroup_for_each_live_child(child, cgrp) {
+				if (child->subtree_control & (1 << ssid)) {
+					ret = -EBUSY;
+					goto out_unlock;
+				}
+			}
+		}
 	}
-}
 
-/**
- * cgroup_restore_control - restore control masks of a subtree
- * @cgrp: root of the target subtree
- *
- * Restore ->subtree_control and ->subtree_ss_mask from the respective old_
- * prefixed fields for @cgrp's subtree including @cgrp itself.
- */
-static void cgroup_restore_control(struct cgroup *cgrp)
-{
-	struct cgroup *dsct;
-	struct cgroup_subsys_state *d_css;
+	if (!enable && !disable) {
+		ret = 0;
+		goto out_unlock;
+	}
 
 	/*
 	 * Except for the root, subtree_control must be zero for a cgroup
@@ -3528,7 +3524,6 @@ static void cgroup_restore_control(struct cgroup *cgrp)
 		if (ret)
 			goto out_unlock;
 	}
-}
 
 	/* save and update control masks and prepare csses */
 	cgroup_save_control(cgrp);
@@ -5449,7 +5444,8 @@ static int cgroup_mkdir(struct kernfs_node *parent_kn, const char *name,
 	/* let's create and online css's */
 	kernfs_activate(kn);
 
-	return cgrp;
+	ret = 0;
+	goto out_unlock;
 
 out_destroy:
 	cgroup_destroy_locked(cgrp);
@@ -6360,7 +6356,6 @@ struct cgroup_subsys_state *css_from_id(int id, struct cgroup_subsys *ss)
 	WARN_ON_ONCE(!rcu_read_lock_held());
 	return idr_find(&ss->css_idr, id);
 }
-#endif /* CONFIG_CGROUP_BPF */
 
 /**
  * cgroup_get_from_path - lookup and get a cgroup from its default hierarchy path
