@@ -451,7 +451,6 @@ static void exit_mm(struct task_struct *tsk)
 #endif
 	if (mm_released)
 		set_tsk_thread_flag(tsk, TIF_MM_RELEASED);
-#endif
 }
 
 static struct task_struct *find_alive_thread(struct task_struct *p)
