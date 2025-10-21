@@ -4399,10 +4399,6 @@ out:
 	return 0;
 }
 
-{
-	return 0;
-}
-
 static inline unsigned int f2fs_usable_zone_blks_in_seg(struct f2fs_sb_info *sbi,
 							unsigned int segno)
 {
