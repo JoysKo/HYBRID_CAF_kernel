@@ -2977,7 +2977,7 @@ static int check_swap_activate_fast(struct swap_info_struct *sis,
 		cond_resched();
 
 		memset(&map_bh, 0, sizeof(struct buffer_head));
-		map_bh.b_size = len - blks_to_bytes(inode, cur_lblock);
+		map_bh.b_size = len - cur_lblock;
 
 		ret = get_data_block(inode, cur_lblock, &map_bh, 0,
 					F2FS_GET_BLOCK_FIEMAP, &next_pgofs);
