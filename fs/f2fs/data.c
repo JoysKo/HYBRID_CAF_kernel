@@ -3024,7 +3024,8 @@ err_out:
 }
 
 /* Copied from generic_swapfile_activate() to check any holes */
-static int check_swap_activate(struct file *swap_file, unsigned int max)
+static int check_swap_activate(struct swap_info_struct *sis,
+                                struct file *swap_file, sector_t *span)
 {
 	struct address_space *mapping = swap_file->f_mapping;
 	struct inode *inode = mapping->host;
@@ -3049,7 +3050,8 @@ static int check_swap_activate(struct file *swap_file, unsigned int max)
 	probe_block = 0;
 	page_no = 0;
 	last_block = i_size_read(inode) >> blkbits;
-	while ((probe_block + blocks_per_page) <= last_block && page_no < max) {
+	while ((probe_block + blocks_per_page) <= last_block &&
+                        page_no < sis->max) {
 		unsigned block_in_page;
 		sector_t first_block;
 
@@ -3117,7 +3119,7 @@ static int f2fs_swap_activate(struct swap_info_struct *sis, struct file *file,
 	if (ret)
 		return ret;
 
-	ret = check_swap_activate(file, sis->max);
+	ret = check_swap_activate(sis, file, span);
 	if (ret)
 		return ret;
 
