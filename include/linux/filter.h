@@ -53,6 +53,9 @@ struct bpf_prog_aux;
 #define BPF_REG_AX		MAX_BPF_REG
 #define MAX_BPF_JIT_REG		(MAX_BPF_REG + 1)
 
+/* unused opcode to mark special call to bpf_tail_call() helper */
+#define BPF_TAIL_CALL	0xf0
+
 /* BPF program can access up to 512 bytes of stack space. */
 #define MAX_BPF_STACK	512
 
@@ -446,6 +449,59 @@ struct sk_filter {
 	struct rcu_head	rcu;
 	struct bpf_prog	*prog;
 };
+
+#if IS_ENABLED(CONFIG_BPF_JIT) && IS_ENABLED(CONFIG_CFI_CLANG)
+/*
+ * With JIT, the kernel makes an indirect call to dynamically generated
+ * code. Use bpf_call_func to perform additional validation of the call
+ * target to narrow down attack surface. Architectures implementing BPF
+ * JIT can override arch_bpf_jit_check_func for arch-specific checking.
+ */
+extern bool arch_bpf_jit_check_func(const struct bpf_prog *prog);
+
+static inline unsigned int __bpf_call_func(const struct bpf_prog *prog,
+					   const void *ctx)
+{
+	/* Call interpreter with CFI checking. */
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline unsigned int __nocfi bpf_call_func(const struct bpf_prog *prog,
+						 const void *ctx)
+{
+	unsigned long addr = (unsigned long)prog->bpf_func & PAGE_MASK;
+	const struct bpf_binary_header *hdr = (void *)addr;
+
+	if (!IS_ENABLED(CONFIG_BPF_JIT_ALWAYS_ON) && !prog->jited)
+		return __bpf_call_func(prog, ctx);
+
+	/*
+	 * We are about to call dynamically generated code. Check that the
+	 * page has bpf_binary_header with a valid magic to limit possible
+	 * call targets.
+	 */
+	BUG_ON(hdr->magic != BPF_BINARY_HEADER_MAGIC ||
+		!arch_bpf_jit_check_func(prog));
+
+	/* Call jited function without CFI checking. */
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline void bpf_jit_set_header_magic(struct bpf_binary_header *hdr)
+{
+	hdr->magic = BPF_BINARY_HEADER_MAGIC;
+}
+#else
+static inline unsigned int bpf_call_func(const struct bpf_prog *prog,
+					 const void *ctx)
+{
+	return prog->bpf_func(ctx, prog->insnsi);
+}
+
+static inline void bpf_jit_set_header_magic(struct bpf_binary_header *hdr)
+{
+}
+#endif
 
 #define BPF_PROG_RUN(filter, ctx)  (*(filter)->bpf_func)(ctx, (filter)->insnsi)
 
