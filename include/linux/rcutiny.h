@@ -205,6 +205,14 @@ static inline void rcu_irq_enter_irqson(void)
 {
 }
 
+static inline void rcu_irq_exit_irqson(void)
+{
+}
+
+static inline void rcu_irq_enter_irqson(void)
+{
+}
+
 static inline void rcu_irq_exit(void)
 {
 }

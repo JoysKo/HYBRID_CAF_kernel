@@ -672,7 +672,7 @@ static inline void rcu_nocb_q_lengths(struct rcu_data *rdp, long *ql, long *qll)
 #endif /* #else #ifdef CONFIG_PPC */
 
 /*
- * Wrappers for the rcu_node::lock acquire and release.
+ * Wrappers for the rcu_node::lock acquire.
  *
  * Because the rcu_nodes form a tree, the tree traversal locking will observe
  * different lock values, this in turn means that an UNLOCK of one level
