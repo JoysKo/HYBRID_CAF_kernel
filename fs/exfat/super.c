@@ -2145,11 +2145,7 @@ static const struct inode_operations exfat_symlink_inode_operations = {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0)
 	.readlink    = generic_readlink,
 #endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
 	.get_link = exfat_follow_link,
-#else /* LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0) */
-	.follow_link = exfat_follow_link,
-#endif
 #ifdef CONFIG_EXFAT_VIRTUAL_XATTR
 	.listxattr      = exfat_listxattr,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
