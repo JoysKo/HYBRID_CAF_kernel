@@ -488,6 +488,9 @@ int x86_pmu_hw_config(struct perf_event *event)
 			/* Support for IP fixup */
 			if (x86_pmu.lbr_nr || x86_pmu.intel_cap.pebs_format >= 2)
 				precise++;
+
+			if (x86_pmu.pebs_prec_dist)
+				precise++;
 		}
 
 		if (event->attr.precise_ip > precise)
@@ -2279,12 +2282,19 @@ perf_callchain_user32(struct pt_regs *regs, struct perf_callchain_entry *entry)
 	ss_base = get_segment_base(regs->ss);
 
 	fp = compat_ptr(ss_base + regs->bp);
+	pagefault_disable();
 	while (entry->nr < PERF_MAX_STACK_DEPTH) {
 		unsigned long bytes;
 		frame.next_frame     = 0;
 		frame.return_address = 0;
 
-		bytes = copy_from_user_nmi(&frame, fp, sizeof(frame));
+		if (!access_ok(VERIFY_READ, fp, 8))
+			break;
+
+		bytes = __copy_from_user_nmi(&frame.next_frame, fp, 4);
+		if (bytes != 0)
+			break;
+		bytes = __copy_from_user_nmi(&frame.return_address, fp+4, 4);
 		if (bytes != 0)
 			break;
 
@@ -2294,6 +2304,7 @@ perf_callchain_user32(struct pt_regs *regs, struct perf_callchain_entry *entry)
 		perf_callchain_store(entry, cs_base + frame.return_address);
 		fp = compat_ptr(ss_base + frame.next_frame);
 	}
+	pagefault_enable();
 	return 1;
 }
 #else
@@ -2331,12 +2342,19 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 	if (perf_callchain_user32(regs, entry))
 		return;
 
+	pagefault_disable();
 	while (entry->nr < PERF_MAX_STACK_DEPTH) {
 		unsigned long bytes;
 		frame.next_frame	     = NULL;
 		frame.return_address = 0;
 
-		bytes = copy_from_user_nmi(&frame, fp, sizeof(frame));
+		if (!access_ok(VERIFY_READ, fp, 16))
+			break;
+
+		bytes = __copy_from_user_nmi(&frame.next_frame, fp, 8);
+		if (bytes != 0)
+			break;
+		bytes = __copy_from_user_nmi(&frame.return_address, fp+8, 8);
 		if (bytes != 0)
 			break;
 
@@ -2344,8 +2362,9 @@ perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs)
 			break;
 
 		perf_callchain_store(entry, frame.return_address);
-		fp = frame.next_frame;
+		fp = (void __user *)frame.next_frame;
 	}
+	pagefault_enable();
 }
 
 /*

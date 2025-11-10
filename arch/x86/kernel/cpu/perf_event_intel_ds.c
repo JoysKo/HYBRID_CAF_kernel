@@ -662,6 +662,8 @@ struct event_constraint intel_atom_pebs_event_constraints[] = {
 	INTEL_FLAGS_EVENT_CONSTRAINT(0xcb, 0x1),    /* MEM_LOAD_RETIRED.* */
 	/* INST_RETIRED.ANY_P, inv=1, cmask=16 (cycles:p). */
 	INTEL_FLAGS_EVENT_CONSTRAINT(0x108000c0, 0x01),
+	/* Allow all events as PEBS with no flags */
+	INTEL_ALL_EVENT_CONSTRAINT(0, 0x1),
 	EVENT_CONSTRAINT_END
 };
 
@@ -728,6 +730,8 @@ struct event_constraint intel_ivb_pebs_event_constraints[] = {
 	INTEL_PST_CONSTRAINT(0x02cd, 0x8),    /* MEM_TRANS_RETIRED.PRECISE_STORES */
 	/* UOPS_RETIRED.ALL, inv=1, cmask=16 (cycles:p). */
 	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c2, 0xf),
+	/* INST_RETIRED.PREC_DIST, inv=1, cmask=16 (cycles:ppp). */
+	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c0, 0x2),
 	INTEL_EXCLEVT_CONSTRAINT(0xd0, 0xf),    /* MEM_UOP_RETIRED.* */
 	INTEL_EXCLEVT_CONSTRAINT(0xd1, 0xf),    /* MEM_LOAD_UOPS_RETIRED.* */
 	INTEL_EXCLEVT_CONSTRAINT(0xd2, 0xf),    /* MEM_LOAD_UOPS_LLC_HIT_RETIRED.* */
@@ -742,6 +746,8 @@ struct event_constraint intel_hsw_pebs_event_constraints[] = {
 	INTEL_PLD_CONSTRAINT(0x01cd, 0xf),    /* MEM_TRANS_RETIRED.* */
 	/* UOPS_RETIRED.ALL, inv=1, cmask=16 (cycles:p). */
 	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c2, 0xf),
+	/* INST_RETIRED.PREC_DIST, inv=1, cmask=16 (cycles:ppp). */
+	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c0, 0x2),
 	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_NA(0x01c2, 0xf), /* UOPS_RETIRED.ALL */
 	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_XLD(0x11d0, 0xf), /* MEM_UOPS_RETIRED.STLB_MISS_LOADS */
 	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_XLD(0x21d0, 0xf), /* MEM_UOPS_RETIRED.LOCK_LOADS */
@@ -760,9 +766,10 @@ struct event_constraint intel_hsw_pebs_event_constraints[] = {
 
 struct event_constraint intel_skl_pebs_event_constraints[] = {
 	INTEL_FLAGS_UEVENT_CONSTRAINT(0x1c0, 0x2),	/* INST_RETIRED.PREC_DIST */
-	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_NA(0x01c2, 0xf), /* UOPS_RETIRED.ALL */
-	/* UOPS_RETIRED.ALL, inv=1, cmask=16 (cycles:p). */
-	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c2, 0xf),
+	/* INST_RETIRED.PREC_DIST, inv=1, cmask=16 (cycles:ppp). */
+	INTEL_FLAGS_EVENT_CONSTRAINT(0x108001c0, 0x2),
+	/* INST_RETIRED.TOTAL_CYCLES_PS (inv=1, cmask=16) (cycles:p). */
+	INTEL_FLAGS_EVENT_CONSTRAINT(0x108000c0, 0x0f),
 	INTEL_PLD_CONSTRAINT(0x1cd, 0xf),		      /* MEM_TRANS_RETIRED.* */
 	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_LD(0x11d0, 0xf), /* MEM_INST_RETIRED.STLB_MISS_LOADS */
 	INTEL_FLAGS_UEVENT_CONSTRAINT_DATALA_ST(0x12d0, 0xf), /* MEM_INST_RETIRED.STLB_MISS_STORES */
@@ -1279,12 +1286,21 @@ static void intel_pmu_drain_pebs_nhm(struct pt_regs *iregs)
 		pebs_status = p->status & cpuc->pebs_enabled;
 		pebs_status &= (1ULL << x86_pmu.max_pebs_events) - 1;
 
+		/*
+		 * On some CPUs the PEBS status can be zero when PEBS is
+		 * racing with clearing of GLOBAL_STATUS.
+		 *
+		 * Normally we would drop that record, but in the
+		 * case when there is only a single active PEBS event
+		 * we can assume it's for that event.
+		 */
+		if (!pebs_status && cpuc->pebs_enabled &&
+			!(cpuc->pebs_enabled & (cpuc->pebs_enabled-1)))
+			pebs_status = cpuc->pebs_enabled;
+
 		bit = find_first_bit((unsigned long *)&pebs_status,
 					x86_pmu.max_pebs_events);
-		if (WARN(bit >= x86_pmu.max_pebs_events,
-			 "PEBS record without PEBS event! status=%Lx pebs_enabled=%Lx active_mask=%Lx",
-			 (unsigned long long)p->status, (unsigned long long)cpuc->pebs_enabled,
-			 *(unsigned long long *)cpuc->active_mask))
+		if (bit >= x86_pmu.max_pebs_events)
 			continue;
 
 		/*
