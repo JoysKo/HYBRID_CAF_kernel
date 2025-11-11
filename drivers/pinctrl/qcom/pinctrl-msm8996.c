@@ -45,7 +45,7 @@
 			msm_mux_##f9			\
 		},				        \
 		.nfuncs = 10,				\
-		.ctl_reg = REG_BASE + REG_SIZE * id,	        	\
+		.ctl_reg = REG_BASE + REG_SIZE * id,	\
 		.io_reg = REG_BASE + 0x4 + REG_SIZE * id,		\
 		.intr_cfg_reg = REG_BASE + 0x8 + REG_SIZE * id,		\
 		.intr_status_reg = REG_BASE + 0xc + REG_SIZE * id,	\
