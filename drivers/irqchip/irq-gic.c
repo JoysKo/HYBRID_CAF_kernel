@@ -70,6 +70,7 @@ union gic_base {
 };
 
 struct gic_chip_data {
+	struct irq_chip chip;
 	unsigned int irq_offset;
 	union gic_base dist_base;
 	union gic_base cpu_base;
@@ -110,11 +111,7 @@ static struct static_key supports_deactivate = STATIC_KEY_INIT_TRUE;
  */
 extern struct irq_chip gic_arch_extn;
 
-#ifndef MAX_GIC_NR
-#define MAX_GIC_NR	1
-#endif
-
-static struct gic_chip_data gic_data[MAX_GIC_NR] __read_mostly;
+static struct gic_chip_data gic_data[CONFIG_ARM_GIC_MAX_NR] __read_mostly;
 
 #ifdef CONFIG_GIC_NON_BANKED
 static void __iomem *gic_get_percpu_base(union gic_base *base)
@@ -253,7 +250,7 @@ static int gic_suspend(void)
 {
 	int i;
 
-	for (i = 0; i < MAX_GIC_NR; i++)
+	for (i = 0; i < CONFIG_ARM_GIC_MAX_NR; i++)
 		gic_suspend_one(&gic_data[i]);
 	return 0;
 }
@@ -314,7 +311,7 @@ static void gic_resume(void)
 {
 	int i;
 
-	for (i = 0; i < MAX_GIC_NR; i++)
+	for (i = 0; i < CONFIG_ARM_GIC_MAX_NR; i++)
 		gic_resume_one(&gic_data[i]);
 }
 
@@ -575,7 +572,6 @@ static bool gic_handle_cascade_irq(struct irq_desc *desc)
 }
 
 static struct irq_chip gic_chip = {
-	.name			= "GIC",
 	.irq_mask		= gic_mask_irq,
 	.irq_unmask		= gic_unmask_irq,
 	.irq_eoi		= gic_eoi_irq,
@@ -611,8 +607,7 @@ static struct irq_chip gic_eoimode1_chip = {
 
 void __init gic_cascade_irq(unsigned int gic_nr, unsigned int irq)
 {
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 	irq_set_chained_handler_and_data(irq, gic_handle_cascade_irq,
 					 &gic_data[gic_nr]);
 }
@@ -718,7 +713,7 @@ int gic_cpu_if_down(unsigned int gic_nr)
 	void __iomem *cpu_base;
 	u32 val = 0;
 
-	if (gic_nr >= MAX_GIC_NR)
+	if (gic_nr >= CONFIG_ARM_GIC_MAX_NR)
 		return -EINVAL;
 
 	cpu_base = gic_data_cpu_base(&gic_data[gic_nr]);
@@ -742,8 +737,7 @@ static void gic_dist_save(unsigned int gic_nr)
 	void __iomem *dist_base;
 	int i;
 
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	gic_irqs = gic_data[gic_nr].gic_irqs;
 	dist_base = gic_data_dist_base(&gic_data[gic_nr]);
@@ -781,8 +775,7 @@ static void gic_dist_restore(unsigned int gic_nr)
 	unsigned int i;
 	void __iomem *dist_base;
 
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	gic_irqs = gic_data[gic_nr].gic_irqs;
 	dist_base = gic_data_dist_base(&gic_data[gic_nr]);
@@ -828,8 +821,7 @@ static void gic_cpu_save(unsigned int gic_nr)
 	void __iomem *dist_base;
 	void __iomem *cpu_base;
 
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	dist_base = gic_data_dist_base(&gic_data[gic_nr]);
 	cpu_base = gic_data_cpu_base(&gic_data[gic_nr]);
@@ -858,8 +850,7 @@ static void gic_cpu_restore(unsigned int gic_nr)
 	void __iomem *dist_base;
 	void __iomem *cpu_base;
 
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	dist_base = gic_data_dist_base(&gic_data[gic_nr]);
 	cpu_base = gic_data_cpu_base(&gic_data[gic_nr]);
@@ -898,7 +889,7 @@ static int gic_notifier(struct notifier_block *self, unsigned long cmd,
 {
 	int i;
 
-	for (i = 0; i < MAX_GIC_NR; i++) {
+	for (i = 0; i < CONFIG_ARM_GIC_MAX_NR; i++) {
 #ifdef CONFIG_GIC_NON_BANKED
 		/* Skip over unused GICs */
 		if (!gic_data[i].get_base)
@@ -1039,8 +1030,7 @@ void gic_migrate_target(unsigned int new_cpu_id)
 	int i, ror_val, cpu = smp_processor_id();
 	u32 val, cur_target_mask, active_mask;
 
-	if (gic_nr >= MAX_GIC_NR)
-		BUG();
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	dist_base = gic_data_dist_base(&gic_data[gic_nr]);
 	if (!dist_base)
@@ -1129,20 +1119,15 @@ void __init gic_init_physaddr(struct device_node *node)
 static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 				irq_hw_number_t hw)
 {
-	struct irq_chip *chip = &gic_chip;
-
-	if (static_key_true(&supports_deactivate)) {
-		if (d->host_data == (void *)&gic_data[0])
-			chip = &gic_eoimode1_chip;
-	}
+	struct gic_chip_data *gic = d->host_data;
 
 	if (hw < 32) {
 		irq_set_percpu_devid(irq);
-		irq_domain_set_info(d, irq, hw, chip, d->host_data,
+		irq_domain_set_info(d, irq, hw, &gic->chip, d->host_data,
 				    handle_percpu_devid_irq, NULL, NULL);
 		irq_set_status_flags(irq, IRQ_NOAUTOEN);
 	} else {
-		irq_domain_set_info(d, irq, hw, chip, d->host_data,
+		irq_domain_set_info(d, irq, hw, &gic->chip, d->host_data,
 				    handle_fasteoi_irq, NULL, NULL);
 		irq_set_probe(irq);
 	}
@@ -1176,7 +1161,7 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		return 0;
 	}
 
-	if (fwspec->fwnode->type == FWNODE_IRQCHIP) {
+	if (is_fwnode_irqchip(fwspec->fwnode)) {
 		if(fwspec->param_count != 2)
 			return -EINVAL;
 
@@ -1244,11 +1229,20 @@ static void __init __gic_init_bases(unsigned int gic_nr, int irq_start,
 	struct gic_chip_data *gic;
 	int gic_irqs, irq_base, i;
 
-	BUG_ON(gic_nr >= MAX_GIC_NR);
+	BUG_ON(gic_nr >= CONFIG_ARM_GIC_MAX_NR);
 
 	gic_check_cpu_features();
 
 	gic = &gic_data[gic_nr];
+
+	/* Initialize irq_chip */
+	if (static_key_true(&supports_deactivate) && gic_nr == 0) {
+		gic->chip = gic_eoimode1_chip;
+	} else {
+		gic->chip = gic_chip;
+		gic->chip.name = kasprintf(GFP_KERNEL, "GIC-%d", gic_nr);
+	}
+
 #ifdef CONFIG_GIC_NON_BANKED
 	if (percpu_offset) { /* Frankein-GIC without banked registers... */
 		unsigned int cpu;
@@ -1401,7 +1395,7 @@ static bool gic_check_eoimode(struct device_node *node, void __iomem **base)
 	return true;
 }
 
-static int __init
+int __init
 gic_of_init(struct device_node *node, struct device_node *parent)
 {
 	void __iomem *cpu_base;
@@ -1439,7 +1433,7 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 	}
 
 	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
-		gicv2m_of_init(node, gic_data[gic_cnt].domain);
+		gicv2m_init(&node->fwnode, gic_data[gic_cnt].domain);
 
 	gic_cnt++;
 	return 0;
@@ -1564,6 +1558,10 @@ static int __init gic_v2_acpi_init(struct acpi_subtable_header *header,
 	__gic_init_bases(0, -1, dist_base, cpu_base, 0, domain_handle);
 
 	acpi_set_irq_model(ACPI_IRQ_MODEL_GIC, domain_handle);
+
+	if (IS_ENABLED(CONFIG_ARM_GIC_V2M))
+		gicv2m_init(NULL, gic_data[0].domain);
+
 	return 0;
 }
 IRQCHIP_ACPI_DECLARE(gic_v2, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
