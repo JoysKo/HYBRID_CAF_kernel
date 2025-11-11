@@ -329,8 +329,7 @@ static inline u64 timekeeping_delta_to_ns(struct tk_read_base *tkr,
 {
 	u64 nsec;
 
-	nsec = delta * tkr->mult + tkr->xtime_nsec;
-	nsec >>= tkr->shift;
+	nsec = (delta * tkr->mult + tkr->xtime_nsec) >> tkr->shift;
 
 	/* If arch requires, add in get_arch_timeoffset() */
 	return nsec + arch_gettimeoffset();
@@ -927,6 +926,19 @@ time64_t ktime_get_real_seconds(void)
 	return seconds;
 }
 EXPORT_SYMBOL_GPL(ktime_get_real_seconds);
+
+/**
+ * __ktime_get_real_seconds - The same as ktime_get_real_seconds
+ * but without the sequence counter protect. This internal function
+ * is called just when timekeeping lock is already held.
+ */
+time64_t __ktime_get_real_seconds(void)
+{
+	struct timekeeper *tk = &tk_core.timekeeper;
+
+	return tk->xtime_sec;
+}
+
 
 #ifdef CONFIG_NTP_PPS
 
