@@ -424,8 +424,8 @@ int ptep_set_access_flags(struct vm_area_struct *vma,
 	int changed = !pte_same(*ptep, entry);
 
 	if (changed && dirty) {
-		set_pte(ptep, entry);
-		pte_update_defer(vma->vm_mm, address, ptep);
+		*ptep = entry;
+		pte_update(vma->vm_mm, address, ptep);
 	}
 
 	return changed;
@@ -441,8 +441,7 @@ int pmdp_set_access_flags(struct vm_area_struct *vma,
 	VM_BUG_ON(address & ~HPAGE_PMD_MASK);
 
 	if (changed && dirty) {
-		set_pmd(pmdp, entry);
-		pmd_update_defer(vma->vm_mm, address, pmdp);
+		*pmdp = entry;
 		/*
 		 * We had a write-protection fault here and changed the pmd
 		 * to to more permissive. No need to flush the TLB for that,
@@ -479,9 +478,6 @@ int pmdp_test_and_clear_young(struct vm_area_struct *vma,
 	if (pmd_young(*pmdp))
 		ret = test_and_clear_bit(_PAGE_BIT_ACCESSED,
 					 (unsigned long *)pmdp);
-
-	if (ret)
-		pmd_update(vma->vm_mm, addr, pmdp);
 
 	return ret;
 }
@@ -529,7 +525,6 @@ void pmdp_splitting_flush(struct vm_area_struct *vma,
 	set = !test_and_set_bit(_PAGE_BIT_SPLITTING,
 				(unsigned long *)pmdp);
 	if (set) {
-		pmd_update(vma->vm_mm, address, pmdp);
 		/* need tlb flush only to serialize against gup-fast */
 		flush_tlb_range(vma, address, address + HPAGE_PMD_SIZE);
 	}

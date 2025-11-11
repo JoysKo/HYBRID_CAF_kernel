@@ -15,7 +15,10 @@
  */
 static void fpu__init_cpu_ctx_switch(void)
 {
-	clts();
+	if (!boot_cpu_has(X86_FEATURE_EAGER_FPU))
+		stts();
+	else
+		clts();
 }
 
 /*
@@ -262,19 +265,18 @@ static void __init fpu__init_system_ctx_switch(void)
 	current_thread_info()->status = 0;
 }
 
-/*
- * We parse fpu parameters early because fpu__init_system() is executed
- * before parse_early_param().
- */
-static void __init fpu__init_parse_early_param(void)
-{
-	if (cmdline_find_option_bool(boot_command_line, "no387"))
-		setup_clear_cpu_cap(X86_FEATURE_FPU);
+	/* Auto enable eagerfpu for xsaveopt */
+	if (boot_cpu_has(X86_FEATURE_XSAVEOPT) && eagerfpu != DISABLE)
+		eagerfpu = ENABLE;
 
-	if (cmdline_find_option_bool(boot_command_line, "nofxsr")) {
-		setup_clear_cpu_cap(X86_FEATURE_FXSR);
-		setup_clear_cpu_cap(X86_FEATURE_FXSR_OPT);
-		setup_clear_cpu_cap(X86_FEATURE_XMM);
+	if (xfeatures_mask & XFEATURE_MASK_EAGER) {
+		if (eagerfpu == DISABLE) {
+			pr_err("x86/fpu: eagerfpu switching disabled, disabling the following xstate features: 0x%llx.\n",
+			       xfeatures_mask & XFEATURE_MASK_EAGER);
+			xfeatures_mask &= ~XFEATURE_MASK_EAGER;
+		} else {
+			eagerfpu = ENABLE;
+		}
 	}
 
 	if (cmdline_find_option_bool(boot_command_line, "noxsave"))

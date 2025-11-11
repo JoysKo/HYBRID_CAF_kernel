@@ -736,9 +736,10 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 	/* Additional Intel-defined flags: level 0x00000007 */
 	if (c->cpuid_level >= 0x00000007) {
 		cpuid_count(0x00000007, 0, &eax, &ebx, &ecx, &edx);
+
 		c->x86_capability[CPUID_7_0_EBX] = ebx;
-		c->x86_capability[CPUID_7_ECX] = ecx;
-		c->x86_capability[CPUID_7_EDX] = edx;
+
+		c->x86_capability[CPUID_6_EAX] = cpuid_eax(0x00000006);
 	}
 
 	/* Extended state features: level 0x0000000d */
@@ -806,6 +807,9 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 #endif
 
 	c->x86_cache_bits = c->x86_phys_bits;
+
+	if (c->extended_cpuid_level >= 0x8000000a)
+		c->x86_capability[CPUID_8000_000A_EDX] = cpuid_edx(0x8000000a);
 
 	if (c->extended_cpuid_level >= 0x8000000a)
 		c->x86_capability[CPUID_8000_000A_EDX] = cpuid_edx(0x8000000a);
