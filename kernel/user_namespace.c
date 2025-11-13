@@ -602,8 +602,7 @@ static ssize_t map_write(struct file *file, const char __user *buf,
 	struct uid_gid_map new_map;
 	unsigned idx;
 	struct uid_gid_extent *extent = NULL;
-	unsigned long page;
-	char *kbuf, *pos, *next_line;
+	char *kbuf = NULL, *pos, *next_line;
 	ssize_t ret;
 
 	/* Only allow < page size writes at the beginning of the file */
@@ -755,8 +754,7 @@ static ssize_t map_write(struct file *file, const char __user *buf,
 	ret = count;
 out:
 	mutex_unlock(&userns_state_mutex);
-	if (page)
-		free_page(page);
+	kfree(kbuf);
 	return ret;
 }
 
