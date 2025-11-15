@@ -27,7 +27,7 @@
  * Copyright (c) 2007, 2010, Oracle and/or its affiliates. All rights reserved.
  * Use is subject to license terms.
  *
- * Copyright (c) 2012, Intel Corporation.
+ * Copyright (c) 2012, 2015, Intel Corporation.
  */
 /*
  * This file is part of Lustre, http://www.lustre.org/
@@ -1105,12 +1105,6 @@ lnet_match_networks(char **networksp, char *ip2nets, __u32 *ipaddrs, int nip)
 	return count;
 }
 
-static void
-lnet_ipaddr_free_enumeration(__u32 *ipaddrs, int nip)
-{
-	LIBCFS_FREE(ipaddrs, nip * sizeof(*ipaddrs));
-}
-
 static int
 lnet_ipaddr_enumerate(__u32 **ipaddrsp)
 {
@@ -1171,7 +1165,7 @@ lnet_ipaddr_enumerate(__u32 **ipaddrsp)
 				rc = nip;
 			}
 		}
-		lnet_ipaddr_free_enumeration(ipaddrs, nif);
+		LIBCFS_FREE(ipaddrs, nip * sizeof(*ipaddrs));
 	}
 	return nip;
 }
@@ -1197,7 +1191,7 @@ lnet_parse_ip2nets(char **networksp, char *ip2nets)
 	}
 
 	rc = lnet_match_networks(networksp, ip2nets, ipaddrs, nip);
-	lnet_ipaddr_free_enumeration(ipaddrs, nip);
+	LIBCFS_FREE(ipaddrs, nip * sizeof(*ipaddrs));
 
 	if (rc < 0) {
 		LCONSOLE_ERROR_MSG(0x119, "Error %d parsing ip2nets\n", rc);

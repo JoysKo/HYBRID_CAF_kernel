@@ -325,14 +325,13 @@ static struct miscdevice ashmem_misc = {
 
 static int __init ashmem_init(void)
 {
-	int ret;
+	int ret = -ENOMEM;
 
 	ashmem_area_cachep = kmem_cache_create("ashmem_area_cache",
 					       sizeof(struct ashmem_area),
 					       0, 0, NULL);
 	if (!ashmem_area_cachep) {
 		pr_err("failed to create slab cache\n");
-		ret = -ENOMEM;
 		goto out;
 	}
 

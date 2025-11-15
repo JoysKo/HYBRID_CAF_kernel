@@ -33,6 +33,12 @@ config ION_TEGRA
 	help
 	  Choose this option if you wish to use ion on an nVidia Tegra.
 
+config ION_HISI
+	tristate "Ion for Hisilicon"
+	depends on ARCH_HISI && ION
+	help
+	  Choose this option if you wish to use ion on Hisilicon Platform.
+
 config ION_POOL_CACHE_POLICY
 	bool "Ion set page pool cache policy"
 	depends on ION && X86
@@ -54,3 +60,6 @@ config ALLOC_BUFFERS_IN_4K_CHUNKS
 	help
           Choose this option if you want ION to allocate buffers in
           only 4KB chunks.
+          
+          
+source "drivers/staging/android/ion/hisilicon/Kconfig"

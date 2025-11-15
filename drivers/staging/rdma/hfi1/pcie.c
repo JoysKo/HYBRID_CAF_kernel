@@ -427,14 +427,6 @@ void request_msix(struct hfi1_devdata *dd, u32 *nent,
 	tune_pcie_caps(dd);
 }
 
-/*
- * Disable MSI-X.
- */
-void hfi1_nomsix(struct hfi1_devdata *dd)
-{
-	pci_disable_msix(dd->pcidev);
-}
-
 void hfi1_enable_intx(struct pci_dev *pdev)
 {
 	/* first, turn on INTx */
@@ -476,8 +468,18 @@ static void tune_pcie_caps(struct hfi1_devdata *dd)
 {
 	struct pci_dev *parent;
 	u16 rc_mpss, rc_mps, ep_mpss, ep_mps;
-	u16 rc_mrrs, ep_mrrs, max_mrrs;
+	u16 rc_mrrs, ep_mrrs, max_mrrs, ectl;
 
+	/*
+	 * Turn on extended tags in DevCtl in case the BIOS has turned it off
+	 * to improve WFR SDMA bandwidth
+	 */
+	pcie_capability_read_word(dd->pcidev, PCI_EXP_DEVCTL, &ectl);
+	if (!(ectl & PCI_EXP_DEVCTL_EXT_TAG)) {
+		dd_dev_info(dd, "Enabling PCIe extended tags\n");
+		ectl |= PCI_EXP_DEVCTL_EXT_TAG;
+		pcie_capability_write_word(dd->pcidev, PCI_EXP_DEVCTL, ectl);
+	}
 	/* Find out supported and configured values for parent (root) */
 	parent = dd->pcidev->bus->self;
 	if (!pci_is_root_bus(parent->bus)) {
@@ -916,7 +918,7 @@ int do_pcie_gen3_transition(struct hfi1_devdata *dd)
 	/*
 	 * A0 needs an additional SBR
 	 */
-	if (is_a0(dd))
+	if (is_ax(dd))
 		nsbr++;
 
 	/*
@@ -948,17 +950,7 @@ int do_pcie_gen3_transition(struct hfi1_devdata *dd)
 	}
 
 retry:
-
-	if (therm) {
-		/*
-		 * toggle SPICO_ENABLE to get back to the state
-		 * just after the firmware load
-		 */
-		sbus_request(dd, SBUS_MASTER_BROADCAST, 0x01,
-			WRITE_SBUS_RECEIVER, 0x00000040);
-		sbus_request(dd, SBUS_MASTER_BROADCAST, 0x01,
-			WRITE_SBUS_RECEIVER, 0x00000140);
-	}
+	/* the SBus download will reset the spico for thermal */
 
 	/* step 3: download SBus Master firmware */
 	/* step 4: download PCIe Gen3 SerDes firmware */
@@ -1202,7 +1194,7 @@ retry:
 	write_csr(dd, CCE_DC_CTRL, 0);
 
 	/* Set the LED off */
-	if (is_a0(dd))
+	if (is_ax(dd))
 		setextled(dd, 0);
 
 	/* check for any per-lane errors */
