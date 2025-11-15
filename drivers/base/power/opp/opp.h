@@ -26,12 +26,12 @@ struct clk;
 struct regulator;
 
 /* Lock to allow exclusive modification to the device and opp lists */
-extern struct mutex opp_table_lock;
+extern struct mutex dev_opp_list_lock;
 
 /*
  * Internal data structure organization with the OPP layer library is as
  * follows:
- * opp_tables (root)
+ * dev_opps (root)
  *	|- device 1 (represents voltage domain 1)
  *	|	|- opp 1 (availability, freq, voltage)
  *	|	|- opp 2 ..
@@ -40,7 +40,7 @@ extern struct mutex opp_table_lock;
  *	|- device 2 (represents the next voltage domain)
  *	...
  *	`- device m (represents mth voltage domain)
- * device 1, 2.. are represented by opp_table structure while each opp
+ * device 1, 2.. are represented by dev_opp structure while each opp
  * is represented by the opp structure.
  */
 
@@ -51,7 +51,7 @@ extern struct mutex opp_table_lock;
  *		added to the library by the SoC framework.
  *		RCU usage: opp table is traversed with RCU locks. node
  *		modification is possible realtime, hence the modifications
- *		are protected by the opp_table_lock for integrity.
+ *		are protected by the dev_opp_list_lock for integrity.
  *		IMPORTANT: the opp nodes should be maintained in increasing
  *		order.
  * @available:	true/false - marks if this OPP as available or not
@@ -65,7 +65,7 @@ extern struct mutex opp_table_lock;
  * @u_amp:	Maximum current drawn by the device in microamperes
  * @clock_latency_ns: Latency (in nanoseconds) of switching to this OPP's
  *		frequency from any other OPP's frequency.
- * @opp_table:	points back to the opp_table struct this opp belongs to
+ * @dev_opp:	points back to the dev_opp struct this opp belongs to
  * @rcu_head:	RCU callback head used for deferred freeing
  * @np:		OPP's device node.
  * @dentry:	debugfs dentry pointer (per opp)
@@ -87,7 +87,7 @@ struct dev_pm_opp {
 	unsigned long u_amp;
 	unsigned long clock_latency_ns;
 
-	struct opp_table *opp_table;
+	struct device_opp *dev_opp;
 	struct rcu_head rcu_head;
 
 	struct device_node *np;
@@ -98,16 +98,16 @@ struct dev_pm_opp {
 };
 
 /**
- * struct opp_device - devices managed by 'struct opp_table'
+ * struct device_list_opp - devices managed by 'struct device_opp'
  * @node:	list node
  * @dev:	device to which the struct object belongs
  * @rcu_head:	RCU callback head used for deferred freeing
  * @dentry:	debugfs dentry pointer (per device)
  *
  * This is an internal data structure maintaining the devices that are managed
- * by 'struct opp_table'.
+ * by 'struct device_opp'.
  */
-struct opp_device {
+struct device_list_opp {
 	struct list_head node;
 	const struct device *dev;
 	struct rcu_head rcu_head;
@@ -118,12 +118,12 @@ struct opp_device {
 };
 
 /**
- * struct opp_table - Device opp structure
+ * struct device_opp - Device opp structure
  * @node:	table node - contains the devices with OPPs that
  *		have been registered. Nodes once added are not modified in this
  *		table.
- *		RCU usage: nodes are not modified in the table of opp_table,
- *		however addition is possible and is secured by opp_table_lock
+ *		RCU usage: nodes are not modified in the table of dev_opp,
+ *		however addition is possible and is secured by dev_opp_list_lock
  * @srcu_head:	notifier head to notify the OPP availability changes.
  * @rcu_head:	RCU callback head used for deferred freeing
  * @dev_list:	list of devices that share these OPPs
@@ -150,7 +150,7 @@ struct opp_device {
  * need to wait for the grace period of both of them before freeing any
  * resources. And so we have used kfree_rcu() from within call_srcu() handlers.
  */
-struct opp_table {
+struct device_opp {
 	struct list_head node;
 
 	struct srcu_notifier_head srcu_head;
@@ -180,27 +180,29 @@ struct opp_table {
 };
 
 /* Routines internal to opp core */
-struct opp_table *_find_opp_table(struct device *dev);
-struct opp_device *_add_opp_dev(const struct device *dev, struct opp_table *opp_table);
+struct device_opp *_find_device_opp(struct device *dev);
+struct device_list_opp *_add_list_dev(const struct device *dev, struct device_opp *dev_opp);
 struct device_node *_of_get_opp_desc_node(struct device *dev);
 
 #ifdef CONFIG_DEBUG_FS
 void opp_debug_remove_one(struct dev_pm_opp *opp);
-int opp_debug_create_one(struct dev_pm_opp *opp, struct opp_table *opp_table);
-int opp_debug_register(struct opp_device *opp_dev, struct opp_table *opp_table);
-void opp_debug_unregister(struct opp_device *opp_dev, struct opp_table *opp_table);
+int opp_debug_create_one(struct dev_pm_opp *opp, struct device_opp *dev_opp);
+int opp_debug_register(struct device_list_opp *list_dev,
+		       struct device_opp *dev_opp);
+void opp_debug_unregister(struct device_list_opp *list_dev,
+			  struct device_opp *dev_opp);
 #else
 static inline void opp_debug_remove_one(struct dev_pm_opp *opp) {}
 
 static inline int opp_debug_create_one(struct dev_pm_opp *opp,
-				       struct opp_table *opp_table)
+				       struct device_opp *dev_opp)
 { return 0; }
-static inline int opp_debug_register(struct opp_device *opp_dev,
-				     struct opp_table *opp_table)
+static inline int opp_debug_register(struct device_list_opp *list_dev,
+				     struct device_opp *dev_opp)
 { return 0; }
 
-static inline void opp_debug_unregister(struct opp_device *opp_dev,
-					struct opp_table *opp_table)
+static inline void opp_debug_unregister(struct device_list_opp *list_dev,
+					struct device_opp *dev_opp)
 { }
 #endif		/* DEBUG_FS */
 
