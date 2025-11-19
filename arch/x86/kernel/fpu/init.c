@@ -248,12 +248,55 @@ static void __init fpu__init_system_xstate_size_legacy(void)
  * This must be called after fpu__init_parse_early_param() is called and
  * xfeatures_mask is enumerated.
  */
+static enum { AUTO, ENABLE, DISABLE } eagerfpu = AUTO;
+
+/*
+ * Find supported xfeatures based on cpu features and command-line input.
+ * This must be called after fpu__init_parse_early_param() is called and
+ * xfeatures_mask is enumerated.
+ */
 u64 __init fpu__get_supported_xfeatures_mask(void)
 {
-	return XCNTXT_MASK;
+	/* Support all xfeatures known to us */
+	if (eagerfpu != DISABLE)
+		return XCNTXT_MASK;
+
+	/* Warning of xfeatures being disabled for no eagerfpu mode */
+	if (xfeatures_mask & XFEATURE_MASK_EAGER) {
+		pr_err("x86/fpu: eagerfpu switching disabled, disabling the following xstate features: 0x%llx.\n",
+			xfeatures_mask & XFEATURE_MASK_EAGER);
+	}
+
+	/* Return a mask that masks out all features requiring eagerfpu mode */
+	return ~XFEATURE_MASK_EAGER;
 }
 
-/* Legacy code to initialize eager fpu mode. */
+/*
+ * Disable features dependent on eagerfpu.
+ */
+static void __init fpu__clear_eager_fpu_features(void)
+{
+	setup_clear_cpu_cap(X86_FEATURE_MPX);
+	setup_clear_cpu_cap(X86_FEATURE_AVX);
+	setup_clear_cpu_cap(X86_FEATURE_AVX2);
+	setup_clear_cpu_cap(X86_FEATURE_AVX512F);
+	setup_clear_cpu_cap(X86_FEATURE_AVX512PF);
+	setup_clear_cpu_cap(X86_FEATURE_AVX512ER);
+	setup_clear_cpu_cap(X86_FEATURE_AVX512CD);
+}
+
+/*
+ * Pick the FPU context switching strategy:
+ *
+ * When eagerfpu is AUTO or ENABLE, we ensure it is ENABLE if either of
+ * the following is true:
+ *
+ * (1) the cpu has xsaveopt, as it has the optimization and doing eager
+ *     FPU switching has a relatively low cost compared to a plain xsave;
+ * (2) the cpu has xsave features (e.g. MPX) that depend on eager FPU
+ *     switching. Should the kernel boot with noxsaveopt, we support MPX
+ *     with eager FPU switching at a higher cost.
+ */
 static void __init fpu__init_system_ctx_switch(void)
 {
 	static bool on_boot_cpu __initdata = 1;
@@ -265,18 +308,46 @@ static void __init fpu__init_system_ctx_switch(void)
 	current_thread_info()->status = 0;
 }
 
-	/* Auto enable eagerfpu for xsaveopt */
 	if (boot_cpu_has(X86_FEATURE_XSAVEOPT) && eagerfpu != DISABLE)
 		eagerfpu = ENABLE;
 
-	if (xfeatures_mask & XFEATURE_MASK_EAGER) {
-		if (eagerfpu == DISABLE) {
-			pr_err("x86/fpu: eagerfpu switching disabled, disabling the following xstate features: 0x%llx.\n",
-			       xfeatures_mask & XFEATURE_MASK_EAGER);
-			xfeatures_mask &= ~XFEATURE_MASK_EAGER;
-		} else {
-			eagerfpu = ENABLE;
-		}
+	if (xfeatures_mask & XFEATURE_MASK_EAGER)
+		eagerfpu = ENABLE;
+
+	if (cmdline_find_option_bool(boot_command_line, "noxsave"))
+		fpu__xstate_clear_all_cpu_caps();
+
+	if (cmdline_find_option_bool(boot_command_line, "noxsaveopt"))
+		setup_clear_cpu_cap(X86_FEATURE_XSAVEOPT);
+
+	if (cmdline_find_option_bool(boot_command_line, "noxsaves"))
+		setup_clear_cpu_cap(X86_FEATURE_XSAVES);
+}
+
+/*
+ * We parse fpu parameters early because fpu__init_system() is executed
+ * before parse_early_param().
+ */
+static void __init fpu__init_parse_early_param(void)
+{
+	/*
+	 * No need to check "eagerfpu=auto" again, since it is the
+	 * initial default.
+	 */
+	if (cmdline_find_option_bool(boot_command_line, "eagerfpu=off")) {
+		eagerfpu = DISABLE;
+		fpu__clear_eager_fpu_features();
+	} else if (cmdline_find_option_bool(boot_command_line, "eagerfpu=on")) {
+		eagerfpu = ENABLE;
+	}
+
+	if (cmdline_find_option_bool(boot_command_line, "no387"))
+		setup_clear_cpu_cap(X86_FEATURE_FPU);
+
+	if (cmdline_find_option_bool(boot_command_line, "nofxsr")) {
+		setup_clear_cpu_cap(X86_FEATURE_FXSR);
+		setup_clear_cpu_cap(X86_FEATURE_FXSR_OPT);
+		setup_clear_cpu_cap(X86_FEATURE_XMM);
 	}
 
 	if (cmdline_find_option_bool(boot_command_line, "noxsave"))
