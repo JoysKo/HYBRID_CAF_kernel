@@ -1,14 +1,11 @@
 /* Copyright (c) 2015-2018, 2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2020 XiaoMi, Inc.
  *
+ * Modified by DeepSeek & BPRGroup, 2025
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/of_gpio.h>
@@ -1427,8 +1424,10 @@ static int msm_sdw_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dapm_context *dapm =
 			snd_soc_codec_get_dapm(codec);
 	struct msm_asoc_mach_data *pdata = snd_soc_card_get_drvdata(rtd->card);
-	struct snd_soc_pcm_runtime *rtd_aux = rtd->card->rtd_aux;
-	struct snd_card *card;
+	struct snd_soc_card *card = rtd->card;
+	struct snd_card *snd_card;
+	struct snd_soc_pcm_runtime *rtd_iter;
+	bool found_wsa8810 = false;
 
 	snd_soc_add_codec_controls(codec, msm_sdw_controls,
 			ARRAY_SIZE(msm_sdw_controls));
@@ -1443,20 +1442,36 @@ static int msm_sdw_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_sync(dapm);
 
 	/*
+	 * ОСНОВНОЕ ИЗМЕНЕНИЕ: Поиск WSA8810 компонентов через DAI-линки карты
+	 * вместо rtd_aux
+	 */
+	
+	/* Поиск WSA8810 компонентов в DAI-линках карты */
+	list_for_each_entry(rtd_iter, &card->rtd_list, list) {
+		if (rtd_iter->codec_dai && rtd_iter->codec_dai->component) {
+			struct snd_soc_component *comp = rtd_iter->codec_dai->component;
+			if (!strcmp(comp->name, WSA8810_NAME_1) ||
+			    !strcmp(comp->name, WSA8810_NAME_2)) {
+				found_wsa8810 = true;
+				pr_debug("%s: Found WSA8810: %s\n", __func__, comp->name);
+				break;
+			}
+		}
+	}
+
+	/*
 	 * Send speaker configuration only for WSA8810.
 	 * Default configuration is for WSA8815.
 	 */
-	if (rtd_aux && rtd_aux->component)
-		if (!strcmp(rtd_aux->component->name, WSA8810_NAME_1) ||
-		    !strcmp(rtd_aux->component->name, WSA8810_NAME_2)) {
-			msm_sdw_set_spkr_mode(rtd->codec, SPKR_MODE_1);
-			msm_sdw_set_spkr_gain_offset(rtd->codec,
-						   RX_GAIN_OFFSET_M1P5_DB);
+	if (found_wsa8810) {
+		msm_sdw_set_spkr_mode(codec, SPKR_MODE_1);
+		msm_sdw_set_spkr_gain_offset(codec, RX_GAIN_OFFSET_M1P5_DB);
 	}
-	card = rtd->card->snd_card;
+	
+	snd_card = card->snd_card;
 	if (!codec_root)
-		codec_root = snd_register_module_info(card->module, "codecs",
-						      card->proc_root);
+		codec_root = snd_register_module_info(snd_card->module, "codecs",
+						      snd_card->proc_root);
 	if (!codec_root) {
 		pr_debug("%s: Cannot create codecs module entry\n",
 			 __func__);

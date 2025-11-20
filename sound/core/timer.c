@@ -321,6 +321,8 @@ int snd_timer_open(struct snd_timer_instance **ti,
 	return 0;
 }
 
+static int _snd_timer_stop(struct snd_timer_instance *timeri, int event);
+
 /*
  * close a timer instance
  */

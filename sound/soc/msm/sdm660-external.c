@@ -1,13 +1,10 @@
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
  *
+ * Modified by DeepSeek & BPRGroup, 2025
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/delay.h>
@@ -1597,11 +1594,13 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			snd_soc_codec_get_dapm(codec);
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_pcm_runtime *rtd_aux = rtd->card->rtd_aux;
-	struct snd_card *card;
+	struct snd_soc_card *card = rtd->card;
+	struct snd_card *snd_card;
 	struct snd_info_entry *entry;
 	struct msm_asoc_mach_data *pdata =
-				snd_soc_card_get_drvdata(rtd->card);
+				snd_soc_card_get_drvdata(card);
+	struct snd_soc_pcm_runtime *rtd_iter;
+	bool found_wsa8810 = false;
 
 	/* Codec SLIMBUS configuration
 	 * RX1, RX2, RX3, RX4, RX5, RX6, RX7, RX8, RX9, RX10, RX11, RX12, RX13
@@ -1777,20 +1776,35 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 	}
 
 	/*
+	 * ОСНОВНОЕ ИЗМЕНЕНИЕ: Поиск WSA8810 компонентов через DAI-линки карты
+	 * вместо rtd_aux
+	 */
+	
+	/* Поиск WSA8810 компонентов в DAI-линках карты */
+	list_for_each_entry(rtd_iter, &card->rtd_list, list) {
+		if (rtd_iter->codec_dai && rtd_iter->codec_dai->component) {
+			struct snd_soc_component *comp = rtd_iter->codec_dai->component;
+			if (!strcmp(comp->name, WSA8810_NAME_1) ||
+			    !strcmp(comp->name, WSA8810_NAME_2)) {
+				found_wsa8810 = true;
+				pr_debug("%s: Found WSA8810: %s\n", __func__, comp->name);
+				break;
+			}
+		}
+	}
+
+	/*
 	 * Send speaker configuration only for WSA8810.
-	 * Defalut configuration is for WSA8815.
+	 * Default configuration is for WSA8815.
 	 */
 	if (!strcmp(dev_name(codec_dai->dev), "tavil_codec")) {
-		if (rtd_aux && rtd_aux->component)
-			if (!strcmp(rtd_aux->component->name, WSA8810_NAME_1) ||
-			    !strcmp(rtd_aux->component->name, WSA8810_NAME_2)) {
-				tavil_set_spkr_mode(rtd->codec, SPKR_MODE_1);
-				tavil_set_spkr_gain_offset(rtd->codec,
-							RX_GAIN_OFFSET_M1P5_DB);
+		if (found_wsa8810) {
+			tavil_set_spkr_mode(codec, SPKR_MODE_1);
+			tavil_set_spkr_gain_offset(codec, RX_GAIN_OFFSET_M1P5_DB);
 		}
-		card = rtd->card->snd_card;
-		entry = snd_register_module_info(card->module, "codecs",
-						 card->proc_root);
+		snd_card = card->snd_card;
+		entry = snd_register_module_info(snd_card->module, "codecs",
+						 snd_card->proc_root);
 		if (!entry) {
 			pr_debug("%s: Cannot create codecs module entry\n",
 				 __func__);
@@ -1800,16 +1814,13 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		pdata->codec_root = entry;
 		tavil_codec_info_create_codec_entry(pdata->codec_root, codec);
 	} else {
-		if (rtd_aux && rtd_aux->component)
-			if (!strcmp(rtd_aux->component->name, WSA8810_NAME_1) ||
-			    !strcmp(rtd_aux->component->name, WSA8810_NAME_2)) {
-				tasha_set_spkr_mode(rtd->codec, SPKR_MODE_1);
-				tasha_set_spkr_gain_offset(rtd->codec,
-							RX_GAIN_OFFSET_M1P5_DB);
+		if (found_wsa8810) {
+			tasha_set_spkr_mode(codec, SPKR_MODE_1);
+			tasha_set_spkr_gain_offset(codec, RX_GAIN_OFFSET_M1P5_DB);
 		}
-		card = rtd->card->snd_card;
-		entry = snd_register_module_info(card->module, "codecs",
-						 card->proc_root);
+		snd_card = card->snd_card;
+		entry = snd_register_module_info(snd_card->module, "codecs",
+						 snd_card->proc_root);
 		if (!entry) {
 			pr_debug("%s: Cannot create codecs module entry\n",
 				 __func__);
@@ -1818,7 +1829,7 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		}
 		pdata->codec_root = entry;
 		tasha_codec_info_create_codec_entry(pdata->codec_root, codec);
-		tasha_mbhc_zdet_gpio_ctrl(msm_config_hph_en0_gpio, rtd->codec);
+		tasha_mbhc_zdet_gpio_ctrl(msm_config_hph_en0_gpio, codec);
 	}
 
 	wcd_mbhc_cfg_ptr->calibration = def_ext_mbhc_cal();

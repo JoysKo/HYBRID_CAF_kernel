@@ -1,14 +1,11 @@
 /*
  * Copyright (c) 2013-2017, Linux Foundation. All rights reserved.
  *
+ * Modified by DeepSeek & BPRGroup, 2025
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/init.h>
@@ -3236,19 +3233,16 @@ static int msm_asoc_cpe_lsm_probe(struct snd_soc_platform *platform)
 	const char *cpe_dev_id = "qcom,msm-cpe-lsm-id";
 	u32 port_id = 0;
 	int ret = 0;
-	int i;
 
 	if (!platform || !platform->component.card) {
-		pr_err("%s: Invalid platform or card\n",
-			__func__);
+		pr_err("%s: Invalid platform or card\n", __func__);
 		return -EINVAL;
 	}
 
 	card = platform->component.card;
 
-	/* Match platform to codec */
-	for (i = 0; i < card->num_links; i++) {
-		rtd = &card->rtd[i];
+	/* Match platform to codec - ИТЕРАЦИЯ ПО СПИСКУ вместо массива */
+	list_for_each_entry(rtd, &card->rtd_list, list) {
 		if (!rtd->platform)
 			continue;
 		if (!strcmp(rtd->platform->component.name,
