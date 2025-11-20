@@ -204,12 +204,6 @@ static long afu_ioctl_start_work(struct cxl_context *ctx,
 	ctx->pid = get_task_pid(current, PIDTYPE_PID);
 	ctx->glpid = get_task_pid(current->group_leader, PIDTYPE_PID);
 
-	/*
-	 * Increment driver use count. Enables global TLBIs for hash
-	 * and callbacks to handle the segment table
-	 */
-	cxl_ctx_get();
-
 	trace_cxl_attach(ctx, work.work_element_descriptor, work.num_interrupts, amr);
 
 	if ((rc = cxl_attach_process(ctx, false, work.work_element_descriptor,
