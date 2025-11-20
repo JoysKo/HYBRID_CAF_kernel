@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -46,10 +46,11 @@
 #define PLL_ALPHA_VAL_U		0x0c
 
 #define PLL_USER_CTL		0x10
-#define PLL_POST_DIV_SHIFT	8
-#define PLL_POST_DIV_MASK	0xf
-#define PLL_VCO_SHIFT		20
-#define PLL_VCO_MASK		0x3
+# define PLL_POST_DIV_SHIFT	8
+# define PLL_POST_DIV_MASK	0xf
+# define PLL_ALPHA_EN		BIT(24)
+# define PLL_VCO_SHIFT		20
+# define PLL_VCO_MASK		0x3
 
 #define PLL_USER_CTL_U		0x14
 
