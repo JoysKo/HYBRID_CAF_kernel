@@ -360,7 +360,7 @@ static int wcd_pinctrl_probe(struct platform_device *pdev)
 	}
 
 	priv_data->chip = wcd_gpio_chip;
-	priv_data->chip.dev = dev;
+	priv_data->chip.parent = dev;
 	priv_data->chip.base = -1;
 	priv_data->chip.ngpio = npins;
 	priv_data->chip.label = dev_name(dev);

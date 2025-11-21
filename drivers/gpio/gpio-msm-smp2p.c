@@ -653,7 +653,7 @@ static int smp2p_gpio_probe(struct platform_device *pdev)
 
 	/* create virtual GPIO controller */
 	chip->gpio.label = chip->name;
-	chip->gpio.dev = &pdev->dev;
+	chip->gpio.parent = &pdev->dev;
 	chip->gpio.owner = THIS_MODULE;
 	chip->gpio.direction_input	= smp2p_direction_input,
 	chip->gpio.get = smp2p_get_value;

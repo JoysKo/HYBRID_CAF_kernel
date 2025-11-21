@@ -781,7 +781,7 @@ EXPORT_SYMBOL(qpnp_pin_map);
 
 static int qpnp_pin_to_irq(struct gpio_chip *gpio_chip, unsigned int offset)
 {
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec;
 	struct of_phandle_args oirq;
 
@@ -814,7 +814,7 @@ static int qpnp_pin_to_irq(struct gpio_chip *gpio_chip, unsigned int offset)
 
 static int qpnp_pin_get(struct gpio_chip *gpio_chip, unsigned int offset)
 {
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec = NULL;
 	u8 buf, en_mask, shift, mask, reg;
 	unsigned int val;
@@ -906,7 +906,7 @@ static int __qpnp_pin_set(struct qpnp_pin_chip *q_chip,
 static void qpnp_pin_set(struct gpio_chip *gpio_chip,
 		unsigned int offset, int value)
 {
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec;
 
 	if (WARN_ON(!q_chip))
@@ -951,7 +951,7 @@ static int qpnp_pin_set_mode(struct qpnp_pin_chip *q_chip,
 static int qpnp_pin_direction_input(struct gpio_chip *gpio_chip,
 		unsigned int offset)
 {
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec;
 
 	if (WARN_ON(!q_chip))
@@ -968,7 +968,7 @@ static int qpnp_pin_direction_output(struct gpio_chip *gpio_chip,
 		unsigned int offset, int val)
 {
 	int rc;
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec;
 
 	if (WARN_ON(!q_chip))
@@ -991,7 +991,7 @@ static int qpnp_pin_of_gpio_xlate(struct gpio_chip *gpio_chip,
 				   const struct of_phandle_args *gpio_spec,
 				   u32 *flags)
 {
-	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->dev);
+	struct qpnp_pin_chip *q_chip = dev_get_drvdata(gpio_chip->parent);
 	struct qpnp_pin_spec *q_spec;
 
 	if (WARN_ON(gpio_chip->of_gpio_n_cells < 2)) {
@@ -1609,7 +1609,7 @@ static int qpnp_pin_probe(struct platform_device *pdev)
 	q_chip->gpio_chip.to_irq = qpnp_pin_to_irq;
 	q_chip->gpio_chip.get = qpnp_pin_get;
 	q_chip->gpio_chip.set = qpnp_pin_set;
-	q_chip->gpio_chip.dev = &pdev->dev;
+	q_chip->gpio_chip.parent = &pdev->dev;
 	q_chip->gpio_chip.of_xlate = qpnp_pin_of_gpio_xlate;
 	q_chip->gpio_chip.of_gpio_n_cells = 2;
 	q_chip->gpio_chip.can_sleep = 0;

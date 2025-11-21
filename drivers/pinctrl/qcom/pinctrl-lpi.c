@@ -583,7 +583,7 @@ static int lpi_pinctrl_probe(struct platform_device *pdev)
 	}
 
 	state->chip = lpi_gpio_template;
-	state->chip.dev = dev;
+	state->chip.parent = dev;
 	state->chip.base = -1;
 	state->chip.ngpio = npins;
 	state->chip.label = dev_name(dev);
