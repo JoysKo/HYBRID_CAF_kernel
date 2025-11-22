@@ -341,28 +341,18 @@ static int msm_unload(struct drm_device *dev)
 
 static int get_mdp_ver(struct platform_device *pdev)
 {
-#ifdef CONFIG_OF
-	static const struct of_device_id match_types[] = { {
-		.compatible = "qcom,sde-kms",
-		.data	= (void	*)KMS_SDE,
-	},
-	{} };
 	struct device *dev = &pdev->dev;
-	const struct of_device_id *match;
-	match = of_match_node(match_types, dev->of_node);
-	if (match)
-		return (int)(unsigned long)match->data;
-#endif
-	return KMS_MDP4;
+
+	return (int) (unsigned long) of_device_get_match_data(dev);
 }
 
 static int msm_init_vram(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
+	struct device_node *node;
 	unsigned long size = 0;
 	int ret = 0;
 
-#ifdef CONFIG_OF
 	/* In the device-tree world, we could have a 'memory-region'
 	 * phandle, which gives us a link to our "vram".  Allocating
 	 * is all nicely abstracted behind the dma api, but we need
@@ -379,7 +369,6 @@ static int msm_init_vram(struct drm_device *dev)
 	 *     as corruption on screen before we have a chance to
 	 *     load and do initial modeset)
 	 */
-	struct device_node *node;
 
 	node = of_parse_phandle(dev->dev->of_node, "memory-region", 0);
 	if (node) {
@@ -389,14 +378,12 @@ static int msm_init_vram(struct drm_device *dev)
 			return ret;
 		size = r.end - r.start + 1;
 		DRM_INFO("using VRAM carveout: %lx@%pa\n", size, &r.start);
-	} else
-#endif
 
-	/* if we have no IOMMU, then we need to use carveout allocator.
-	 * Grab the entire CMA chunk carved out in early startup in
-	 * mach-msm:
-	 */
-	if (!iommu_present(&platform_bus_type)) {
+		/* if we have no IOMMU, then we need to use carveout allocator.
+		 * Grab the entire CMA chunk carved out in early startup in
+		 * mach-msm:
+		 */
+	} else if (!iommu_present(&platform_bus_type)) {
 		DRM_INFO("using %s VRAM carveout\n", vram);
 		size = memparse(vram, NULL);
 	}
@@ -2308,9 +2295,9 @@ static const struct component_master_ops msm_drm_ops = {
  * Componentized driver support:
  */
 
-#ifdef CONFIG_OF
-/* NOTE: the CONFIG_OF case duplicates the same code as exynos or imx
- * (or probably any other).. so probably some room for some helpers
+/*
+ * NOTE: duplication of the same code as exynos or imx (or probably any other).
+ * so probably some room for some helpers
  */
 static int compare_of(struct device *dev, void *data)
 {
@@ -2336,18 +2323,6 @@ static int add_components(struct device *dev, struct component_match **matchptr,
 	return 0;
 }
 
-static int msm_add_master_component(struct device *dev,
-					struct component_match *match)
-{
-	int ret;
-
-	ret = component_master_add_with_match(dev, &msm_drm_ops, match);
-	if (ret)
-		DRM_ERROR("component add match failed: %d\n", ret);
-
-	return ret;
-}
-
 #else
 static int compare_dev(struct device *dev, void *data)
 {
@@ -2370,48 +2345,9 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
-	msm_drm_probed = true;
-
-#ifdef CONFIG_OF
 	add_components(&pdev->dev, &match, "connectors");
 #ifndef CONFIG_QCOM_KGSL
 	add_components(&pdev->dev, &match, "gpus");
-#endif
-#else
-	/* For non-DT case, it kinda sucks.  We don't actually have a way
-	 * to know whether or not we are waiting for certain devices (or if
-	 * they are simply not present).  But for non-DT we only need to
-	 * care about apq8064/apq8060/etc (all mdp4/a3xx):
-	 */
-	static const char *devnames[] = {
-			"hdmi_msm.0", "kgsl-3d0.0",
-	};
-	int i;
-
-	DBG("Adding components..");
-
-	for (i = 0; i < ARRAY_SIZE(devnames); i++) {
-		struct device *dev;
-
-		dev = bus_find_device_by_name(&platform_bus_type,
-				NULL, devnames[i]);
-		if (!dev) {
-			dev_info(&pdev->dev, "still waiting for %s\n", devnames[i]);
-			return -EPROBE_DEFER;
-		}
-
-		component_match_add(&pdev->dev, &match, compare_dev, dev);
-	}
-#endif
-	/* on all devices that I am aware of, iommu's which cna map
-	 * any address the cpu can see are used:
-	 */
-	ret = dma_set_mask_and_coherent(&pdev->dev, ~0);
-	if (ret)
-		return ret;
-
-	ret = msm_add_master_component(&pdev->dev, match);
-	complete(&wait_display_completion);
 
 	return ret;
 }
@@ -2451,8 +2387,10 @@ static void msm_pdev_shutdown(struct platform_device *pdev)
 }
 
 static const struct of_device_id dt_match[] = {
-	{ .compatible = "qcom,mdp" },      /* mdp4 */
-	{ .compatible = "qcom,sde-kms" },  /* sde  */
+	{ .compatible = "qcom,mdp4", .data = (void *) 4 },	/* mdp4 */
+	{ .compatible = "qcom,mdp5", .data = (void *) 5 },	/* mdp5 */
+	/* to support downstream DT files */
+	{ .compatible = "qcom,mdss_mdp", .data = (void *) 5 },  /* mdp5 */
 	{}
 };
 MODULE_DEVICE_TABLE(of, dt_match);

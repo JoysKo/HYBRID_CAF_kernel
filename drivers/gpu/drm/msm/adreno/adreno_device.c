@@ -191,7 +191,8 @@ static void set_gpu_pdev(struct drm_device *dev,
 static int adreno_bind(struct device *dev, struct device *master, void *data)
 {
 	static struct adreno_platform_config config = {};
-	uint32_t val = 0;
+	struct device_node *child, *node = dev->of_node;
+	u32 val;
 	int ret;
 
 	/*
@@ -208,6 +209,29 @@ static int adreno_bind(struct device *dev, struct device *master, void *data)
 
 	config.rev = ADRENO_REV((val >> 24) & 0xff,
 			(val >> 16) & 0xff, (val >> 8) & 0xff, val & 0xff);
+
+	/* find clock rates: */
+	config.fast_rate = 0;
+	config.slow_rate = ~0;
+	for_each_child_of_node(node, child) {
+		if (of_device_is_compatible(child, "qcom,gpu-pwrlevels")) {
+			struct device_node *pwrlvl;
+			for_each_child_of_node(child, pwrlvl) {
+				ret = of_property_read_u32(pwrlvl, "qcom,gpu-freq", &val);
+				if (ret) {
+					dev_err(dev, "could not find gpu-freq: %d\n", ret);
+					return ret;
+				}
+				config.fast_rate = max(config.fast_rate, val);
+				config.slow_rate = min(config.slow_rate, val);
+			}
+		}
+	}
+
+	if (!config.fast_rate) {
+		dev_err(dev, "could not find clk rates\n");
+		return -ENXIO;
+	}
 
 	dev->platform_data = &config;
 	set_gpu_pdev(dev_get_drvdata(master), to_platform_device(dev));

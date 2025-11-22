@@ -24,7 +24,7 @@
 #ifndef DRM_FOURCC_H
 #define DRM_FOURCC_H
 
-#include <linux/types.h>
+#include "drm.h"
 
 #if defined(__cplusplus)
 extern "C" {

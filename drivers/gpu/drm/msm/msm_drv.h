@@ -33,16 +33,8 @@
 #include <linux/types.h>
 #include <linux/of_graph.h>
 #include <linux/of_device.h>
-#include <linux/sde_io_util.h>
-#include <linux/hashtable.h>
 #include <asm/sizes.h>
 #include <linux/kthread.h>
-
-#ifndef CONFIG_OF
-#include <mach/board.h>
-#include <mach/socinfo.h>
-#include <mach/iommu_domains.h>
-#endif
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>

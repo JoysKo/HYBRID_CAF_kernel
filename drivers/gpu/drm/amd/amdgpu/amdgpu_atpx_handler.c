@@ -12,7 +12,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 
-#include "amdgpu_acpi.h"
+#include "amd_acpi.h"
 
 struct amdgpu_atpx_functions {
 	bool px_params;
