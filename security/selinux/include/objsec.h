@@ -37,8 +37,9 @@ struct task_security_struct {
 };
 
 enum label_initialized {
-	LABEL_INVALID,		/* invalid or not initialized */
-	LABEL_INITIALIZED	/* initialized */
+	LABEL_MISSING,		/* not initialized */
+	LABEL_INITIALIZED,	/* inizialized */
+	LABEL_INVALID		/* invalid */
 };
 
 struct inode_security_struct {

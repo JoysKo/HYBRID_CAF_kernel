@@ -701,7 +701,7 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 	struct superblock_security_struct *sbsec = sb->s_security;
 	const char *name = sb->s_type->name;
 	struct dentry *root = sbsec->sb->s_root;
-	struct inode_security_struct *root_isec;
+	struct inode_security_struct *root_isec = backing_inode_security(root);
 	u32 fscontext_sid = 0, context_sid = 0, rootcontext_sid = 0;
 	u32 defcontext_sid = 0;
 	char **mount_options = opts->mnt_opts;
@@ -1811,6 +1811,7 @@ static int selinux_determine_inode_label(struct inode *dir,
 					 u32 *_new_isid)
 {
 	const struct superblock_security_struct *sbsec = dir->i_sb->s_security;
+	const struct inode_security_struct *dsec = inode_security(dir);
 	const struct task_security_struct *tsec = current_security();
 
 	if ((sbsec->flags & SE_SBINITIALIZED) &&
@@ -2100,7 +2101,7 @@ static int selinux_binder_transfer_file(const struct cred *from,
 	u32 sid = cred_sid(to);
 	struct file_security_struct *fsec = file->f_security;
 	struct dentry *dentry = file->f_path.dentry;
-	struct inode_security_struct *isec;
+	struct inode_security_struct *isec = backing_inode_security(dentry);
 	struct common_audit_data ad;
 	int rc;
 
@@ -3096,7 +3097,7 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 				  const void *value, size_t size, int flags)
 {
 	struct inode *inode = d_backing_inode(dentry);
-	struct inode_security_struct *isec;
+	struct inode_security_struct *isec = backing_inode_security(dentry);
 	struct superblock_security_struct *sbsec;
 	struct common_audit_data ad;
 	u32 newsid, sid = current_sid();
@@ -3174,7 +3175,7 @@ static void selinux_inode_post_setxattr(struct dentry *dentry, const char *name,
 					int flags)
 {
 	struct inode *inode = d_backing_inode(dentry);
-	struct inode_security_struct *isec;
+	struct inode_security_struct *isec = backing_inode_security(dentry);
 	u32 newsid;
 	int rc;
 
@@ -3234,7 +3235,7 @@ static int selinux_inode_getsecurity(struct inode *inode, const char *name, void
 	int error;
 	char *context = NULL;
 	char context_onstack[SELINUX_LABEL_LENGTH];
-	struct inode_security_struct *isec;
+	struct inode_security_struct *isec = inode_security(inode);
 
 	if (strcmp(name, XATTR_SELINUX_SUFFIX))
 		return -EOPNOTSUPP;
@@ -3370,7 +3371,7 @@ static int ioctl_has_perm(const struct cred *cred, struct file *file,
 	struct common_audit_data ad;
 	struct file_security_struct *fsec = file->f_security;
 	struct inode *inode = file_inode(file);
-	struct inode_security_struct *isec;
+	struct inode_security_struct *isec = inode_security(inode);
 	struct lsm_ioctlop_audit ioctl;
 	u32 ssid = cred_sid(cred);
 	int rc;
