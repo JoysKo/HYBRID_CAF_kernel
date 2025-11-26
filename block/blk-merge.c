@@ -9,6 +9,8 @@
 #include <linux/pfk.h>
 #include <linux/pft.h>
 
+#include <trace/events/block.h>
+
 #include "blk.h"
 
 static struct bio *blk_bio_discard_split(struct request_queue *q,
@@ -125,15 +127,18 @@ static struct bio *blk_bio_segment_split(struct request_queue *q,
 		if (bvprvp && bvec_gap_to_prev(q, bvprvp, bv.bv_offset))
 			goto split;
 
-		if (sectors + (bv.bv_len >> 9) > max_sectors) {
+		if (sectors + (bv.bv_len >> 9) >
+				blk_max_size_offset(q, bio->bi_iter.bi_sector)) {
 			/*
 			 * Consider this a new segment if we're splitting in
 			 * the middle of this vector.
 			 */
 			if (nsegs < queue_max_segments(q) &&
-			    sectors < max_sectors) {
+			    sectors < blk_max_size_offset(q,
+						bio->bi_iter.bi_sector)) {
 				nsegs++;
-				sectors = max_sectors;
+				sectors = blk_max_size_offset(q,
+						bio->bi_iter.bi_sector);
 			}
 			if (sectors)
 				goto split;
@@ -211,6 +216,7 @@ void blk_queue_split(struct request_queue *q, struct bio **bio,
 		split->bi_rw |= REQ_NOMERGE;
 
 		bio_chain(split, *bio);
+		trace_block_split(q, split, (*bio)->bi_iter.bi_sector);
 		generic_make_request(*bio);
 		*bio = split;
 	}
