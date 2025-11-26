@@ -224,7 +224,6 @@ static int debugfs_status_show(struct seq_file *s, void *data)
 		seq_printf(s, "Backlight now:\t%lu\n", value);
 	if (!read_ec_data(priv->adev->handle, VPCCMD_R_BL_POWER, &value))
 		seq_printf(s, "BL power value:\t%s\n", value ? "On" : "Off");
-	seq_printf(s, "=====================\n");
 
 	if (!read_ec_data(priv->adev->handle, VPCCMD_R_RF, &value))
 		seq_printf(s, "Radio status:\t%s(%lu)\n",
@@ -238,7 +237,6 @@ static int debugfs_status_show(struct seq_file *s, void *data)
 	if (!read_ec_data(priv->adev->handle, VPCCMD_R_3G, &value))
 		seq_printf(s, "3G status:\t%s(%lu)\n",
 			   value ? "On" : "Off", value);
-	seq_printf(s, "=====================\n");
 
 	if (!read_ec_data(priv->adev->handle, VPCCMD_R_TOUCHPAD, &value))
 		seq_printf(s, "Touchpad status:%s(%lu)\n",
@@ -863,20 +861,6 @@ static const struct dmi_system_id no_hw_rfkill_list[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
 			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo G50-30"),
-		},
-	},
-	{
-		.ident = "Lenovo ideapad Y700-15ISK",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo ideapad Y700-15ISK"),
-		},
-	},
-	{
-		.ident = "Lenovo ideapad Y700 Touch-15ISK",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo ideapad Y700 Touch-15ISK"),
 		},
 	},
 	{
