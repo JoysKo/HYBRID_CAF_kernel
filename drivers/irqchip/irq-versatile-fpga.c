@@ -221,12 +221,7 @@ int __init fpga_irq_of_init(struct device_node *node,
 		parent_irq = -1;
 	}
 
-#ifdef CONFIG_ARCH_VERSATILE
-	fpga_irq_init(base, node->name, IRQ_SIC_START, parent_irq, valid_mask,
-				  node);
-#else
 	fpga_irq_init(base, node->name, 0, parent_irq, valid_mask, node);
-#endif
 
 	/*
 	 * On Versatile AB/PB, some secondary interrupts have a direct
