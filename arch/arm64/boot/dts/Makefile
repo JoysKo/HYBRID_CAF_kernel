@@ -1,6 +1,8 @@
 dts-dirs += arm
 dts-dirs += broadcom
 dts-dirs += qcom
+dts-dirs += renesas
+dts-dirs += socionext
 
 subdir-y	:= $(dts-dirs)
 
