@@ -151,11 +151,6 @@ extern int __get_user_bad(void);
 
 #define __uaccess_begin() stac()
 #define __uaccess_end()   clac()
-#define __uaccess_begin_nospec()	\
-({					\
-	stac();				\
-	barrier_nospec();		\
-})
 
 /*
  * This is a type: either unsigned long, if the argument fits into
@@ -430,10 +425,8 @@ do {									\
 #define __put_user_nocheck(x, ptr, size)			\
 ({								\
 	int __pu_err;						\
-	__typeof__(*(ptr)) __pu_val;				\
-	__pu_val = x;						\
 	__uaccess_begin();					\
-	__put_user_size(__pu_val, (ptr), (size), __pu_err, -EFAULT);\
+	__put_user_size((x), (ptr), (size), __pu_err, -EFAULT);	\
 	__uaccess_end();					\
 	__builtin_expect(__pu_err, 0);				\
 })
@@ -442,7 +435,7 @@ do {									\
 ({									\
 	int __gu_err;							\
 	unsigned long __gu_val;						\
-	__uaccess_begin_nospec();					\
+	__uaccess_begin();						\
 	__get_user_size(__gu_val, (ptr), (size), __gu_err, -EFAULT);	\
 	__uaccess_end();						\
 	(x) = (__force __typeof__(*(ptr)))__gu_val;			\
@@ -587,7 +580,7 @@ extern void __cmpxchg_wrong_size(void)
 	__typeof__(ptr) __uval = (uval);				\
 	__typeof__(*(ptr)) __old = (old);				\
 	__typeof__(*(ptr)) __new = (new);				\
-	__uaccess_begin_nospec();					\
+	__uaccess_begin();						\
 	switch (size) {							\
 	case 1:								\
 	{								\
@@ -807,21 +800,21 @@ copy_to_user(void __user *to, const void *from, unsigned long n)
 #define user_access_begin()	__uaccess_begin()
 #define user_access_end()	__uaccess_end()
 
-#define unsafe_put_user(x, ptr, err_label)					\
-do {										\
+#define unsafe_put_user(x, ptr)						\
+({										\
 	int __pu_err;								\
 	__put_user_size((x), (ptr), sizeof(*(ptr)), __pu_err, -EFAULT);		\
-	if (unlikely(__pu_err)) goto err_label;					\
-} while (0)
+	__builtin_expect(__pu_err, 0);						\
+})
 
-#define unsafe_get_user(x, ptr, err_label)					\
-do {										\
+#define unsafe_get_user(x, ptr)						\
+({										\
 	int __gu_err;								\
 	unsigned long __gu_val;							\
 	__get_user_size(__gu_val, (ptr), sizeof(*(ptr)), __gu_err, -EFAULT);	\
 	(x) = (__force __typeof__(*(ptr)))__gu_val;				\
-	if (unlikely(__gu_err)) goto err_label;					\
-} while (0)
+	__builtin_expect(__gu_err, 0);						\
+})
 
 #endif /* _ASM_X86_UACCESS_H */
 
