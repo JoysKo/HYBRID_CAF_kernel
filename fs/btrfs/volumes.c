@@ -3758,7 +3758,7 @@ int btrfs_balance(struct btrfs_balance_control *bctl,
 	if (btrfs_get_num_tolerated_disk_barrier_failures(bctl->meta.target) <
 		btrfs_get_num_tolerated_disk_barrier_failures(bctl->data.target)) {
 		btrfs_warn(fs_info,
-	"metatdata profile 0x%llx has lower redundancy than data profile 0x%llx",
+	"metadata profile 0x%llx has lower redundancy than data profile 0x%llx",
 			bctl->meta.target, bctl->data.target);
 	}
 
@@ -5403,35 +5403,33 @@ static int __btrfs_map_block(struct btrfs_fs_info *fs_info, int rw,
 		 * target drive.
 		 */
 		for (i = 0; i < tmp_num_stripes; i++) {
-			if (tmp_bbio->stripes[i].dev->devid == srcdev_devid) {
-				/*
-				 * In case of DUP, in order to keep it
-				 * simple, only add the mirror with the
-				 * lowest physical address
-				 */
-				if (found &&
-				    physical_of_found <=
-				     tmp_bbio->stripes[i].physical)
-					continue;
-				index_srcdev = i;
-				found = 1;
-				physical_of_found =
-					tmp_bbio->stripes[i].physical;
-			}
-		}
+			if (tmp_bbio->stripes[i].dev->devid != srcdev_devid)
+				continue;
 
-		if (found) {
-			mirror_num = index_srcdev + 1;
-			patch_the_first_stripe_for_dev_replace = 1;
-			physical_to_patch_in_first_stripe = physical_of_found;
-		} else {
-			WARN_ON(1);
-			ret = -EIO;
-			btrfs_put_bbio(tmp_bbio);
-			goto out;
+			/*
+			 * In case of DUP, in order to keep it simple, only add
+			 * the mirror with the lowest physical address
+			 */
+			if (found &&
+			    physical_of_found <= tmp_bbio->stripes[i].physical)
+				continue;
+
+			index_srcdev = i;
+			found = 1;
+			physical_of_found = tmp_bbio->stripes[i].physical;
 		}
 
 		btrfs_put_bbio(tmp_bbio);
+
+		if (!found) {
+			WARN_ON(1);
+			ret = -EIO;
+			goto out;
+		}
+
+		mirror_num = index_srcdev + 1;
+		patch_the_first_stripe_for_dev_replace = 1;
+		physical_to_patch_in_first_stripe = physical_of_found;
 	} else if (mirror_num > map->num_stripes) {
 		mirror_num = 0;
 	}
@@ -6094,7 +6092,8 @@ int btrfs_map_bio(struct btrfs_root *root, int rw, struct bio *bio,
 	bbio->fs_info = root->fs_info;
 	atomic_set(&bbio->stripes_pending, bbio->num_stripes);
 
-	if (bbio->raid_map) {
+	if ((bbio->map_type & BTRFS_BLOCK_GROUP_RAID56_MASK) &&
+	    ((rw & WRITE) || (mirror_num > 1))) {
 		/* In this case, map_length has been set to the length of
 		   a single stripe; not the whole write */
 		if (rw & WRITE) {
@@ -6348,10 +6347,35 @@ static int read_one_chunk(struct btrfs_root *root, struct btrfs_key *key,
 	length = btrfs_chunk_length(leaf, chunk);
 	stripe_len = btrfs_chunk_stripe_len(leaf, chunk);
 	num_stripes = btrfs_chunk_num_stripes(leaf, chunk);
-
-	ret = btrfs_check_chunk_valid(root, leaf, chunk, logical);
-	if (ret)
-		return ret;
+	/* Validation check */
+	if (!num_stripes) {
+		btrfs_err(root->fs_info, "invalid chunk num_stripes: %u",
+			  num_stripes);
+		return -EIO;
+	}
+	if (!IS_ALIGNED(logical, root->sectorsize)) {
+		btrfs_err(root->fs_info,
+			  "invalid chunk logical %llu", logical);
+		return -EIO;
+	}
+	if (!length || !IS_ALIGNED(length, root->sectorsize)) {
+		btrfs_err(root->fs_info,
+			"invalid chunk length %llu", length);
+		return -EIO;
+	}
+	if (!is_power_of_2(stripe_len)) {
+		btrfs_err(root->fs_info, "invalid chunk stripe length: %llu",
+			  stripe_len);
+		return -EIO;
+	}
+	if (~(BTRFS_BLOCK_GROUP_TYPE_MASK | BTRFS_BLOCK_GROUP_PROFILE_MASK) &
+	    btrfs_chunk_type(leaf, chunk)) {
+		btrfs_err(root->fs_info, "unrecognized chunk type: %llu",
+			  ~(BTRFS_BLOCK_GROUP_TYPE_MASK |
+			    BTRFS_BLOCK_GROUP_PROFILE_MASK) &
+			  btrfs_chunk_type(leaf, chunk));
+		return -EIO;
+	}
 
 	read_lock(&map_tree->map_tree.lock);
 	em = lookup_extent_mapping(&map_tree->map_tree, logical, 1);
