@@ -1,5 +1,6 @@
 dts-dirs += arm
 dts-dirs += broadcom
+dts-dirs += nvidia
 dts-dirs += qcom
 dts-dirs += renesas
 dts-dirs += socionext
