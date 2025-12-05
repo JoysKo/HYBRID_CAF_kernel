@@ -62,6 +62,8 @@ struct crypto_skcipher {
 	unsigned int reqsize;
 	unsigned int keysize;
 
+	bool has_setkey;
+
 	struct crypto_tfm base;
 };
 

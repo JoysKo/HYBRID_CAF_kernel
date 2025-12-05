@@ -307,6 +307,7 @@ int af_alg_accept(struct sock *sk, struct socket *newsock)
 	}
 	alg_sk(sk2)->parent = sk;
 	alg_sk(sk2)->type = type;
+	alg_sk(sk2)->nokey_refcnt = nokey;
 
 	newsock->ops = type->ops;
 	newsock->state = SS_CONNECTED;
