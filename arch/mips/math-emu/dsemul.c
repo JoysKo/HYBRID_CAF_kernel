@@ -62,17 +62,61 @@ struct emuframe {
 	mips_instruction	badinst;
 };
 
-static const int emupage_frame_count = PAGE_SIZE / sizeof(struct emuframe);
+/*
+ * Set up an emulation frame for instruction IR, from a delay slot of
+ * a branch jumping to CPC.  Return 0 if successful, -1 if no emulation
+ * required, otherwise a signal number causing a frame setup failure.
+ */
+int mips_dsemul(struct pt_regs *regs, mips_instruction ir, unsigned long cpc)
+{
+	int isa16 = get_isa16_mode(regs->cp0_epc);
+	mips_instruction break_math;
+	struct emuframe __user *fr;
+	int err;
+
+	/* NOP is easy */
+	if (ir == 0)
+		return -1;
+
+	/* microMIPS instructions */
+	if (isa16) {
+		union mips_instruction insn = { .word = ir };
+
+		/* NOP16 aka MOVE16 $0, $0 */
+		if ((ir >> 16) == MM_NOP16)
+			return -1;
+
+		/* ADDIUPC */
+		if (insn.mm_a_format.opcode == mm_addiupc_op) {
+			unsigned int rs;
+			s32 v;
+
+			rs = (((insn.mm_a_format.rs + 0x1e) & 0xf) + 2);
+			v = regs->cp0_epc & ~3;
+			v += insn.mm_a_format.simmediate << 2;
+			regs->regs[rs] = (long)v;
+			return -1;
+		}
+	}
 
 static inline __user struct emuframe *dsemul_page(void)
 {
 	return (__user struct emuframe *)STACK_TOP;
 }
 
-static int alloc_emuframe(void)
-{
-	mm_context_t *mm_ctx = &current->mm->context;
-	int idx;
+	/*
+	 * The strategy is to push the instruction onto the user stack
+	 * and put a trap after it which we can catch and jump to
+	 * the required address any alternative apart from full
+	 * instruction emulation!!.
+	 *
+	 * Algorithmics used a system call instruction, and
+	 * borrowed that vector.  MIPS/Linux version is a bit
+	 * more heavyweight in the interests of portability and
+	 * multiprocessor support.  For Linux we use a BREAK 514
+	 * instruction causing a breakpoint exception.
+	 */
+	break_math = BREAK_MATH(isa16);
 
 retry:
 	spin_lock(&mm_ctx->bd_emupage_lock);
@@ -84,10 +128,18 @@ retry:
 					      sizeof(unsigned long),
 				GFP_ATOMIC);
 
-		if (!mm_ctx->bd_emupage_allocmap) {
-			idx = BD_EMUFRAME_NONE;
-			goto out_unlock;
-		}
+	if (isa16) {
+		err = __put_user(ir >> 16,
+				 (u16 __user *)(&fr->emul));
+		err |= __put_user(ir & 0xffff,
+				  (u16 __user *)((long)(&fr->emul) + 2));
+		err |= __put_user(break_math >> 16,
+				  (u16 __user *)(&fr->badinst));
+		err |= __put_user(break_math & 0xffff,
+				  (u16 __user *)((long)(&fr->badinst) + 2));
+	} else {
+		err = __put_user(ir, &fr->emul);
+		err |= __put_user(break_math, &fr->badinst);
 	}
 
 	/* Attempt to allocate a single bit/frame */
@@ -112,12 +164,7 @@ retry:
 		return BD_EMUFRAME_NONE;
 	}
 
-	/* Success! */
-	pr_debug("allocate emuframe %d to %d\n", idx, current->pid);
-out_unlock:
-	spin_unlock(&mm_ctx->bd_emupage_lock);
-	return idx;
-}
+	regs->cp0_epc = (unsigned long)&fr->emul | isa16;
 
 static void free_emuframe(int idx, struct mm_struct *mm)
 {
@@ -169,6 +216,7 @@ bool dsemul_thread_cleanup(struct task_struct *tsk)
 
 bool dsemul_thread_rollback(struct pt_regs *regs)
 {
+	int isa16 = get_isa16_mode(xcp->cp0_epc);
 	struct emuframe __user *fr;
 	int fr_idx;
 
@@ -189,85 +237,19 @@ bool dsemul_thread_rollback(struct pt_regs *regs)
 	 * then something is amiss & the user has branched into some other area
 	 * of the emupage - we'll free the allocated frame anyway.
 	 */
-	if (msk_isa16_mode(regs->cp0_epc) == (unsigned long)&fr->emul)
-		regs->cp0_epc = current->thread.bd_emu_branch_pc;
-	else if (msk_isa16_mode(regs->cp0_epc) == (unsigned long)&fr->badinst)
-		regs->cp0_epc = current->thread.bd_emu_cont_pc;
-
-	atomic_set(&current->thread.bd_emu_frame, BD_EMUFRAME_NONE);
-	free_emuframe(fr_idx, current->mm);
-	return true;
-}
-
-void dsemul_mm_cleanup(struct mm_struct *mm)
-{
-	mm_context_t *mm_ctx = &mm->context;
-
-	kfree(mm_ctx->bd_emupage_allocmap);
-}
-
-int mips_dsemul(struct pt_regs *regs, mips_instruction ir,
-		unsigned long branch_pc, unsigned long cont_pc)
-{
-	int isa16 = get_isa16_mode(regs->cp0_epc);
-	mips_instruction break_math;
-	struct emuframe __user *fr;
-	int err, fr_idx;
-
-	/* NOP is easy */
-	if (ir == 0)
-		return -1;
-
-	/* microMIPS instructions */
 	if (isa16) {
-		union mips_instruction insn = { .word = ir };
-
-		/* NOP16 aka MOVE16 $0, $0 */
-		if ((ir >> 16) == MM_NOP16)
-			return -1;
-
-		/* ADDIUPC */
-		if (insn.mm_a_format.opcode == mm_addiupc_op) {
-			unsigned int rs;
-			s32 v;
-
-			rs = (((insn.mm_a_format.rs + 0xe) & 0xf) + 2);
-			v = regs->cp0_epc & ~3;
-			v += insn.mm_a_format.simmediate << 2;
-			regs->regs[rs] = (long)v;
-			return -1;
-		}
-	}
-
-	pr_debug("dsemul 0x%08lx cont at 0x%08lx\n", regs->cp0_epc, cont_pc);
-
-	/* Allocate a frame if we don't already have one */
-	fr_idx = atomic_read(&current->thread.bd_emu_frame);
-	if (fr_idx == BD_EMUFRAME_NONE)
-		fr_idx = alloc_emuframe();
-	if (fr_idx == BD_EMUFRAME_NONE)
-		return SIGBUS;
-	fr = &dsemul_page()[fr_idx];
-
-	/* Retrieve the appropriately encoded break instruction */
-	break_math = BREAK_MATH(isa16);
-
-	/* Write the instructions to the frame */
-	if (isa16) {
-		err = __put_user(ir >> 16,
-				 (u16 __user *)(&fr->emul));
-		err |= __put_user(ir & 0xffff,
-				  (u16 __user *)((long)(&fr->emul) + 2));
-		err |= __put_user(break_math >> 16,
-				  (u16 __user *)(&fr->badinst));
-		err |= __put_user(break_math & 0xffff,
+		err = __get_user(instr[0],
+				 (u16 __user *)(&fr->badinst));
+		err |= __get_user(instr[1],
 				  (u16 __user *)((long)(&fr->badinst) + 2));
+		insn = (instr[0] << 16) | instr[1];
 	} else {
 		err = __put_user(ir, &fr->emul);
 		err |= __put_user(break_math, &fr->badinst);
 	}
 
-	if (unlikely(err)) {
+	if (unlikely(err ||
+		     insn != BREAK_MATH(isa16) || cookie != BD_COOKIE)) {
 		MIPS_FPU_EMU_INC_STATS(errors);
 		free_emuframe(fr_idx, current->mm);
 		return SIGBUS;

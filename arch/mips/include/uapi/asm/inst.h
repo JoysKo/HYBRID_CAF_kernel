@@ -116,7 +116,8 @@ enum cop_op {
 	dmtc_op	      = 0x05, ctc_op	    = 0x06,
 	mthc0_op      = 0x06, mthc_op	    = 0x07,
 	bc_op	      = 0x08, bc1eqz_op     = 0x09,
-	bc1nez_op     = 0x0d, cop_op	    = 0x10,
+	mfmc0_op      = 0x0b, bc1nez_op     = 0x0d,
+	wrpgpr_op     = 0x0e, cop_op	    = 0x10,
 	copm_op	      = 0x18
 };
 
@@ -530,7 +531,7 @@ enum MIPS6e_i8_func {
 };
 
 /*
- * (microMIPS & MIPS16e) NOP instruction.
+ * (microMIPS) NOP instruction.
  */
 #define MM_NOP16	0x0c00
 
@@ -690,7 +691,7 @@ struct fp0_format {		/* FPU multiply and add format (MIPS32) */
 	;))))))
 };
 
-struct mm_fp0_format {		/* FPU multipy and add format (microMIPS) */
+struct mm_fp0_format {		/* FPU multiply and add format (microMIPS) */
 	__BITFIELD_FIELD(unsigned int opcode : 6,
 	__BITFIELD_FIELD(unsigned int ft : 5,
 	__BITFIELD_FIELD(unsigned int fs : 5,

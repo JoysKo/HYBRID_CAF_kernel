@@ -13,8 +13,8 @@
 #define SMBUS_PCI_REG64		0x64
 #define SMBUS_PCI_REGB4		0xb4
 
-#define HPET_MIN_CYCLES		16
-#define HPET_MIN_PROG_DELTA	(HPET_MIN_CYCLES * 12)
+#define HPET_MIN_CYCLES		64
+#define HPET_MIN_PROG_DELTA	(HPET_MIN_CYCLES + (HPET_MIN_CYCLES >> 1))
 
 static DEFINE_SPINLOCK(hpet_lock);
 DEFINE_PER_CPU(struct clock_event_device, hpet_clockevent_device);
@@ -164,7 +164,7 @@ static int hpet_next_event(unsigned long delta,
 	cnt += (u32) delta;
 	hpet_write(HPET_T0_CMP, cnt);
 
-	res = (s32)(cnt - hpet_read(HPET_COUNTER));
+	res = (int)(cnt - hpet_read(HPET_COUNTER));
 
 	return res < HPET_MIN_CYCLES ? -ETIME : 0;
 }

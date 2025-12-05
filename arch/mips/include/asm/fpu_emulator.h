@@ -188,6 +188,16 @@ int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 int mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		     unsigned long *contpc);
 
+/*
+ * Instruction inserted following the badinst to further tag the sequence
+ */
+#define BD_COOKIE 0x0000bd36	/* tne $0, $0 with baggage */
+
+/*
+ * Break instruction with special math emu break code set
+ */
+#define BREAK_MATH(micromips) (((micromips) ? 0x7 : 0xd) | (BRK_MEMU << 16))
+
 #define SIGNALLING_NAN 0x7ff800007ff80000LL
 
 static inline void fpu_emulator_init_fpu(void)

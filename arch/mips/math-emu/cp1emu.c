@@ -1282,7 +1282,7 @@ branch_common:
 						 * instruction in the dslot.
 						 */
 						sig = mips_dsemul(xcp, ir,
-								  bcpc, contpc);
+								  contpc);
 						if (sig < 0)
 							break;
 						if (sig)
@@ -1337,7 +1337,7 @@ branch_common:
 				 * Single step the non-cp1
 				 * instruction in the dslot
 				 */
-				sig = mips_dsemul(xcp, ir, bcpc, contpc);
+				sig = mips_dsemul(xcp, ir, contpc);
 				if (sig < 0)
 					break;
 				if (sig)

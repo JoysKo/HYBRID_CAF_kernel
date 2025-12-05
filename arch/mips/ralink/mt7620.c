@@ -141,8 +141,8 @@ static struct rt2880_pmx_func i2c_grp_mt7628[] = {
 	FUNC("i2c", 0, 4, 2),
 };
 
-static struct rt2880_pmx_func refclk_grp_mt7628[] = { FUNC("refclk", 0, 37, 1) };
-static struct rt2880_pmx_func perst_grp_mt7628[] = { FUNC("perst", 0, 36, 1) };
+static struct rt2880_pmx_func refclk_grp_mt7628[] = { FUNC("reclk", 0, 36, 1) };
+static struct rt2880_pmx_func perst_grp_mt7628[] = { FUNC("perst", 0, 37, 1) };
 static struct rt2880_pmx_func wdt_grp_mt7628[] = { FUNC("wdt", 0, 38, 1) };
 static struct rt2880_pmx_func spi_grp_mt7628[] = { FUNC("spi", 0, 7, 4) };
 
@@ -196,10 +196,10 @@ static struct rt2880_pmx_func wled_kn_grp_mt7628[] = {
 };
 
 static struct rt2880_pmx_func wled_an_grp_mt7628[] = {
-	FUNC("rsvd", 3, 44, 1),
-	FUNC("rsvd", 2, 44, 1),
-	FUNC("gpio", 1, 44, 1),
-	FUNC("wled_an", 0, 44, 1),
+	FUNC("rsvd", 3, 35, 1),
+	FUNC("rsvd", 2, 35, 1),
+	FUNC("gpio", 1, 35, 1),
+	FUNC("wled_an", 0, 35, 1),
 };
 
 #define MT7628_GPIO_MODE_MASK		0x3
@@ -225,7 +225,7 @@ static struct rt2880_pmx_func wled_an_grp_mt7628[] = {
 static struct rt2880_pmx_group mt7628an_pinmux_data[] = {
 	GRP_G("pwm1", pwm1_grp_mt7628, MT7628_GPIO_MODE_MASK,
 				1, MT7628_GPIO_MODE_PWM1),
-	GRP_G("pwm0", pwm0_grp_mt7628, MT7628_GPIO_MODE_MASK,
+	GRP_G("pmw0", pwm0_grp_mt7628, MT7628_GPIO_MODE_MASK,
 				1, MT7628_GPIO_MODE_PWM0),
 	GRP_G("uart2", uart2_grp_mt7628, MT7628_GPIO_MODE_MASK,
 				1, MT7628_GPIO_MODE_UART2),
@@ -456,7 +456,10 @@ void __init ralink_clk_init(void)
 	ralink_clk_add("10000100.timer", periph_rate);
 	ralink_clk_add("10000120.watchdog", periph_rate);
 	ralink_clk_add("10000b00.spi", sys_rate);
+	ralink_clk_add("10000b40.spi", sys_rate);
 	ralink_clk_add("10000c00.uartlite", periph_rate);
+	ralink_clk_add("10000d00.uart1", periph_rate);
+	ralink_clk_add("10000e00.uart2", periph_rate);
 	ralink_clk_add("10180000.wmac", xtal_rate);
 
 	if (IS_ENABLED(CONFIG_USB) && !is_mt76x8()) {
@@ -572,7 +575,7 @@ void prom_soc_init(struct ralink_soc_info *soc_info)
 	}
 
 	snprintf(soc_info->sys_type, RAMIPS_SYS_TYPE_LEN,
-		"Ralink %s ver:%u eco:%u",
+		"MediaTek %s ver:%u eco:%u",
 		name,
 		(rev >> CHIP_REV_VER_SHIFT) & CHIP_REV_VER_MASK,
 		(rev & CHIP_REV_ECO_MASK));
