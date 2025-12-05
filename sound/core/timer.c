@@ -954,6 +954,8 @@ static int snd_timer_dev_disconnect(struct snd_device *device)
 	list_del_init(&timer->device_list);
 	/* wake up pending sleepers */
 	list_for_each_entry(ti, &timer->open_list_head, open_list) {
+		if (ti->disconnect)
+			ti->disconnect(ti);
 		/* FIXME: better to have a ti.disconnect() op */
 		if (ti->ccallback == snd_timer_user_ccallback) {
 			struct snd_timer_user *tu = ti->callback_data;
@@ -1270,6 +1272,14 @@ static void snd_timer_user_ccallback(struct snd_timer_instance *timeri,
 	snd_timer_user_append_to_tqueue(tu, &r1);
 	spin_unlock_irqrestore(&tu->qlock, flags);
 	snd_kill_fasync(tu->fasync, SIGIO, POLL_IN);
+	wake_up(&tu->qchange_sleep);
+}
+
+static void snd_timer_user_disconnect(struct snd_timer_instance *timeri)
+{
+	struct snd_timer_user *tu = timeri->callback_data;
+
+	tu->disconnected = true;
 	wake_up(&tu->qchange_sleep);
 }
 
@@ -1649,6 +1659,7 @@ static int snd_timer_user_tselect(struct file *file,
 			? snd_timer_user_tinterrupt : snd_timer_user_interrupt;
 		tu->timeri->ccallback = snd_timer_user_ccallback;
 		tu->timeri->callback_data = (void *)tu;
+		tu->timeri->disconnect = snd_timer_user_disconnect;
 	}
 
       __err:
