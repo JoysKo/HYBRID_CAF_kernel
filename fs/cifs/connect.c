@@ -99,6 +99,7 @@ enum {
 	Opt_cruid, Opt_gid, Opt_file_mode,
 	Opt_dirmode, Opt_port,
 	Opt_rsize, Opt_wsize, Opt_actimeo,
+	Opt_echo_interval,
 
 	/* Mount options which take string value */
 	Opt_user, Opt_pass, Opt_ip,
@@ -192,6 +193,7 @@ static const match_table_t cifs_mount_option_tokens = {
 	{ Opt_rsize, "rsize=%s" },
 	{ Opt_wsize, "wsize=%s" },
 	{ Opt_actimeo, "actimeo=%s" },
+	{ Opt_echo_interval, "echo_interval=%s" },
 
 	{ Opt_blank_user, "user=" },
 	{ Opt_blank_user, "username=" },
@@ -508,7 +510,7 @@ cifs_echo_request(struct work_struct *work)
 			 server->hostname);
 
 requeue_echo:
-	queue_delayed_work(cifsiod_wq, &server->echo, SMB_ECHO_INTERVAL);
+	queue_delayed_work(cifsiod_wq, &server->echo, echo_interval);
 }
 
 static bool
@@ -560,9 +562,9 @@ server_unresponsive(struct TCP_Server_Info *server)
 	 */
 	if ((server->tcpStatus == CifsGood ||
 	    server->tcpStatus == CifsNeedNegotiate) &&
-	    time_after(jiffies, server->lstrp + 3 * SMB_ECHO_INTERVAL)) {
-		cifs_dbg(VFS, "Server %s has not responded in %d seconds. Reconnecting...\n",
-			 server->hostname, (3 * SMB_ECHO_INTERVAL) / HZ);
+	    time_after(jiffies, server->lstrp + 3 * server->echo_interval)) {
+		cifs_dbg(VFS, "Server %s has not responded in %lu seconds. Reconnecting...\n",
+			 server->hostname, (3 * server->echo_interval) / HZ);
 		cifs_reconnect(server);
 		wake_up(&server->response_q);
 		return true;
@@ -903,7 +905,7 @@ standard_receive3(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 	 * 48 bytes is enough to display the header and a little bit
 	 * into the payload for debugging purposes.
 	 */
-	length = server->ops->check_message(buf, server->total_read);
+	length = server->ops->check_message(buf, server->total_read, server);
 	if (length != 0)
 		cifs_dump_mem("Bad SMB: ", buf,
 			min_t(unsigned int, server->total_read, 48));
@@ -1721,6 +1723,14 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 				goto cifs_parse_mount_err;
 			}
 			break;
+		case Opt_echo_interval:
+			if (get_option_ul(args, &option)) {
+				cifs_dbg(VFS, "%s: Invalid echo interval value\n",
+					 __func__);
+				goto cifs_parse_mount_err;
+			}
+			vol->echo_interval = option;
+			break;
 
 		/* String Arguments */
 
@@ -2186,6 +2196,9 @@ static int match_server(struct TCP_Server_Info *server, struct smb_vol *vol)
 	if (!match_security(server, vol))
 		return 0;
 
+	if (server->echo_interval != vol->echo_interval)
+		return 0;
+
 	return 1;
 }
 
@@ -2322,6 +2335,12 @@ cifs_get_tcp_session(struct smb_vol *volume_info)
 	tcp_ses->tcpStatus = CifsNew;
 	++tcp_ses->srv_count;
 
+	if (volume_info->echo_interval >= SMB_ECHO_INTERVAL_MIN &&
+		volume_info->echo_interval <= SMB_ECHO_INTERVAL_MAX)
+		tcp_ses->echo_interval = volume_info->echo_interval * HZ;
+	else
+		tcp_ses->echo_interval = SMB_ECHO_INTERVAL_DEFAULT * HZ;
+
 	rc = ip_connect(tcp_ses);
 	if (rc < 0) {
 		cifs_dbg(VFS, "Error connecting to socket. Aborting operation.\n");
@@ -2351,7 +2370,7 @@ cifs_get_tcp_session(struct smb_vol *volume_info)
 	cifs_fscache_get_client_cookie(tcp_ses);
 
 	/* queue echo request delayed work */
-	queue_delayed_work(cifsiod_wq, &tcp_ses->echo, SMB_ECHO_INTERVAL);
+	queue_delayed_work(cifsiod_wq, &tcp_ses->echo, tcp_ses->echo_interval);
 
 	return tcp_ses;
 
