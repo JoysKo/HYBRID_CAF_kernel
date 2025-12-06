@@ -53,9 +53,9 @@ int crst_table_upgrade(struct mm_struct *mm)
 {
 	unsigned long *table, *pgd;
 
-	/* upgrade should only happen from 3 to 4 levels */
-	BUG_ON(mm->context.asce_limit != (1UL << 42));
-
+	BUG_ON(limit > TASK_MAX_SIZE);
+	flush = 0;
+repeat:
 	table = crst_table_alloc(mm);
 	if (!table)
 		return -ENOMEM;

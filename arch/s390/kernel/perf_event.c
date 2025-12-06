@@ -224,10 +224,34 @@ arch_initcall(service_level_perf_register);
 
 static int __perf_callchain_kernel(void *data, unsigned long address)
 {
-	struct perf_callchain_entry_ctx *entry = data;
+	struct stack_frame *sf;
+	struct pt_regs *regs;
 
-	perf_callchain_store(entry, address);
-	return 0;
+	while (1) {
+		if (sp < low || sp > high - sizeof(*sf))
+			return sp;
+		sf = (struct stack_frame *) sp;
+		perf_callchain_store(entry, sf->gprs[8]);
+		/* Follow the backchain. */
+		while (1) {
+			low = sp;
+			sp = sf->back_chain;
+			if (!sp)
+				break;
+			if (sp <= low || sp > high - sizeof(*sf))
+				return sp;
+			sf = (struct stack_frame *) sp;
+			perf_callchain_store(entry, sf->gprs[8]);
+		}
+		/* Zero backchain detected, check for interrupt frame. */
+		sp = (unsigned long) (sf + 1);
+		if (sp <= low || sp > high - sizeof(*regs))
+			return sp;
+		regs = (struct pt_regs *) sp;
+		perf_callchain_store(entry, sf->gprs[8]);
+		low = sp;
+		sp = regs->gprs[15];
+	}
 }
 
 void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry,

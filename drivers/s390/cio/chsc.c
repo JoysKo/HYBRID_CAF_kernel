@@ -1001,7 +1001,10 @@ chsc_initialize_cmg_chars(struct channel_path *chp, u8 cmcv,
 
 int chsc_get_channel_measurement_chars(struct channel_path *chp)
 {
+<<<<<<< ours
 	unsigned long flags;
+=======
+>>>>>>> theirs
 	int ccode, ret;
 
 	struct {
@@ -1027,6 +1030,12 @@ int chsc_get_channel_measurement_chars(struct channel_path *chp)
 
 	chp->shared = -1;
 	chp->cmg = -1;
+<<<<<<< ours
+=======
+
+	if (!css_chsc_characteristics.scmc || !css_chsc_characteristics.secm)
+		return 0;
+>>>>>>> theirs
 
 	if (!css_chsc_characteristics.scmc || !css_chsc_characteristics.secm)
 		return 0;
@@ -1063,7 +1072,11 @@ int chsc_get_channel_measurement_chars(struct channel_path *chp)
 	chsc_initialize_cmg_chars(chp, scmc_area->cmcv,
 				  (struct cmg_chars *) &scmc_area->data);
 out:
+<<<<<<< ours
 	spin_unlock_irqrestore(&chsc_page_lock, flags);
+=======
+	spin_unlock_irq(&chsc_page_lock);
+>>>>>>> theirs
 	return ret;
 }
 
