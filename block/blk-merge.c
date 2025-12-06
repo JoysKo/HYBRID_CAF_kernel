@@ -127,18 +127,15 @@ static struct bio *blk_bio_segment_split(struct request_queue *q,
 		if (bvprvp && bvec_gap_to_prev(q, bvprvp, bv.bv_offset))
 			goto split;
 
-		if (sectors + (bv.bv_len >> 9) >
-				blk_max_size_offset(q, bio->bi_iter.bi_sector)) {
+		if (sectors + (bv.bv_len >> 9) > max_sectors) {
 			/*
 			 * Consider this a new segment if we're splitting in
 			 * the middle of this vector.
 			 */
 			if (nsegs < queue_max_segments(q) &&
-			    sectors < blk_max_size_offset(q,
-						bio->bi_iter.bi_sector)) {
+			    sectors < max_sectors) {
 				nsegs++;
-				sectors = blk_max_size_offset(q,
-						bio->bi_iter.bi_sector);
+				sectors = max_sectors;
 			}
 			if (sectors)
 				goto split;
