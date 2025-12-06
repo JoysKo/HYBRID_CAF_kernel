@@ -2272,8 +2272,16 @@ int kvm_s390_store_status_unloaded(struct kvm_vcpu *vcpu, unsigned long gpa)
 		gpa = px;
 	} else
 		gpa -= __LC_FPREGS_SAVE_AREA;
-	rc = write_guest_abs(vcpu, gpa + __LC_FPREGS_SAVE_AREA,
-			     vcpu->arch.guest_fpregs.fprs, 128);
+
+	/* manually convert vector registers if necessary */
+	if (MACHINE_HAS_VX) {
+		convert_vx_to_fp(fprs, current->thread.fpu.vxrs);
+		rc = write_guest_abs(vcpu, gpa + __LC_FPREGS_SAVE_AREA,
+				     fprs, 128);
+	} else {
+		rc = write_guest_abs(vcpu, gpa + __LC_FPREGS_SAVE_AREA,
+				     vcpu->run->s.regs.vrs, 128);
+	}
 	rc |= write_guest_abs(vcpu, gpa + __LC_GPREGS_SAVE_AREA,
 			      vcpu->run->s.regs.gprs, 128);
 	rc |= write_guest_abs(vcpu, gpa + __LC_PSW_SAVE_AREA,
@@ -2281,7 +2289,7 @@ int kvm_s390_store_status_unloaded(struct kvm_vcpu *vcpu, unsigned long gpa)
 	rc |= write_guest_abs(vcpu, gpa + __LC_PREFIX_SAVE_AREA,
 			      &px, 4);
 	rc |= write_guest_abs(vcpu, gpa + __LC_FP_CREG_SAVE_AREA,
-			      &vcpu->arch.guest_fpregs.fpc, 4);
+			      &vcpu->run->s.regs.fpc, 4);
 	rc |= write_guest_abs(vcpu, gpa + __LC_TOD_PROGREG_SAVE_AREA,
 			      &vcpu->arch.sie_block->todpr, 4);
 	rc |= write_guest_abs(vcpu, gpa + __LC_CPU_TIMER_SAVE_AREA,
