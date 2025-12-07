@@ -661,9 +661,6 @@ struct perf_event_context {
 	int				nr_cgroups;	 /* cgroup evts */
 	void				*task_ctx_data; /* pmu specific data */
 	struct rcu_head			rcu_head;
-
-	struct delayed_work		orphans_remove;
-	bool				orphans_remove_sched;
 };
 
 /*
@@ -1104,7 +1101,7 @@ extern void perf_swevent_put_recursion_context(int rctx);
 extern u64 perf_swevent_set_period(struct perf_event *event);
 extern void perf_event_enable(struct perf_event *event);
 extern void perf_event_disable(struct perf_event *event);
-extern int __perf_event_disable(void *info);
+extern void perf_event_disable_local(struct perf_event *event);
 extern void perf_event_task_tick(void);
 #else /* !CONFIG_PERF_EVENTS: */
 static inline void *
