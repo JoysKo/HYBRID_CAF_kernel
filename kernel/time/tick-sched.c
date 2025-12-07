@@ -42,30 +42,16 @@ spinlock_t rq_lock;
  */
 static DEFINE_PER_CPU(struct tick_sched, tick_cpu_sched);
 
-/*
- * The time, when the last jiffy update happened. Protected by jiffies_lock.
- */
-static ktime_t last_jiffies_update;
-
-u64 jiffy_to_ktime_ns(u64 *now, u64 *jiffy_ktime_ns)
-{
-	u64 cur_jiffies;
-	unsigned long seq;
-
-	do {
-		seq = read_seqbegin(&jiffies_lock);
-		*now = ktime_get_ns();
-		*jiffy_ktime_ns = ktime_to_ns(last_jiffies_update);
-		cur_jiffies = get_jiffies_64();
-	} while (read_seqretry(&jiffies_lock, seq));
-
-	return cur_jiffies;
-}
-
 struct tick_sched *tick_get_tick_sched(int cpu)
 {
 	return &per_cpu(tick_cpu_sched, cpu);
 }
+
+#if defined(CONFIG_NO_HZ_COMMON) || defined(CONFIG_HIGH_RES_TIMERS)
+/*
+ * The time, when the last jiffy update happened. Protected by jiffies_lock.
+ */
+static ktime_t last_jiffies_update;
 
 /*
  * Must be called with interrupts disabled !
@@ -172,6 +158,7 @@ static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 	update_process_times(user_mode(regs));
 	profile_tick(CPU_PROFILING);
 }
+#endif
 
 #ifdef CONFIG_NO_HZ_FULL
 cpumask_var_t tick_nohz_full_mask;
