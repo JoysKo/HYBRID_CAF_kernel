@@ -511,7 +511,8 @@ int vb2_core_create_bufs(struct vb2_queue *q, enum vb2_memory memory,
 		unsigned int *count, const void *parg);
 int vb2_core_prepare_buf(struct vb2_queue *q, unsigned int index, void *pb);
 int vb2_core_qbuf(struct vb2_queue *q, unsigned int index, void *pb);
-int vb2_core_dqbuf(struct vb2_queue *q, void *pb, bool nonblocking);
+int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
+		   bool nonblocking);
 
 int vb2_core_streamon(struct vb2_queue *q, unsigned int type);
 int vb2_core_streamoff(struct vb2_queue *q, unsigned int type);

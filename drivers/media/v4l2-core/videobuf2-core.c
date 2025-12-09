@@ -932,8 +932,11 @@ EXPORT_SYMBOL_GPL(vb2_discard_done);
  */
 static int __qbuf_mmap(struct vb2_buffer *vb, const void *pb)
 {
-	int ret = call_bufop(vb->vb2_queue, fill_vb2_buffer,
-			vb, pb, vb->planes);
+	int ret = 0;
+
+	if (pb)
+		ret = call_bufop(vb->vb2_queue, fill_vb2_buffer,
+				 vb, pb, vb->planes);
 	return ret ? ret : call_vb_qop(vb, buf_prepare, vb);
 }
 
@@ -946,14 +949,16 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const void *pb)
 	struct vb2_queue *q = vb->vb2_queue;
 	void *mem_priv;
 	unsigned int plane;
-	int ret;
+	int ret = 0;
 	enum dma_data_direction dma_dir =
 		q->is_output ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
 	/* Copy relevant information provided by the userspace */
-	ret = call_bufop(vb->vb2_queue, fill_vb2_buffer, vb, pb, planes);
+	if (pb)
+		ret = call_bufop(vb->vb2_queue, fill_vb2_buffer,
+				 vb, pb, planes);
 	if (ret)
 		return ret;
 
@@ -1060,14 +1065,16 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const void *pb)
 	struct vb2_queue *q = vb->vb2_queue;
 	void *mem_priv;
 	unsigned int plane;
-	int ret;
+	int ret = 0;
 	enum dma_data_direction dma_dir =
 		q->is_output ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
 	/* Copy relevant information provided by the userspace */
-	ret = call_bufop(vb->vb2_queue, fill_vb2_buffer, vb, pb, planes);
+	if (pb)
+		ret = call_bufop(vb->vb2_queue, fill_vb2_buffer,
+				 vb, pb, planes);
 	if (ret)
 		return ret;
 
@@ -1397,7 +1404,8 @@ int vb2_core_qbuf(struct vb2_queue *q, unsigned int index, void *pb)
 	q->waiting_for_buffers = false;
 	vb->state = VB2_BUF_STATE_QUEUED;
 
-	call_bufop(q, set_timestamp, vb, pb);
+    if (pb)
+	    call_bufop(q, set_timestamp, vb, pb);
 
 	trace_vb2_qbuf(q, vb);
 
@@ -1409,9 +1417,11 @@ int vb2_core_qbuf(struct vb2_queue *q, unsigned int index, void *pb)
 		__enqueue_in_driver(vb);
 
 	/* Fill buffer information for the userspace */
-	ret = call_bufop(q, fill_user_buffer, vb, pb);
-	if (ret)
-		return ret;
+    if (pb) {
+	    ret = call_bufop(q, fill_user_buffer, vb, pb);
+	    if (ret)
+		    return ret;
+    }
 
 	/*
 	 * If streamon has been called, and we haven't yet called
@@ -1621,7 +1631,8 @@ static void __vb2_dqbuf(struct vb2_buffer *vb)
  * The return values from this function are intended to be directly returned
  * from vidioc_dqbuf handler in driver.
  */
-int vb2_core_dqbuf(struct vb2_queue *q, void *pb, bool nonblocking)
+int vb2_core_dqbuf(struct vb2_queue *q, unsigned int *pindex, void *pb,
+		   bool nonblocking)
 {
 	struct vb2_buffer *vb = NULL;
 	int ret;
@@ -1644,10 +1655,15 @@ int vb2_core_dqbuf(struct vb2_queue *q, void *pb, bool nonblocking)
 
 	call_void_vb_qop(vb, buf_finish, vb);
 
+	if (pindex)
+		*pindex = vb->index;
+
 	/* Fill buffer information for the userspace */
-	ret = call_bufop(q, fill_user_buffer, vb, pb);
-	if (ret)
-		return ret;
+    if (pb) {
+	    ret = call_bufop(q, fill_user_buffer, vb, pb);
+	    if (ret)
+		    return ret;
+	}
 
 	/* Remove from videobuf queue */
 	list_del(&vb->queued_entry);
@@ -1720,7 +1736,7 @@ static void __vb2_queue_cancel(struct vb2_queue *q)
 	 * that's done in dqbuf, but that's not going to happen when we
 	 * cancel the whole queue. Note: this code belongs here, not in
 	 * __vb2_dqbuf() since in vb2_internal_dqbuf() there is a critical
-	 * call to __fill_v4l2_buffer() after buf_finish(). That order can't
+	 * call to __fill_user_buffer() after buf_finish(). That order can't
 	 * be changed, so we can't move the buf_finish() to __vb2_dqbuf().
 	 */
 	for (i = 0; i < q->num_buffers; ++i) {
