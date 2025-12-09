@@ -143,6 +143,7 @@ static bool adv7511_register_volatile(struct device *dev, unsigned int reg)
 	case ADV7511_REG_BKSV(3):
 	case ADV7511_REG_BKSV(4):
 	case ADV7511_REG_DDC_STATUS:
+	case ADV7511_REG_EDID_READ_CTRL:
 	case ADV7511_REG_BSTATUS(0):
 	case ADV7511_REG_BSTATUS(1):
 	case ADV7511_REG_CHIP_ID_HIGH:
@@ -384,16 +385,16 @@ static void adv7511_power_on(struct adv7511 *adv7511)
 	}
 
 	/*
-	 * Per spec it is allowed to pulse the HDP signal to indicate that the
+	 * Per spec it is allowed to pulse the HPD signal to indicate that the
 	 * EDID information has changed. Some monitors do this when they wakeup
-	 * from standby or are enabled. When the HDP goes low the adv7511 is
+	 * from standby or are enabled. When the HPD goes low the adv7511 is
 	 * reset and the outputs are disabled which might cause the monitor to
-	 * go to standby again. To avoid this we ignore the HDP pin for the
+	 * go to standby again. To avoid this we ignore the HPD pin for the
 	 * first few seconds after enabling the output.
 	 */
 	regmap_update_bits(adv7511->regmap, ADV7511_REG_POWER2,
-			   ADV7511_REG_POWER2_HDP_SRC_MASK,
-			   ADV7511_REG_POWER2_HDP_SRC_NONE);
+			   ADV7511_REG_POWER2_HPD_SRC_MASK,
+			   ADV7511_REG_POWER2_HPD_SRC_NONE);
 
 	/*
 	 * Most of the registers are reset during power down or when HPD is low.
@@ -427,9 +428,9 @@ static bool adv7511_hpd(struct adv7511 *adv7511)
 	if (ret < 0)
 		return false;
 
-	if (irq0 & ADV7511_INT0_HDP) {
+	if (irq0 & ADV7511_INT0_HPD) {
 		regmap_write(adv7511->regmap, ADV7511_REG_INT(0),
-			     ADV7511_INT0_HDP);
+			     ADV7511_INT0_HPD);
 		return true;
 	}
 
@@ -484,8 +485,8 @@ static int adv7511_irq_process(struct adv7511 *adv7511, bool process_hpd)
 	regmap_write(adv7511->regmap, ADV7511_REG_INT(0), irq0);
 	regmap_write(adv7511->regmap, ADV7511_REG_INT(1), irq1);
 
-	if (process_hpd && irq0 & ADV7511_INT0_HDP && adv7511->encoder)
-		schedule_work(&adv7511->hpd_work);
+	if (irq0 & ADV7511_INT0_HPD && adv7511->encoder)
+		drm_helper_hpd_irq_event(adv7511->encoder->dev);
 
 	if (irq0 & ADV7511_INT0_EDID_READY || irq1 & ADV7511_INT1_DDC_ERROR) {
 		adv7511->edid_read = true;
@@ -689,10 +690,10 @@ adv7511_encoder_detect(struct drm_encoder *encoder,
 		if (adv7511->status == connector_status_connected)
 			status = connector_status_disconnected;
 	} else {
-		/* Renable HDP sensing */
+		/* Renable HPD sensing */
 		regmap_update_bits(adv7511->regmap, ADV7511_REG_POWER2,
-				   ADV7511_REG_POWER2_HDP_SRC_MASK,
-				   ADV7511_REG_POWER2_HDP_SRC_BOTH);
+				   ADV7511_REG_POWER2_HPD_SRC_MASK,
+				   ADV7511_REG_POWER2_HPD_SRC_BOTH);
 	}
 
 	adv7511->status = status;
