@@ -521,6 +521,7 @@ static int crypto_user_rcv_msg(struct sk_buff *skb, struct nlmsghdr *nlh)
 			};
 			err = netlink_dump_start(crypto_nlsk, skb, nlh, &c);
 		}
+		up_read(&crypto_alg_sem);
 
 		return err;
 	}
