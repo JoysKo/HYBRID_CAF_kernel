@@ -2500,15 +2500,14 @@ static void layout_symtab(struct module *mod, struct load_info *info)
 	strsect->sh_flags |= SHF_ALLOC;
 	strsect->sh_entsize = get_offset(mod, &mod->init_layout.size, strsect,
 					 info->index.str) | INIT_OFFSET_MASK;
-	mod->init_layout.size = debug_align(mod->init_layout.size);
 	pr_debug("\t%s\n", info->secstrings + strsect->sh_name);
 
 	/* We'll tack temporary mod_kallsyms on the end. */
-	mod->init_size = ALIGN(mod->init_size,
+	mod->init_layout.size = ALIGN(mod->init_layout.size,
 				      __alignof__(struct mod_kallsyms));
-	info->mod_kallsyms_init_off = mod->init_size;
-	mod->init_size += sizeof(struct mod_kallsyms);
-	mod->init_size = debug_align(mod->init_size);
+	info->mod_kallsyms_init_off = mod->init_layout.size;
+	mod->init_layout.size += sizeof(struct mod_kallsyms);
+	mod->init_layout.size = debug_align(mod->init_layout.size);
 }
 
 /*
@@ -2525,7 +2524,7 @@ static void add_kallsyms(struct module *mod, const struct load_info *info)
 	Elf_Shdr *symsec = &info->sechdrs[info->index.sym];
 
 	/* Set up to point into init section. */
-	mod->kallsyms = mod->module_init + info->mod_kallsyms_init_off;
+	mod->kallsyms = mod->init_layout.base + info->mod_kallsyms_init_off;
 
 	mod->kallsyms->symtab = (void *)symsec->sh_addr;
 	mod->kallsyms->num_symtab = symsec->sh_size / sizeof(Elf_Sym);
