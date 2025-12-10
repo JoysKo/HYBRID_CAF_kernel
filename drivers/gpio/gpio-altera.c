@@ -308,8 +308,8 @@ static int altera_gpio_probe(struct platform_device *pdev)
 		handle_bad_irq, IRQ_TYPE_NONE);
 
 	if (ret) {
-		dev_info(&pdev->dev, "could not add irqchip\n");
-		return ret;
+		dev_err(&pdev->dev, "could not add irqchip\n");
+		goto teardown;
 	}
 
 	gpiochip_set_chained_irqchip(&altera_gc->mmchip.gc,
@@ -322,6 +322,7 @@ static int altera_gpio_probe(struct platform_device *pdev)
 skip_irq:
 	return 0;
 teardown:
+	of_mm_gpiochip_remove(&altera_gc->mmchip);
 	pr_err("%s: registration failed with status %d\n",
 		node->full_name, ret);
 
