@@ -87,6 +87,8 @@ extern int amdgpu_sched_jobs;
 extern int amdgpu_sched_hw_submission;
 extern int amdgpu_enable_semaphores;
 extern int amdgpu_powerplay;
+extern unsigned amdgpu_pcie_gen_cap;
+extern unsigned amdgpu_pcie_lane_cap;
 
 #define AMDGPU_WAIT_IDLE_TIMEOUT_IN_MS	        3000
 #define AMDGPU_MAX_USEC_TIMEOUT			100000	/* 100 ms */
@@ -131,47 +133,6 @@ extern int amdgpu_powerplay;
 #define AMDGPU_RESET_UVD			(1 << 12)
 #define AMDGPU_RESET_VCE			(1 << 13)
 #define AMDGPU_RESET_VCE1			(1 << 14)
-
-/* CG block flags */
-#define AMDGPU_CG_BLOCK_GFX			(1 << 0)
-#define AMDGPU_CG_BLOCK_MC			(1 << 1)
-#define AMDGPU_CG_BLOCK_SDMA			(1 << 2)
-#define AMDGPU_CG_BLOCK_UVD			(1 << 3)
-#define AMDGPU_CG_BLOCK_VCE			(1 << 4)
-#define AMDGPU_CG_BLOCK_HDP			(1 << 5)
-#define AMDGPU_CG_BLOCK_BIF			(1 << 6)
-
-/* CG flags */
-#define AMDGPU_CG_SUPPORT_GFX_MGCG		(1 << 0)
-#define AMDGPU_CG_SUPPORT_GFX_MGLS		(1 << 1)
-#define AMDGPU_CG_SUPPORT_GFX_CGCG		(1 << 2)
-#define AMDGPU_CG_SUPPORT_GFX_CGLS		(1 << 3)
-#define AMDGPU_CG_SUPPORT_GFX_CGTS		(1 << 4)
-#define AMDGPU_CG_SUPPORT_GFX_CGTS_LS		(1 << 5)
-#define AMDGPU_CG_SUPPORT_GFX_CP_LS		(1 << 6)
-#define AMDGPU_CG_SUPPORT_GFX_RLC_LS		(1 << 7)
-#define AMDGPU_CG_SUPPORT_MC_LS			(1 << 8)
-#define AMDGPU_CG_SUPPORT_MC_MGCG		(1 << 9)
-#define AMDGPU_CG_SUPPORT_SDMA_LS		(1 << 10)
-#define AMDGPU_CG_SUPPORT_SDMA_MGCG		(1 << 11)
-#define AMDGPU_CG_SUPPORT_BIF_LS		(1 << 12)
-#define AMDGPU_CG_SUPPORT_UVD_MGCG		(1 << 13)
-#define AMDGPU_CG_SUPPORT_VCE_MGCG		(1 << 14)
-#define AMDGPU_CG_SUPPORT_HDP_LS		(1 << 15)
-#define AMDGPU_CG_SUPPORT_HDP_MGCG		(1 << 16)
-
-/* PG flags */
-#define AMDGPU_PG_SUPPORT_GFX_PG		(1 << 0)
-#define AMDGPU_PG_SUPPORT_GFX_SMG		(1 << 1)
-#define AMDGPU_PG_SUPPORT_GFX_DMG		(1 << 2)
-#define AMDGPU_PG_SUPPORT_UVD			(1 << 3)
-#define AMDGPU_PG_SUPPORT_VCE			(1 << 4)
-#define AMDGPU_PG_SUPPORT_CP			(1 << 5)
-#define AMDGPU_PG_SUPPORT_GDS			(1 << 6)
-#define AMDGPU_PG_SUPPORT_RLC_SMU_HS		(1 << 7)
-#define AMDGPU_PG_SUPPORT_SDMA			(1 << 8)
-#define AMDGPU_PG_SUPPORT_ACP			(1 << 9)
-#define AMDGPU_PG_SUPPORT_SAMU			(1 << 10)
 
 /* GFX current status */
 #define AMDGPU_GFX_NORMAL_MODE			0x00000000L
