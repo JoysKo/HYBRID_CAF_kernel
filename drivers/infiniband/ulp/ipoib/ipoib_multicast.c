@@ -634,6 +634,8 @@ void ipoib_mcast_join_task(struct work_struct *work)
 			if (mcast->backoff == 1 ||
 			    time_after_eq(jiffies, mcast->delay_until)) {
 				/* Found the next unjoined group */
+				init_completion(&mcast->done);
+				set_bit(IPOIB_MCAST_FLAG_BUSY, &mcast->flags);
 				if (ipoib_mcast_join(dev, mcast)) {
 					spin_unlock_irq(&priv->lock);
 					return;
