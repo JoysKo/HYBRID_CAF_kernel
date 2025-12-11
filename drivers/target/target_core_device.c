@@ -848,15 +848,13 @@ struct se_device *target_alloc_device(struct se_hba *hba, const char *name)
  * in ATA and we need to set TPE=1
  */
 bool target_configure_unmap_from_queue(struct se_dev_attrib *attrib,
-				       struct request_queue *q)
+				       struct request_queue *q, int block_size)
 {
-	int block_size = queue_logical_block_size(q);
-
 	if (!blk_queue_discard(q))
 		return false;
 
-	attrib->max_unmap_lba_count =
-		q->limits.max_discard_sectors >> (ilog2(block_size) - 9);
+	attrib->max_unmap_lba_count = (q->limits.max_discard_sectors << 9) /
+								block_size;
 	/*
 	 * Currently hardcoded to 1 in Linux/SCSI code..
 	 */
@@ -864,6 +862,7 @@ bool target_configure_unmap_from_queue(struct se_dev_attrib *attrib,
 	attrib->unmap_granularity = q->limits.discard_granularity / block_size;
 	attrib->unmap_granularity_alignment = q->limits.discard_alignment /
 								block_size;
+	attrib->unmap_zeroes_data = q->limits.discard_zeroes_data;
 	return true;
 }
 EXPORT_SYMBOL(target_configure_unmap_from_queue);

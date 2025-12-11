@@ -114,8 +114,8 @@ static bool __target_check_io_state(struct se_cmd *se_cmd,
 {
 	struct se_session *sess = se_cmd->se_sess;
 
-	lockdep_assert_held(&sess->sess_cmd_lock);
-
+	assert_spin_locked(&sess->sess_cmd_lock);
+	WARN_ON_ONCE(!irqs_disabled());
 	/*
 	 * If command already reached CMD_T_COMPLETE state within
 	 * target_complete_cmd() or CMD_T_FABRIC_STOP due to shutdown,
@@ -186,6 +186,7 @@ void core_tmr_abort_task(
 
 		if (!__target_check_io_state(se_cmd, se_sess, 0)) {
 			spin_unlock_irqrestore(&se_sess->sess_cmd_lock, flags);
+			target_put_sess_cmd(se_cmd);
 			goto out;
 		}
 		list_del_init(&se_cmd->se_cmd_list);
@@ -194,8 +195,8 @@ void core_tmr_abort_task(
 		cancel_work_sync(&se_cmd->work);
 		transport_wait_for_tasks(se_cmd);
 
-		if (!transport_cmd_finish_abort(se_cmd, true))
-			target_put_sess_cmd(se_cmd);
+		transport_cmd_finish_abort(se_cmd, true);
+		target_put_sess_cmd(se_cmd);
 
 		printk("ABORT_TASK: Sending TMR_FUNCTION_COMPLETE for"
 				" ref_tag: %llu\n", ref_tag);
@@ -295,8 +296,8 @@ static void core_tmr_drain_tmr_list(
 		cancel_work_sync(&cmd->work);
 		transport_wait_for_tasks(cmd);
 
-		if (!transport_cmd_finish_abort(cmd, 1))
-			target_put_sess_cmd(cmd);
+		transport_cmd_finish_abort(cmd, 1);
+		target_put_sess_cmd(cmd);
 	}
 }
 
@@ -394,8 +395,8 @@ static void core_tmr_drain_state_list(
 		cancel_work_sync(&cmd->work);
 		transport_wait_for_tasks(cmd);
 
-		if (!core_tmr_handle_tas_abort(cmd, tas))
-			target_put_sess_cmd(cmd);
+		core_tmr_handle_tas_abort(cmd, tas);
+		target_put_sess_cmd(cmd);
 	}
 }
 
@@ -464,4 +465,3 @@ int core_tmr_lun_reset(
 			dev->transport->name);
 	return 0;
 }
-
