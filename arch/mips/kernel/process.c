@@ -68,7 +68,6 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long sp)
 	lose_fpu(0);
 	clear_thread_flag(TIF_MSA_CTX_LIVE);
 	clear_used_math();
-	atomic_set(&current->thread.bd_emu_frame, BD_EMUFRAME_NONE);
 	init_dsp();
 	regs->cp0_epc = pc;
 	regs->regs[29] = sp;

@@ -183,7 +183,7 @@ static int __init mips_sc_probe_cm3(void)
 		return 1;
 	}
 
-	return 0;
+	return 1;
 }
 
 static inline int __init mips_sc_probe(void)
