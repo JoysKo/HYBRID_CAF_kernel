@@ -3032,6 +3032,8 @@ again:
  unlock:
 	spin_unlock(ptl);
 	mmu_notifier_invalidate_range_end(mm, mmun_start, mmun_end);
+	
+	pmdp_huge_split_prepare(vma, haddr, pmd);
 
 	if (!page)
 		return;
