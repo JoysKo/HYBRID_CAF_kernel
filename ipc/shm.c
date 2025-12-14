@@ -503,9 +503,8 @@ static int shm_mmap(struct file *file, struct vm_area_struct *vma)
 	int ret;
 
 	/*
-	 * In case of remap_file_pages() emulation, the file can represent an
-	 * IPC ID that was removed, and possibly even reused by another shm
-	 * segment already.  Propagate this case as an error to caller.
+	 * In case of remap_file_pages() emulation, the file can represent
+	 * removed IPC ID: propogate shm_lock() error to caller.
 	 */
 	ret =__shm_open(vma);
 	if (ret)

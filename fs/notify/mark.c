@@ -91,9 +91,14 @@
 #include <linux/fsnotify_backend.h>
 #include "fsnotify.h"
 
+#define FSNOTIFY_REAPER_DELAY	(1)	/* 1 jiffy */
+
 struct srcu_struct fsnotify_mark_srcu;
 static DEFINE_SPINLOCK(destroy_lock);
 static LIST_HEAD(destroy_list);
+
+static int fsnotify_mark_destroy(void *ignored);
+static DECLARE_DELAYED_WORK(reaper_work, fsnotify_mark_destroy);
 static DECLARE_WAIT_QUEUE_HEAD(destroy_waitq);
 
 void fsnotify_get_mark(struct fsnotify_mark *mark)
@@ -189,6 +194,8 @@ void fsnotify_free_mark(struct fsnotify_mark *mark)
 	spin_lock(&destroy_lock);
 	list_add(&mark->g_list, &destroy_list);
 	spin_unlock(&destroy_lock);
+	queue_delayed_work(system_unbound_wq, &reaper_work,
+				FSNOTIFY_REAPER_DELAY);
 	wake_up(&destroy_waitq);
 
 	/*
@@ -388,6 +395,8 @@ err:
 	spin_lock(&destroy_lock);
 	list_add(&mark->g_list, &destroy_list);
 	spin_unlock(&destroy_lock);
+	queue_delayed_work(system_unbound_wq, &reaper_work,
+				FSNOTIFY_REAPER_DELAY);
 	wake_up(&destroy_waitq);
 
 	return ret;
