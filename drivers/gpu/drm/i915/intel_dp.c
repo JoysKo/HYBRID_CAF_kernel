@@ -4558,8 +4558,8 @@ static bool intel_digital_port_connected(struct drm_i915_private *dev_priv,
 		return cpt_digital_port_connected(dev_priv, port);
 	else if (IS_BROXTON(dev_priv))
 		return bxt_digital_port_connected(dev_priv, port);
-	else if (IS_VALLEYVIEW(dev_priv) || IS_CHERRYVIEW(dev_priv))
-		return vlv_digital_port_connected(dev_priv, port);
+	else if (IS_GM45(dev_priv))
+		return gm45_digital_port_connected(dev_priv, port);
 	else
 		return g4x_digital_port_connected(dev_priv, port);
 }
