@@ -257,9 +257,26 @@ static int __perf_callchain_kernel(void *data, unsigned long address)
 void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry,
 			   struct pt_regs *regs)
 {
+	unsigned long head, frame_size;
+	struct stack_frame *head_sf;
+
 	if (user_mode(regs))
 		return;
-	dump_trace(__perf_callchain_kernel, entry, NULL, regs->gprs[15]);
+
+	frame_size = STACK_FRAME_OVERHEAD + sizeof(struct pt_regs);
+	head = regs->gprs[15];
+	head_sf = (struct stack_frame *) head;
+
+	if (!head_sf || !head_sf->back_chain)
+		return;
+
+	head = head_sf->back_chain;
+	head = __store_trace(entry, head,
+			     S390_lowcore.async_stack + frame_size - ASYNC_SIZE,
+			     S390_lowcore.async_stack + frame_size);
+
+	__store_trace(entry, head, S390_lowcore.thread_info,
+		      S390_lowcore.thread_info + THREAD_SIZE);
 }
 
 /* Perf definitions for PMU event attributes in sysfs */
