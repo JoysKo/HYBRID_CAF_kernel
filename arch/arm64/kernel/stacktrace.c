@@ -67,8 +67,8 @@ int notrace unwind_frame(struct task_struct *tsk, struct stackframe *frame)
 	kasan_disable_current();
 
 	frame->sp = fp + 0x10;
-	frame->fp = *(unsigned long *)(fp);
-	frame->pc = *(unsigned long *)(fp + 8);
+	frame->fp = READ_ONCE_NOCHECK(*(unsigned long *)(fp));
+	frame->pc = READ_ONCE_NOCHECK(*(unsigned long *)(fp + 8));
 
 	kasan_enable_current();
 
