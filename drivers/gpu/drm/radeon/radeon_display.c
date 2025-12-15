@@ -457,7 +457,7 @@ static void radeon_flip_work_func(struct work_struct *__work)
 	 * In practice this won't execute very often unless on very fast
 	 * machines because the time window for this to happen is very small.
 	 */
-	while (radeon_crtc->enabled && --repcnt) {
+	while (radeon_crtc->enabled && repcnt--) {
 		/* GET_DISTANCE_TO_VBLANKSTART returns distance to real vblank
 		 * start in hpos, and to the "fudged earlier" vblank start in
 		 * vpos.
@@ -479,7 +479,6 @@ static void radeon_flip_work_func(struct work_struct *__work)
 			repcnt = 0;
 			break;
 		}
-		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 		usleep_range(min_udelay, 2 * min_udelay);
 		spin_lock_irqsave(&crtc->dev->event_lock, flags);
 	};
