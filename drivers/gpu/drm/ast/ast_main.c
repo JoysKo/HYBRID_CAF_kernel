@@ -297,7 +297,7 @@ static int ast_get_dram_info(struct drm_device *dev)
 		return 0;
 	}
 
-	if (mcr_cfg & 0x40)
+	if (data & 0x40)
 		ast->dram_bus_width = 16;
 	else
 		ast->dram_bus_width = 32;
