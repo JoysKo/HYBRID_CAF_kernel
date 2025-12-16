@@ -597,6 +597,10 @@ static void option_instat_callback(struct urb *urb);
 /* Highest interface number which can be used with NCTRL() and RSVD() */
 #define FLAG_IFNUM_MAX	7
 
+static const struct option_blacklist_info simcom_sim7100e_blacklist = {
+	.reserved = BIT(5) | BIT(6),
+};
+
 /* Interface does not support modem-control requests */
 #define NCTRL(ifnum)	((BIT(ifnum) & 0xff) << 8)
 
