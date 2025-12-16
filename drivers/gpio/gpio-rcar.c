@@ -199,8 +199,7 @@ static int gpio_rcar_irq_set_wake(struct irq_data *d, unsigned int on)
 static void gpio_rcar_irq_bus_lock(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_rcar_priv *p = container_of(gc, struct gpio_rcar_priv,
-						gpio_chip);
+	struct gpio_rcar_priv *p = gpiochip_get_data(gc);
 
 	pm_runtime_get_sync(&p->pdev->dev);
 }
@@ -208,8 +207,7 @@ static void gpio_rcar_irq_bus_lock(struct irq_data *d)
 static void gpio_rcar_irq_bus_sync_unlock(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_rcar_priv *p = container_of(gc, struct gpio_rcar_priv,
-						gpio_chip);
+	struct gpio_rcar_priv *p = gpiochip_get_data(gc);
 
 	pm_runtime_put(&p->pdev->dev);
 }
@@ -218,8 +216,7 @@ static void gpio_rcar_irq_bus_sync_unlock(struct irq_data *d)
 static int gpio_rcar_irq_request_resources(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_rcar_priv *p = container_of(gc, struct gpio_rcar_priv,
-						gpio_chip);
+	struct gpio_rcar_priv *p = gpiochip_get_data(gc);
 	int error;
 
 	error = pm_runtime_get_sync(&p->pdev->dev);
@@ -232,8 +229,7 @@ static int gpio_rcar_irq_request_resources(struct irq_data *d)
 static void gpio_rcar_irq_release_resources(struct irq_data *d)
 {
 	struct gpio_chip *gc = irq_data_get_irq_chip_data(d);
-	struct gpio_rcar_priv *p = container_of(gc, struct gpio_rcar_priv,
-						gpio_chip);
+	struct gpio_rcar_priv *p = gpiochip_get_data(gc);
 
 	pm_runtime_put(&p->pdev->dev);
 }
