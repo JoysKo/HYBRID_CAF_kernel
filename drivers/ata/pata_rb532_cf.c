@@ -133,6 +133,12 @@ static int rb532_pata_driver_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	pdata = dev_get_platdata(&pdev->dev);
+	if (!pdata) {
+		dev_err(&pdev->dev, "no platform data specified\n");
+		return -EINVAL;
+	}
+
 	gpio = pdata->gpio_pin;
 	if (gpio < 0) {
 		dev_err(&pdev->dev, "no GPIO found for irq%d\n", irq);
