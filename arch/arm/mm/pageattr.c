@@ -48,6 +48,9 @@ static int change_memory_common(unsigned long addr, int numpages,
 		end = start + size;
 		WARN_ON_ONCE(1);
 	}
+	
+	if (!numpages)
+		return 0;
 
 	if (!IS_ENABLED(CONFIG_FORCE_PAGES)) {
 
