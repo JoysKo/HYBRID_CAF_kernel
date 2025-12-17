@@ -1287,7 +1287,8 @@ END_FTR_SECTION_IFCLR(CPU_FTR_ARCH_207S)
 	 */
 	li	r0, 0
 	mtspr	SPRN_IAMR, r0
-	mtspr	SPRN_PSPB, r0
+	mtspr	SPRN_CIABR, r0
+	mtspr	SPRN_DAWRX, r0
 	mtspr	SPRN_TCSCR, r0
 	mtspr	SPRN_WORT, r0
 	/* Set MMCRS to 1<<31 to freeze and disable the SPMC counters */
