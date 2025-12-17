@@ -26,10 +26,10 @@ __weak void __iomem *ioremap_cache(resource_size_t offset, unsigned long size)
 
 static void *try_ram_remap(resource_size_t offset, size_t size)
 {
-	struct page *page = pfn_to_page(offset >> PAGE_SHIFT);
+	unsigned long pfn = PHYS_PFN(offset);
 
 	/* In the simple case just return the existing linear address */
-	if (!PageHighMem(page))
+	if (pfn_valid(pfn) && !PageHighMem(pfn_to_page(pfn)))
 		return __va(offset);
 	return NULL; /* fallback to ioremap_cache */
 }
@@ -166,10 +166,13 @@ static void devm_memremap_pages_release(struct device *dev, void *res)
 
 void *devm_memremap_pages(struct device *dev, struct resource *res)
 {
-	int is_ram = region_intersects(res->start, resource_size(res),
-			"System RAM");
 	struct page_map *page_map;
-	int error, nid;
+	int error, nid, is_ram;
+
+	align_start = res->start & ~(SECTION_SIZE - 1);
+	align_size = ALIGN(res->start + resource_size(res), SECTION_SIZE)
+		- align_start;
+	is_ram = region_intersects(align_start, align_size, "System RAM");
 
 	if (is_ram != REGION_DISJOINT) {
 		WARN_ONCE(1, "%s attempted on %s region %pr\n", __func__,

@@ -88,6 +88,11 @@ void kasan_unpoison_task_stack(struct task_struct *task)
 }
 
 /* Unpoison the stack for the current task beyond a watermark sp value. */
+asmlinkage void kasan_unpoison_remaining_stack(void *sp)
+{
+	__kasan_unpoison_stack(current, sp);
+}
+
 asmlinkage void kasan_unpoison_task_stack_below(const void *watermark)
 {
 	/*
