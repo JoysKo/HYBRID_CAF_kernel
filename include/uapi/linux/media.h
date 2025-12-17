@@ -42,9 +42,53 @@ struct media_device_info {
 
 #define MEDIA_ENT_ID_FLAG_NEXT		(1 << 31)
 
+/*
+ * Base number ranges for entity functions
+ *
+ * NOTE: those ranges and entity function number are phased just to
+ * make it easier to maintain this file. Userspace should not rely on
+ * the ranges to identify a group of function types, as newer
+ * functions can be added with any name within the full u32 range.
+ */
+#define MEDIA_ENT_F_BASE		0x00000000
+#define MEDIA_ENT_F_OLD_BASE		0x00010000
+#define MEDIA_ENT_F_OLD_SUBDEV_BASE	0x00020000
+
+/*
+ * Don't touch on those. The ranges MEDIA_ENT_F_OLD_BASE and
+ * MEDIA_ENT_F_OLD_SUBDEV_BASE are kept to keep backward compatibility
+ * with the legacy v1 API.The number range is out of range by purpose:
+ * several previously reserved numbers got excluded from this range.
+ *
+ * Subdevs are initialized with MEDIA_ENT_T_V4L2_SUBDEV_UNKNOWN,
+ * in order to preserve backward compatibility.
+ * Drivers must change to the proper subdev type before
+ * registering the entity.
+ */
+
+#define MEDIA_ENT_F_IO_V4L  		(MEDIA_ENT_F_OLD_BASE + 1)
+
+#define MEDIA_ENT_F_CAM_SENSOR		(MEDIA_ENT_F_OLD_SUBDEV_BASE + 1)
+#define MEDIA_ENT_F_FLASH		(MEDIA_ENT_F_OLD_SUBDEV_BASE + 2)
+#define MEDIA_ENT_F_LENS		(MEDIA_ENT_F_OLD_SUBDEV_BASE + 3)
+#define MEDIA_ENT_F_ATV_DECODER		(MEDIA_ENT_F_OLD_SUBDEV_BASE + 4)
+/*
+ * It is a responsibility of the entity drivers to add connectors and links
+ *	for the tuner entities.
+ */
+#define MEDIA_ENT_F_TUNER		(MEDIA_ENT_F_OLD_SUBDEV_BASE + 5)
+
+#define MEDIA_ENT_F_V4L2_SUBDEV_UNKNOWN	MEDIA_ENT_F_OLD_SUBDEV_BASE
+
+#define MEDIA_ENT_F_IO_V4L  		(MEDIA_ENT_F_OLD_BASE + 1)
+
 #define MEDIA_ENT_TYPE_SHIFT		16
 #define MEDIA_ENT_TYPE_MASK		0x00ff0000
 #define MEDIA_ENT_SUBTYPE_MASK		0x0000ffff
+
+/* End of the old subdev reserved numberspace */
+#define MEDIA_ENT_T_DEVNODE_UNKNOWN	(MEDIA_ENT_T_DEVNODE | \
+					 MEDIA_ENT_SUBTYPE_MASK)
 
 #define MEDIA_ENT_T_DEVNODE		(1 << MEDIA_ENT_TYPE_SHIFT)
 #define MEDIA_ENT_T_DEVNODE_V4L		(MEDIA_ENT_T_DEVNODE + 1)

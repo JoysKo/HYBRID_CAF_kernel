@@ -133,6 +133,35 @@ struct media_entity_graph {
 	int top;
 };
 
+/**
+ * is_media_entity_v4l2_subdev - return true if the entity main function is
+ *				 associated with the V4L2 API subdev usage
+ *
+ * @entity:	pointer to entity
+ *
+ * This is an ancillary function used by subdev-based V4L2 drivers.
+ * It checks if the entity function is one of functions used by a V4L2 subdev,
+ * e. g. camera-relatef functions, analog TV decoder, TV tuner, V4L2 DSPs.
+ */
+static inline bool is_media_entity_v4l2_subdev(struct media_entity *entity)
+{
+	if (!entity)
+		return false;
+
+	switch (entity->type) {
+	case MEDIA_ENT_F_V4L2_SUBDEV_UNKNOWN:
+	case MEDIA_ENT_F_CAM_SENSOR:
+	case MEDIA_ENT_F_FLASH:
+	case MEDIA_ENT_F_LENS:
+	case MEDIA_ENT_F_ATV_DECODER:
+	case MEDIA_ENT_F_TUNER:
+		return true;
+
+	default:
+		return false;
+	}
+}
+
 int media_entity_init(struct media_entity *entity, u16 num_pads,
 		struct media_pad *pads, u16 extra_links);
 void media_entity_cleanup(struct media_entity *entity);
