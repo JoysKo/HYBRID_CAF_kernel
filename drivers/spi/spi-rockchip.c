@@ -757,6 +757,7 @@ static int rockchip_spi_probe(struct platform_device *pdev)
 	return 0;
 
 err_register_master:
+	pm_runtime_disable(&pdev->dev);
 	if (rs->dma_tx.ch)
 		dma_release_channel(rs->dma_tx.ch);
 	if (rs->dma_rx.ch)
@@ -785,6 +786,8 @@ static int rockchip_spi_remove(struct platform_device *pdev)
 		dma_release_channel(rs->dma_tx.ch);
 	if (rs->dma_rx.ch)
 		dma_release_channel(rs->dma_rx.ch);
+
+	spi_master_put(master);
 
 	return 0;
 }
