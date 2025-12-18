@@ -498,39 +498,18 @@ unsigned long notrace unwind_stack_by_address(unsigned long stack_page,
 	 * IRQ stacks start at IRQ_STACK_START
 	 * task stacks at THREAD_SIZE - 32
 	 */
-	low = stack_page;
-	if (!preemptible() && on_irq_stack(raw_smp_processor_id(), *sp)) {
-		high = stack_page + IRQ_STACK_START;
-		irq_stack_high = high;
-	} else {
-		high = stack_page + THREAD_SIZE - 32;
-		irq_stack_high = 0;
-	}
-
-	/*
-	 * If we reached the top of the interrupt stack, start unwinding
-	 * the interrupted task stack.
-	 */
-	if (unlikely(*sp == irq_stack_high)) {
-		unsigned long task_sp = *(unsigned long *)*sp;
-
-		/*
-		 * Check that the pointer saved in the IRQ stack head points to
-		 * something within the stack of the current task
-		 */
-		if (!object_is_on_stack((void *)task_sp))
-			return 0;
-
-		/*
-		 * Follow pointer to tasks kernel stack frame where interrupted
-		 * state was saved.
-		 */
-		regs = (struct pt_regs *)task_sp;
-		pc = regs->cp0_epc;
-		if (!user_mode(regs) && __kernel_text_address(pc)) {
-			*sp = regs->regs[29];
-			*ra = regs->regs[31];
-			return pc;
+	if (pc == (unsigned long)ret_from_irq ||
+	    pc == (unsigned long)ret_from_exception) {
+		struct pt_regs *regs;
+		if (*sp >= stack_page &&
+		    *sp + sizeof(*regs) <= stack_page + THREAD_SIZE - 32) {
+			regs = (struct pt_regs *)*sp;
+			pc = regs->cp0_epc;
+			if (!user_mode(regs) && __kernel_text_address(pc)) {
+				*sp = regs->regs[29];
+				*ra = regs->regs[31];
+				return pc;
+			}
 		}
 		return 0;
 	}

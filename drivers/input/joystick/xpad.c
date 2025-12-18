@@ -1110,7 +1110,6 @@ static void xpad_irq_out(struct urb *urb)
 	switch (status) {
 	case 0:
 		/* success */
-		xpad->out_packets[xpad->last_out_packet].pending = false;
 		xpad->irq_out_active = xpad_prepare_next_out_packet(xpad);
 		break;
 

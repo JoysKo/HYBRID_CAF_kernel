@@ -1071,6 +1071,7 @@ static int ipu_add_client_devices(struct ipu_soc *ipu, unsigned long ipu_base)
 
 		pdev->dev.parent = dev;
 
+		reg->pdata.of_node = of_node;
 		ret = platform_device_add_data(pdev, &reg->pdata,
 					       sizeof(reg->pdata));
 		if (!ret)

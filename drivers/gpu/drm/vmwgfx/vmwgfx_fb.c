@@ -544,7 +544,11 @@ static int vmw_fb_set_par(struct fb_info *info)
 	mode->vdisplay = var->yres;
 	vmw_guess_mode_timing(mode);
 
-	if (!vmw_kms_validate_mode_vram(vmw_priv,
+	if (old_mode && drm_mode_equal(old_mode, mode)) {
+		drm_mode_destroy(vmw_priv->dev, mode);
+		mode = old_mode;
+		old_mode = NULL;
+	} else if (!vmw_kms_validate_mode_vram(vmw_priv,
 					mode->hdisplay *
 					DIV_ROUND_UP(var->bits_per_pixel, 8),
 					mode->vdisplay)) {

@@ -452,7 +452,7 @@ int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 					regs->cp0_epc + dec_insn.pc_inc +
 					dec_insn.next_pc_inc;
 			}
-			/* fall through */
+			/* Fall through */
 		case jr_op:
 			/* For R6, JR already emulated in jalr_op */
 			if (NO_R6EMU && insn.r_format.func == jr_op)
