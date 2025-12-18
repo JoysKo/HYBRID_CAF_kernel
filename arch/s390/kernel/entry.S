@@ -1366,11 +1366,11 @@ cleanup_critical:
 
 .Lcleanup_save_fpu_regs:
 	larl	%r9,save_fpu_regs
-	BR_EX	%r14,%r11
+	br	%r14
 
 .Lcleanup_load_fpu_regs:
 	larl	%r9,load_fpu_regs
-	BR_EX	%r14,%r11
+	br	%r14
 
 /*
  * Integer constants

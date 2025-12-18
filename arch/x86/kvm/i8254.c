@@ -322,7 +322,7 @@ static enum hrtimer_restart pit_timer_fn(struct hrtimer *data)
 	if (ps->reinject)
 		atomic_inc(&ps->pending);
 
-	kthread_queue_work(&pt->worker, &pt->expired);
+	queue_kthread_work(&pt->worker, &pt->expired);
 
 	if (ps->is_periodic) {
 		hrtimer_add_expires_ns(&ps->timer, ps->period);

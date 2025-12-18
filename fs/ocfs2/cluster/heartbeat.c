@@ -1438,8 +1438,10 @@ static void o2hb_region_release(struct config_item *item)
 
 	kfree(reg->hr_slots);
 
-	kfree(reg->hr_db_regnum);
 	kfree(reg->hr_db_livenodes);
+	kfree(reg->hr_db_regnum);
+	kfree(reg->hr_db_elapsed_time);
+	kfree(reg->hr_db_pinned);
 	debugfs_remove(reg->hr_debug_livenodes);
 	debugfs_remove(reg->hr_debug_regnum);
 	debugfs_remove(reg->hr_debug_elapsed_time);

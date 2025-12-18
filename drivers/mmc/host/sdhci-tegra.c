@@ -231,9 +231,13 @@ static const struct sdhci_pltfm_data sdhci_tegra114_pdata = {
 
 static struct sdhci_tegra_soc_data soc_data_tegra114 = {
 	.pdata = &sdhci_tegra114_pdata,
-	.nvquirks = NVQUIRK_DISABLE_SDR50 |
-		    NVQUIRK_DISABLE_DDR50 |
-		    NVQUIRK_DISABLE_SDR104,
+};
+
+static const struct sdhci_tegra_soc_data soc_data_tegra124 = {
+	.pdata = &sdhci_tegra114_pdata,
+	.nvquirks = NVQUIRK_ENABLE_SDR50 |
+		    NVQUIRK_ENABLE_DDR50 |
+		    NVQUIRK_ENABLE_SDR104,
 };
 
 static const struct of_device_id sdhci_tegra_dt_match[] = {

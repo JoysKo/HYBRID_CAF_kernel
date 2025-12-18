@@ -367,6 +367,8 @@ void native_flush_tlb_others(const struct cpumask *cpumask,
 {
 	struct flush_tlb_info info;
 
+	if (end == 0)
+		end = start + PAGE_SIZE;
 	info.flush_mm = mm;
 	info.flush_start = start;
 	info.flush_end = end;

@@ -1291,3 +1291,26 @@ allocation from the slack available in other groups or the rest of the
 system than killing the group.  Otherwise, memory.max is there to
 limit this type of spillover and ultimately contain buggy or even
 malicious applications.
+
+Setting the original memory.limit_in_bytes below the current usage was
+subject to a race condition, where concurrent charges could cause the
+limit setting to fail. memory.max on the other hand will first set the
+limit to prevent new charges, and then reclaim and OOM kill until the
+new limit is met - or the task writing to memory.max is killed.
+
+The combined memory+swap accounting and limiting is replaced by real
+control over swap space.
+
+The main argument for a combined memory+swap facility in the original
+cgroup design was that global or parental pressure would always be
+able to swap all anonymous memory of a child group, regardless of the
+child's own (possibly untrusted) configuration.  However, untrusted
+groups can sabotage swapping by other means - such as referencing its
+anonymous memory in a tight loop - and an admin can not assume full
+swappability when overcommitting untrusted jobs.
+
+For trusted jobs, on the other hand, a combined counter is not an
+intuitive userspace interface, and it flies in the face of the idea
+that cgroup controllers should account and limit specific physical
+resources.  Swap space is a resource like all others in the system,
+and that's why unified hierarchy allows distributing it separately.

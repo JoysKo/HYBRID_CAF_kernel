@@ -315,7 +315,7 @@ static int alloc_pebs_buffer(int cpu)
 	if (!x86_pmu.pebs)
 		return 0;
 
-	buffer = dsalloc(x86_pmu.pebs_buffer_size, GFP_KERNEL, node);
+	buffer = kzalloc_node(x86_pmu.pebs_buffer_size, GFP_KERNEL, node);
 	if (unlikely(!buffer))
 		return -ENOMEM;
 

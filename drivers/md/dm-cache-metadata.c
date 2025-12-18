@@ -924,6 +924,23 @@ static bool cmd_read_lock(struct dm_cache_metadata *cmd)
 #define READ_UNLOCK(cmd) \
 	up_read(&(cmd)->root_lock)
 
+#define READ_LOCK(cmd) \
+	down_read(&cmd->root_lock); \
+	if (cmd->fail_io || dm_bm_is_read_only(cmd->bm)) { \
+		up_read(&cmd->root_lock); \
+		return -EINVAL; \
+	}
+
+#define READ_LOCK_VOID(cmd)	\
+	down_read(&cmd->root_lock); \
+	if (cmd->fail_io || dm_bm_is_read_only(cmd->bm)) { \
+		up_read(&cmd->root_lock); \
+		return; \
+	}
+
+#define READ_UNLOCK(cmd) \
+	up_read(&cmd->root_lock)
+
 int dm_cache_resize(struct dm_cache_metadata *cmd, dm_cblock_t new_cache_size)
 {
 	int r;

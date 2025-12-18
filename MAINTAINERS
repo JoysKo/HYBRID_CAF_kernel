@@ -619,7 +619,7 @@ F:	include/linux/ccp.h
 
 AMD FAM15H PROCESSOR POWER MONITORING DRIVER
 M:	Huang Rui <ray.huang@amd.com>
-L:	lm-sensors@lm-sensors.org
+L:	linux-hwmon@vger.kernel.org
 S:	Supported
 F:	Documentation/hwmon/fam15h_power
 F:	drivers/hwmon/fam15h_power.c
