@@ -3307,6 +3307,7 @@ static int mvneta_probe(struct platform_device *pdev)
 	dev->ethtool_ops = &mvneta_eth_tool_ops;
 
 	pp = netdev_priv(dev);
+	spin_lock_init(&pp->lock);
 	pp->phy_node = phy_node;
 	pp->phy_interface = phy_mode;
 

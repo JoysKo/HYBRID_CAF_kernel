@@ -954,6 +954,14 @@ static void dsa_remove_dst(struct dsa_switch_tree *dst)
 {
 	int i;
 
+    dst->master_netdev->dsa_ptr = NULL;
+
+	/* If we used a tagging format that doesn't have an ethertype
+	 * field, make sure that all packets from this point get sent
+	 * without the tag and go through the regular receive path.
+	 */
+	wmb();
+
 	if (dst->link_poll_needed)
 		del_timer_sync(&dst->link_poll_timer);
 
