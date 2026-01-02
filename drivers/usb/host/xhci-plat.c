@@ -38,6 +38,7 @@ static const struct xhci_driver_overrides xhci_plat_overrides __initconst = {
 
 static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 {
+	struct usb_hcd *hcd = xhci_to_hcd(xhci);
 	struct device_node *node = dev->of_node;
 	struct usb_xhci_pdata *pdata = dev_get_platdata(dev);
 

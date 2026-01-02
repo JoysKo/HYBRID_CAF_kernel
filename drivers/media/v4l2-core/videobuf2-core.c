@@ -1551,9 +1551,8 @@ static int __vb2_get_done_vb(struct vb2_queue *q, struct vb2_buffer **vb,
 	spin_lock_irqsave(&q->done_lock, flags);
 	*vb = list_first_entry(&q->done_list, struct vb2_buffer, done_entry);
 	/*
-	 * Only remove the buffer from done_list if all planes can be
-	 * handled. Some cases such as V4L2 file I/O and DVB have pb
-	 * == NULL; skip the check then as there's nothing to verify.
+	 * Only remove the buffer from done_list if v4l2_buffer can handle all
+	 * the planes.
 	 */
 	if (pb)
 		ret = call_bufop(q, verify_planes_array, *vb, pb);

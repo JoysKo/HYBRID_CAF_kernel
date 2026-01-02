@@ -882,7 +882,11 @@ static int gtco_probe(struct usb_interface *usbinterface,
 		error = -EINVAL;
 		goto err_free_urb;
 	}
-
+	
+	/*
+	 * The endpoint is always altsetting 0, we know this since we know
+	 * this device only has one interrupt endpoint
+	 */
 	endpoint = &usbinterface->cur_altsetting->endpoint[0].desc;
 
 	/* Some debug */

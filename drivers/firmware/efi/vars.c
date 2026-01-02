@@ -220,19 +220,6 @@ variable_matches(const char *var_name, size_t len, const char *match_name,
 	for (*match = 0; ; (*match)++) {
 		char c = match_name[*match];
 		
-		char u = var_name[*match];
-		
-		/* Wildcard in the matching name means we've matched */
-		if (c == '*')
-			return true;
-
-		/* Case sensitive match */
-		if (!c && *match == len)
-			return true;
-
-		if (c != u)
-			return false;
-
 		if (!c)
 			return true;
 
@@ -244,7 +231,7 @@ variable_matches(const char *var_name, size_t len, const char *match_name,
 		case '\0':
 			/* @match_name has ended. Has @var_name too? */
 			return (*match == len);
-		
+
 		default:
 			/*
 			 * We've reached a non-wildcard char in @match_name.

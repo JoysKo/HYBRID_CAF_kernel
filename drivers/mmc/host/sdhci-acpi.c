@@ -174,7 +174,7 @@ static void sdhci_acpi_byt_setting(struct device *dev)
 	if (!sdhci_acpi_byt())
 		return;
 
-	if (iosf_mbi_read(BYT_IOSF_SCCEP, 0x06, BYT_IOSF_OCP_NETCTRL0,
+	if (iosf_mbi_read(BYT_IOSF_SCCEP, MBI_CR_READ, BYT_IOSF_OCP_NETCTRL0,
 			  &val)) {
 		dev_err(dev, "%s read error\n", __func__);
 		return;
@@ -185,7 +185,7 @@ static void sdhci_acpi_byt_setting(struct device *dev)
 
 	val &= ~BYT_IOSF_OCP_TIMEOUT_BASE;
 
-	if (iosf_mbi_write(BYT_IOSF_SCCEP, 0x07, BYT_IOSF_OCP_NETCTRL0,
+	if (iosf_mbi_write(BYT_IOSF_SCCEP, MBI_CR_WRITE, BYT_IOSF_OCP_NETCTRL0,
 			   val)) {
 		dev_err(dev, "%s write error\n", __func__);
 		return;

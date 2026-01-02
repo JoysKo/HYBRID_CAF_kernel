@@ -712,6 +712,12 @@ int vb2_queue_init(struct vb2_queue *q)
 	q->buf_ops = &v4l2_buf_ops;
 	q->is_multiplanar = V4L2_TYPE_IS_MULTIPLANAR(q->type);
 	q->is_output = V4L2_TYPE_IS_OUTPUT(q->type);
+	/*
+	 * For compatibility with vb1: if QBUF hasn't been called yet, then
+	 * return POLLERR as well. This only affects capture queues, output
+	 * queues will always initialize waiting_for_buffers to false.
+	 */
+	q->quirk_poll_must_check_waiting_for_buffers = true;
 
 	return vb2_core_queue_init(q);
 }
@@ -801,13 +807,6 @@ unsigned int vb2_poll(struct vb2_queue *q, struct file *file, poll_table *wait)
 	 * error flag is set.
 	 */
 	if (!vb2_is_streaming(q) || q->error)
-		return res | POLLERR;
-	/*
-	 * For compatibility with vb1: if QBUF hasn't been called yet, then
-	 * return POLLERR as well. This only affects capture queues, output
-	 * queues will always initialize waiting_for_buffers to false.
-	 */
-	if (q->waiting_for_buffers)
 		return res | POLLERR;
 
 	/*

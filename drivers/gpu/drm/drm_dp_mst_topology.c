@@ -1687,13 +1687,19 @@ static int drm_dp_payload_send_msg(struct drm_dp_mst_topology_mgr *mgr,
 	u8 sinks[DRM_DP_MAX_SDP_STREAMS];
 	int i;
 
+	port = drm_dp_get_validated_port_ref(mgr, port);
+	if (!port)
+		return -EINVAL;
+
 	port_num = port->port_num;
 	mstb = drm_dp_get_validated_mstb_ref(mgr, port->parent);
 	if (!mstb) {
 		mstb = drm_dp_get_last_connected_port_and_mstb(mgr, port->parent, &port_num);
 
-		if (!mstb)
+		if (!mstb) {
+			drm_dp_put_port(port);
 			return -EINVAL;
+		}
 	}
 
 	port_num = port->port_num;
