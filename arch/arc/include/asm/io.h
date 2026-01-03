@@ -23,6 +23,15 @@
 #define __iowmb()		do { } while (0)
 #endif
 
+#ifdef CONFIG_ISA_ARCV2
+#include <asm/barrier.h>
+#define __iormb()		rmb()
+#define __iowmb()		wmb()
+#else
+#define __iormb()		do { } while (0)
+#define __iowmb()		do { } while (0)
+#endif
+
 extern void __iomem *ioremap(unsigned long physaddr, unsigned long size);
 extern void __iomem *ioremap_prot(phys_addr_t offset, unsigned long size,
 				  unsigned long flags);
@@ -153,35 +162,6 @@ static inline void __raw_writel(u32 w, volatile void __iomem *addr)
 	: "memory");
 
 }
-
-#define __raw_writesx(t,f)						\
-static inline void __raw_writes##f(volatile void __iomem *addr, 	\
-				   const void *ptr, unsigned int count)	\
-{									\
-	bool is_aligned = ((unsigned long)ptr % ((t) / 8)) == 0;	\
-	const u##t *buf = ptr;						\
-									\
-	if (!count)							\
-		return;							\
-									\
-	/* Some ARC CPU's don't support unaligned accesses */		\
-	if (is_aligned) {						\
-		do {							\
-			__raw_write##f(*buf++, addr);			\
-		} while (--count);					\
-	} else {							\
-		do {							\
-			__raw_write##f(get_unaligned(buf++), addr);	\
-		} while (--count);					\
-	}								\
-}
-
-#define __raw_writesb __raw_writesb
-__raw_writesx(8, b)
-#define __raw_writesw __raw_writesw
-__raw_writesx(16, w)
-#define __raw_writesl __raw_writesl
-__raw_writesx(32, l)
 
 /*
  * MMIO can also get buffered/optimized in micro-arch, so barriers needed
