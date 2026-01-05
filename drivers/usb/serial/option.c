@@ -611,6 +611,10 @@ static const struct option_blacklist_info simcom_sim7100e_blacklist = {
 #define ZLP		BIT(17)
 
 
+static const struct option_blacklist_info cinterion_rmnet2_blacklist = {
+	.reserved = BIT(4) | BIT(5),
+};
+
 static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_COLT) },
 	{ USB_DEVICE(OPTION_VENDOR_ID, OPTION_PRODUCT_RICOLA) },

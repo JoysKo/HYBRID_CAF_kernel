@@ -2966,7 +2966,15 @@ static int edge_startup(struct usb_serial *serial)
 				response = -ENODEV;
 			}
 
-			goto error;
+			usb_free_urb(edge_serial->interrupt_read_urb);
+			kfree(edge_serial->interrupt_in_buffer);
+
+			usb_free_urb(edge_serial->read_urb);
+			kfree(edge_serial->bulk_in_buffer);
+
+			kfree(edge_serial);
+
+			return response;
 		}
 
 		/* start interrupt read for this edgeport this interrupt will

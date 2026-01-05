@@ -9099,6 +9099,11 @@ not_move_group:
 		put_task_struct(task);
 	}
 
+	if (task) {
+		mutex_unlock(&task->signal->cred_guard_mutex);
+		put_task_struct(task);
+	}
+
 	put_online_cpus();
 
 	mutex_lock(&current->perf_event_mutex);
