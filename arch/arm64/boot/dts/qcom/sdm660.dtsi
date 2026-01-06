@@ -1,4 +1,5 @@
 /* Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2020 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,7 +35,7 @@
 
 	chosen {
 		stdout-path = "serial0";
-		bootargs = "rcupdate.rcu_normal_after_boot=1 quiet noirqdebug nodebugmon rcu_nocbs=0-3 kpti=0";
+		bootargs = "quiet audit=0 mitigations=off kpti=0 noirqdebug nodebugmon rcupdate.rcu_expedited=1";
 	};
 
 	psci {
@@ -48,14 +49,14 @@
 
 		CPU0: cpu@0 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x0>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
 			qcom,ea = <&ea0>;
 			efficiency = <1024>;
-			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			L2_0: l2-cache {
 				compatible = "arm,arch-cache";
@@ -78,14 +79,14 @@
 
 		CPU1: cpu@1 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x1>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
 			qcom,ea = <&ea1>;
 			efficiency = <1024>;
-			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			L1_I_1: l1-icache {
 				compatible = "arm,arch-cache";
@@ -102,14 +103,14 @@
 
 		CPU2: cpu@2 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x2>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
 			qcom,ea = <&ea2>;
 			efficiency = <1024>;
-			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			L1_I_2: l1-icache {
 				compatible = "arm,arch-cache";
@@ -126,14 +127,14 @@
 
 		CPU3: cpu@3 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x3>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile0>;
+			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			qcom,lmh-dcvs = <&lmh_dcvs0>;
 			qcom,ea = <&ea3>;
 			efficiency = <1024>;
-			sched-energy-costs = <&CPU_COST_0 &CLUSTER_COST_0>;
 			next-level-cache = <&L2_0>;
 			L1_I_3: l1-icache {
 				compatible = "arm,arch-cache";
@@ -150,14 +151,14 @@
 
 		CPU4: cpu@100 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x100>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile1>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
 			qcom,ea = <&ea4>;
 			efficiency = <1638>;
-			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			L2_1: l2-cache {
 				compatible = "arm,arch-cache";
@@ -178,14 +179,14 @@
 
 		CPU5: cpu@101 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x101>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile2>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
 			qcom,ea = <&ea5>;
 			efficiency = <1638>;
-			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			L1_I_101: l1-icache {
 				compatible = "arm,arch-cache";
@@ -202,14 +203,14 @@
 
 		CPU6: cpu@102 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x102>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile3>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
 			qcom,ea = <&ea6>;
 			efficiency = <1638>;
-			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			L1_I_102: l1-icache {
 				compatible = "arm,arch-cache";
@@ -226,14 +227,14 @@
 
 		CPU7: cpu@103 {
 			device_type = "cpu";
-			compatible = "arm,kryo";
+			compatible = "arm,armv8";
 			reg = <0x0 0x103>;
 			enable-method = "psci";
 			qcom,limits-info = <&mitigation_profile4>;
+			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			qcom,lmh-dcvs = <&lmh_dcvs1>;
 			qcom,ea = <&ea7>;
 			efficiency = <1638>;
-			sched-energy-costs = <&CPU_COST_1 &CLUSTER_COST_1>;
 			next-level-cache = <&L2_1>;
 			L1_I_103: l1-icache {
 				compatible = "arm,arch-cache";
@@ -287,70 +288,71 @@
 		};
 	};
 
-		energy_costs: energy-costs {
-			compatible = "sched-energy";
+	energy_costs: energy-costs {
+		compatible = "sched-energy";
 
-			CPU_COST_0: core-cost0 {
-				busy-cost-data = <
-					633600  41
-					902400  70
-					1113600 83
-					1401600 146
-					1536000 158
-					1612800 183
-					1747200 228
-					1843200 285
-				>;
-				idle-cost-data = <
-					20 16 12 8
-				>;
-			};
-			CPU_COST_1: core-cost1 {
-				busy-cost-data = <
-					1113600 307
-					1401600 485
-					1747200 857
-					1804800 944
-					1958400 1222
-					2150400 1592
-					2208000 1632
-					2457600 2080
-				>;
-				idle-cost-data = <
-					100 80 60 40
-				>;
-			};
-			CLUSTER_COST_0: cluster-cost0 {
-				busy-cost-data = <
-					633600  4
-					902400  5
-					1113600 7
-					1401600 9
-					1536000 9
-					1612800 10
-					1747200 11
-					1843200 13
-				>;
-				idle-cost-data = <
-					4 3 2 1
-				>;
-			};
-			CLUSTER_COST_1: cluster-cost1 {
-				busy-cost-data = <
-					1113600 14
-					1401600 17
-					1747200 25
-					1804800 27
-					1958400 31
-					2150400 37
-					2208000 44
-					2457600 45
-				>;
-				idle-cost-data = <
-					4 3 2 1
-				>;
-			};
+		CPU_COST_0: core-cost0 {
+			busy-cost-data = <
+				633600	41
+				902400	70
+				1113600	83
+				1401600	146
+				1536000	158
+				1747200	228
+				1843200	285
+			>;
+			idle-cost-data = <
+				20 16 10 8
+			>;
 		};
+
+		CPU_COST_1: core-cost1 {
+			busy-cost-data = <
+				1113600	307
+				1401600	485
+				1747200	857
+				1804800	883
+				1958400	1222
+				2150400	1592
+				2208000	1632
+				2457600	2080
+			>;
+			idle-cost-data = <
+				100 80 60 40
+			>;
+		};
+
+		CLUSTER_COST_0: cluster-cost0 {
+			busy-cost-data = <
+				633600	4
+				902400	5
+				1113600	7
+				1401600	9
+				1536000	9
+				1747200	11
+				1843200	13
+			>;
+			idle-cost-data = <
+				4 3 2 1
+			>;
+		};
+
+		CLUSTER_COST_1: cluster-cost1 {
+			busy-cost-data = <
+				1113600	14
+				1401600	17
+				1747200	25
+				1804800	31
+				1958400	31
+				2150400	37
+				2208000	44
+				2457600	45
+			>;
+			idle-cost-data = <
+				4 3 2 1
+			>;
+		};
+	};
 
 	clocks {
 		xo_board {
@@ -379,7 +381,7 @@
 					compatible = "android,system";
 					dev = "/dev/block/platform/soc/c0c4000.sdhci/by-name/system";
 					type = "ext4";
-					mnt_flags = "ro,barrier=1,discard";
+					mnt_flags = "ro,barrier=1,async_discard";
 					fsmgr_flags = "wait";
 					status = "ok";
 				};
@@ -387,7 +389,7 @@
 					compatible = "android,vendor";
 					dev = "/dev/block/platform/soc/c0c4000.sdhci/by-name/vendor";
 					type = "ext4";
-					mnt_flags = "ro,barrier=1,discard";
+					mnt_flags = "ro,barrier=1,async_discard";
 					fsmgr_flags = "wait";
 					status = "ok";
 				};
@@ -480,7 +482,7 @@
 			alloc-ranges = <0 0x00000000 0 0xffffffff>;
 			reusable;
 			alignment = <0 0x400000>;
-			size = <0 0x8000000>;
+			size = <0 0x2c00000>;
 			linux,cma-default;
 		};
 
@@ -490,7 +492,7 @@
 		};
 
 		dfps_data_mem: dfps_data_mem@0x9f7ff000 {
-		       reg = <0 0x9f800000 0 0x00001000>;
+		       reg = <0 0x9f7ff000 0 0x00001000>;
 		       label = "dfps_data_mem";
 		};
 	};
@@ -516,6 +518,7 @@
 };
 
 #include "sdm660-smp2p.dtsi"
+#include "sdm660-coresight.dtsi"
 &soc {
 	#address-cells = <1>;
 	#size-cells = <1>;
@@ -980,9 +983,8 @@
 	qcom,msm-core@780000 {
 		compatible = "qcom,apss-core-ea";
 		reg = <0x780000 0x1000>;
-		qcom,low-hyst-temp = <10>;
-		qcom,high-hyst-temp = <5>;
-		qcom,polling-interval = <100>;
+		qcom,low-hyst-temp = <100>;
+		qcom,high-hyst-temp = <100>;
 
 		ea0: ea0 {
 			sensor = <&sensor_information1>;
@@ -1361,76 +1363,78 @@
 		interrupt-names = "pwrcl-irq", "perfcl-irq";
 
 		qcom,pwrcl-speedbin0-v0 =
-			<   633600000 0x0004000f 0x01200020 0x1 1 >,
-			<   902400000 0x05040021 0x03200020 0x1 2 >,
-			<   1113600000 0x0404002f 0x04260026 0x1 3 >,
-			<  1401600000 0x0404003a 0x052e002e 0x2 4 >,
-			<  1536000000 0x04040049 0x073a003a 0x2 5 >,
-			<  1612800000 0x04040050 0x08400040 0x2 6 >,
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<   633600000 0x05040021 0x03200020 0x1 2 >,
+			<   902400000 0x0404002f 0x04260026 0x1 3 >,
+			<  1113600000 0x0404003a 0x052e002e 0x2 4 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 5 >,
+			<  1536000000 0x04040050 0x08400040 0x2 6 >,
 			<  1747200000 0x0404005b 0x09480048 0x2 7 >,
-			<  2000000000 0x04040070 0x094c004c 0x3 8 >;
+			<  1843200000 0x04040060 0x094c004c 0x3 8 >;
 
 		qcom,pwrcl-speedbin1-v0 =
-			<   633600000 0x0004000f 0x01200020 0x1 1 >,
-			<   902400000 0x05040021 0x03200020 0x1 2 >,
-			<   1113600000 0x0404002f 0x04260026 0x1 3 >,
-			<  1401600000 0x0404003a 0x052e002e 0x2 4 >,
-			<  1536000000 0x04040049 0x073a003a 0x2 5 >,
-			<  1612800000 0x04040050 0x08400040 0x2 6 >,
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<   633600000 0x05040021 0x03200020 0x1 2 >,
+			<   902400000 0x0404002f 0x04260026 0x1 3 >,
+			<  1113600000 0x0404003a 0x052e002e 0x2 4 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 5 >,
+			<  1536000000 0x04040050 0x08400040 0x2 6 >,
 			<  1747200000 0x0404005b 0x09480048 0x2 7 >,
-			<  2000000000 0x04040070 0x094c004c 0x3 8 >;
+			<  1843200000 0x04040060 0x094c004c 0x3 8 >;
 
 		qcom,pwrcl-speedbin3-v0 =
-			<   633600000 0x0004000f 0x01200020 0x1 1 >,
-			<   902400000 0x05040021 0x03200020 0x1 2 >,
-			<   1113600000 0x0404002f 0x04260026 0x1 3 >,
-			<  1401600000 0x0404003a 0x052e002e 0x2 4 >,
-			<  1536000000 0x04040049 0x073a003a 0x2 5 >,
-			<  1612800000 0x04040050 0x08400040 0x2 6 >,
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<   633600000 0x05040021 0x03200020 0x1 2 >,
+			<   902400000 0x0404002f 0x04260026 0x1 3 >,
+			<  1113600000 0x0404003a 0x052e002e 0x2 4 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 5 >,
+			<  1536000000 0x04040050 0x08400040 0x2 6 >,
 			<  1747200000 0x0404005b 0x09480048 0x2 7 >,
-			<  2000000000 0x04040070 0x094c004c 0x3 8 >;
+			<  1843200000 0x04040060 0x094c004c 0x3 8 >;
 
 		qcom,pwrcl-speedbin4-v0 =
-			<   633600000 0x0004000f 0x01200020 0x1 1 >,
-			<   902400000 0x05040021 0x03200020 0x1 2 >,
-			<   1113600000 0x0404002f 0x04260026 0x1 3 >,
-			<  1401600000 0x0404003a 0x052e002e 0x2 4 >,
-			<  1536000000 0x04040049 0x073a003a 0x2 5 >;
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<   633600000 0x05040021 0x03200020 0x1 2 >,
+			<   902400000 0x0404002f 0x04260026 0x1 3 >,
+			<  1113600000 0x0404003a 0x052e002e 0x2 4 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 5 >,
+			<  1536000000 0x04040050 0x08400040 0x2 6 >,
+			<  1747200000 0x0404005b 0x09480048 0x2 7 >,
+			<  1843200000 0x04040060 0x094c004c 0x3 8 >;
 
 		qcom,perfcl-speedbin0-v0 =
-			<   1113600000 0x0004000f 0x01200020 0x1 1 >,
-			<   1401600000 0x05040021 0x03200020 0x1 2 >,
-			<   1536000000 0x0404002f 0x04260026 0x1 3 >,
-			<  1612800000 0x0404003a 0x052e002e 0x1 4 >,
-			<  1958400000 0x04040050 0x08400040 0x2 5 >,
-			<  2208000000 0x04040066 0x0a510051 0x2 6 >,
-			<  2457600000 0x04040073 0x0b5c005c 0x3 7 >,
-			<  2699100000 0x04040080 0x0c660066 0x3 8 >;
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<  1113600000 0x0404003a 0x052e002e 0x1 2 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 3 >,
+			<  1747200000 0x0404005b 0x09480048 0x2 4 >,
+			<  1958400000 0x04040066 0x0a510051 0x2 5 >,
+			<  2150400000 0x04040070 0x0b590059 0x2 6 >,
+			<  2457600000 0x04040080 0x0c660066 0x3 7 >;
 
 		qcom,perfcl-speedbin1-v0 =
-			<   1113600000 0x0004000f 0x01200020 0x1 1 >,
-			<   1401600000 0x05040021 0x03200020 0x1 2 >,
-			<   1536000000 0x0404002f 0x04260026 0x1 3 >,
-			<  1612800000 0x0404003a 0x052e002e 0x1 4 >,
-			<  1958400000 0x04040050 0x08400040 0x2 5 >,
-			<  2208000000 0x04040066 0x0a510051 0x2 6 >,
-			<  2457600000 0x04040073 0x0b5c005c 0x3 7 >,
-			<  2699100000 0x04040080 0x0c660066 0x3 8 >;
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<  1113600000 0x0404003a 0x052e002e 0x1 2 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 3 >,
+			<  1747200000 0x0404005b 0x09480048 0x2 4 >,
+			<  1958400000 0x04040066 0x0a510051 0x2 5 >,
+			<  2150400000 0x04040070 0x0b590059 0x2 6 >,
+			<  2208000000 0x04040073 0x0b5c005c 0x3 7 >;
 
 		qcom,perfcl-speedbin3-v0 =
-			<   1113600000 0x0004000f 0x01200020 0x1 1 >,
-			<   1401600000 0x05040021 0x03200020 0x1 2 >,
-			<   1536000000 0x0404002f 0x04260026 0x1 3 >,
-			<  1612800000 0x0404003a 0x052e002e 0x1 4 >,
-			<  1958400000 0x04040050 0x08400040 0x2 5 >,
-			<  2208000000 0x04040066 0x0a510051 0x2 6 >,
-			<  2457600000 0x04040073 0x0b5c005c 0x3 7 >,
-			<  2699100000 0x04040080 0x0c660066 0x3 8 >;
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<  1113600000 0x0404003a 0x052e002e 0x1 2 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 3 >,
+			<  1747200000 0x0404005b 0x09480048 0x2 4 >,
+			<  1958400000 0x04040066 0x0a510051 0x2 5 >,
+			<  2150400000 0x04040070 0x0b590059 0x2 6 >,
+			<  2208000000 0x04040073 0x0b5c005c 0x3 7 >;
 
 		qcom,perfcl-speedbin4-v0 =
-			<   1113600000 0x0004000f 0x01200020 0x1 1 >,
-			<   1401600000 0x05040021 0x03200020 0x1 2 >,
-			<   1536000000 0x0404002f 0x04260026 0x1 3 >;
+			<   300000000 0x0004000f 0x01200020 0x1 1 >,
+			<  1113600000 0x0404003a 0x052e002e 0x1 2 >,
+			<  1401600000 0x04040049 0x073a003a 0x2 3 >,
+			<  1747200000 0x0404005b 0x09480048 0x2 4 >,
+			<  1958400000 0x04040066 0x0a510051 0x2 5 >;
 
 		qcom,up-timer = <1000 1000>;
 		qcom,down-timer = <1000 1000>;
@@ -1486,19 +1490,19 @@
 			< 1536000 >,
 			< 1612800 >,
 			< 1747200 >,
-			< 2000000 >;
+			< 1843200 >;
 
 		qcom,cpufreq-table-4 =
 			< 1113600 >,
 			< 1401600 >,
-			< 1536000 >,
-			< 1612800 >,
+			< 1747200 >,
+			< 1804800 >,
 			< 1958400 >,
+			< 2150400 >,
 			< 2208000 >,
-			< 2457600 >,
-			< 2699100 >;
+			< 2457600 >;
 	};
-	
+
 	sdhc_1: sdhci@c0c4000 {
 		compatible = "qcom,sdhci-msm-v5";
 		reg = <0xc0c4000 0x1000>, <0xc0c5000 0x1000>;
@@ -2528,7 +2532,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU0>;
-		status = "disabled";
 	};
 
 	jtag_mm1: jtagmm@7940000 {
@@ -2541,7 +2544,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU1>;
-		status = "disabled";
 	};
 
 	jtag_mm2: jtagmm@7a40000 {
@@ -2554,7 +2556,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU2>;
-		status = "disabled";
 	};
 
 	jtag_mm3: jtagmm@7b40000 {
@@ -2567,7 +2568,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU3>;
-		status = "disabled";
 	};
 
 	jtag_mm4: jtagmm@7c40000 {
@@ -2580,7 +2580,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU4>;
-		status = "disabled";
 	};
 
 	jtag_mm5: jtagmm@7d40000 {
@@ -2593,7 +2592,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU5>;
-		status = "disabled";
 	};
 
 	jtag_mm6: jtagmm@7e40000 {
@@ -2606,7 +2604,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU6>;
-		status = "disabled";
 	};
 
 	jtag_mm7: jtagmm@7f40000 {
@@ -2619,7 +2616,6 @@
 		clock-names = "core_clk", "core_a_clk";
 
 		qcom,coresight-jtagmm-cpu = <&CPU7>;
-		status = "disabled";
 	};
 };
 
