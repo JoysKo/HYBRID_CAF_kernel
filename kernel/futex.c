@@ -125,16 +125,16 @@
  *   futex_wait(futex, val);
  *
  *   waiters++; (a)
- *   mb(); (A) <-- paired with -.
- *                              |
- *   lock(hash_bucket(futex));  |
- *                              |
- *   uval = *futex;             |
- *                              |        *futex = newval;
- *                              |        sys_futex(WAKE, futex);
- *                              |          futex_wake(futex);
- *                              |
- *                              `------->  mb(); (B)
+ *   smp_mb(); (A) <-- paired with -.
+ *                                  |
+ *   lock(hash_bucket(futex));      |
+ *                                  |
+ *   uval = *futex;                 |
+ *                                  |        *futex = newval;
+ *                                  |        sys_futex(WAKE, futex);
+ *                                  |          futex_wake(futex);
+ *                                  |
+ *                                  `--------> smp_mb(); (B)
  *   if (uval == val)
  *     queue();
  *     unlock(hash_bucket(futex));
@@ -343,7 +343,7 @@ static inline void futex_get_mm(union futex_key *key)
 	/*
 	 * Ensure futex_get_mm() implies a full barrier such that
 	 * get_futex_key() implies a full barrier. This is relied upon
-	 * as full barrier (B), see the ordering comment above.
+	 * as smp_mb(); (B), see the ordering comment above.
 	 */
 	smp_mb__after_atomic();
 }
@@ -419,7 +419,7 @@ static void get_futex_key_refs(union futex_key *key)
 		smp_mb();		/* explicit smp_mb(); (B) */
 		break;
 	case FUT_OFF_MMSHARED:
-		futex_get_mm(key); /* implies MB (B) */
+		futex_get_mm(key); /* implies smp_mb(); (B) */
 		break;
 	default:
 		/*
@@ -427,7 +427,7 @@ static void get_futex_key_refs(union futex_key *key)
 		 * mm, therefore the only purpose of calling get_futex_key_refs
 		 * is because we need the barrier for the lockless waiter check.
 		 */
-		smp_mb(); /* explicit MB (B) */
+		smp_mb(); /* explicit smp_mb(); (B) */
 	}
 }
 
@@ -551,7 +551,7 @@ get_futex_key(u32 __user *uaddr, int fshared, union futex_key *key, int rw)
 	if (!fshared) {
 		key->private.mm = mm;
 		key->private.address = address;
-		get_futex_key_refs(key);  /* implies MB (B) */
+		get_futex_key_refs(key);  /* implies smp_mb(); (B) */
 		return 0;
 	}
 
@@ -682,6 +682,8 @@ again:
 		key->private.mm = mm;
 		key->private.address = address;
 
+		get_futex_key_refs(key); /* implies smp_mb(); (B) */
+
 	} else {
 		struct inode *inode;
 
@@ -713,13 +715,38 @@ again:
 			goto again;
 		}
 
+		/*
+		 * Take a reference unless it is about to be freed. Previously
+		 * this reference was taken by ihold under the page lock
+		 * pinning the inode in place so i_lock was unnecessary. The
+		 * only way for this check to fail is if the inode was
+		 * truncated in parallel so warn for now if this happens.
+		 *
+		 * We are not calling into get_futex_key_refs() in file-backed
+		 * cases, therefore a successful atomic_inc return below will
+		 * guarantee that get_futex_key() will still imply smp_mb(); (B).
+		 */
+		if (WARN_ON_ONCE(!atomic_inc_not_zero(&inode->i_count))) {
+			rcu_read_unlock();
+			put_page(page);
+
+			goto again;
+		}
+
+		/* Should be impossible but lets be paranoid for now */
+		if (WARN_ON_ONCE(inode->i_mapping != mapping)) {
+			err = -EFAULT;
+			rcu_read_unlock();
+			iput(inode);
+
+			goto out;
+		}
+
 		key->both.offset |= FUT_OFF_INODE; /* inode-based key */
 		key->shared.i_seq = get_inode_sequence_number(inode);
 		key->shared.pgoff = basepage_index(page);
 		rcu_read_unlock();
 	}
-
-	get_futex_key_refs(key); /* implies smp_mb(); (B) */
 
 out:
 	put_page(page_head);
@@ -2297,7 +2324,7 @@ static inline struct futex_hash_bucket *queue_lock(struct futex_q *q)
 
 	q->lock_ptr = &hb->lock;
 
-	spin_lock(&hb->lock); /* implies MB (A) */
+	spin_lock(&hb->lock); /* implies smp_mb(); (A) */
 	return hb;
 }
 
