@@ -172,10 +172,6 @@ void set_kernel_text_ro(void);
 static inline void set_kernel_text_ro(void) { }
 #endif
 
-#ifdef CONFIG_DEBUG_RODATA
-void mark_rodata_ro(void);
-#endif
-
 #ifdef CONFIG_FREE_PAGES_RDONLY
 #define mark_addr_rdonly(a)	set_memory_ro((unsigned long)a, 1);
 #define mark_addr_rdwrite(a)	set_memory_rw((unsigned long)a, 1);
@@ -183,4 +179,5 @@ void mark_rodata_ro(void);
 #define mark_addr_rdonly(a)
 #define mark_addr_rdwrite(a)
 #endif
+
 #endif

@@ -39,8 +39,6 @@ OUTPUT_ARCH(i386:x86-64)
 ENTRY(phys_startup_64)
 #endif
 
-jiffies = jiffies_64;
-
 #if defined(CONFIG_X86_64)
 /*
  * On 64-bit, align RODATA to 2MB so we retain large page mappings for
