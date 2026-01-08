@@ -8,30 +8,15 @@
 #include <asm/current.h>
 
 /*
- * BROKEN wait-queues.
+ * Simple wait queues
  *
- * These "simple" wait-queues are broken garbage, and should never be
- * used. The comments below claim that they are "similar" to regular
- * wait-queues, but the semantics are actually completely different, and
- * every single user we have ever had has been buggy (or pointless).
+ * While these are very similar to the other/complex wait queues (wait.h) the
+ * most important difference is that the simple waitqueue allows for
+ * deterministic behaviour -- IOW it has strictly bounded IRQ and lock hold
+ * times.
  *
- * A "swake_up()" only wakes up _one_ waiter, which is not at all what
- * "wake_up()" does, and has led to problems. In other cases, it has
- * been fine, because there's only ever one waiter (kvm), but in that
- * case gthe whole "simple" wait-queue is just pointless to begin with,
- * since there is no "queue". Use "wake_up_process()" with a direct
- * pointer instead.
- *
- * While these are very similar to regular wait queues (wait.h) the most
- * important difference is that the simple waitqueue allows for deterministic
- * behaviour -- IOW it has strictly bounded IRQ and lock hold times.
- *
- * Mainly, this is accomplished by two things. Firstly not allowing swake_up_all
- * from IRQ disabled, and dropping the lock upon every wakeup, giving a higher
- * priority task a chance to run.
- *
- * Secondly, we had to drop a fair number of features of the other waitqueue
- * code; notably:
+ * In order to make this so, we had to drop a fair number of features of the
+ * other waitqueue code; notably:
  *
  *  - mixing INTERRUPTIBLE and UNINTERRUPTIBLE sleeps on the same waitqueue;
  *    all wakeups are TASK_NORMAL in order to avoid O(n) lookups for the right
@@ -40,16 +25,14 @@
  *  - the exclusive mode; because this requires preserving the list order
  *    and this is hard.
  *
- *  - custom wake callback functions; because you cannot give any guarantees
- *    about random code. This also allows swait to be used in RT, such that
- *    raw spinlock can be used for the swait queue head.
+ *  - custom wake functions; because you cannot give any guarantees about
+ *    random code.
  *
- * As a side effect of these; the data structures are slimmer albeit more ad-hoc.
- * For all the above, note that simple wait queues should _only_ be used under
- * very specific realtime constraints -- it is best to stick with the regular
- * wait queues in most cases.
+ * As a side effect of this; the data structures are slimmer.
+ *
+ * One would recommend using this wait queue where possible.
  */
-
+ 
 struct task_struct;
 
 struct swait_queue_head {
@@ -160,6 +143,7 @@ extern void swake_up(struct swait_queue_head *q);
 extern void swake_up_all(struct swait_queue_head *q);
 extern void swake_up_locked(struct swait_queue_head *q);
 
+extern void __prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait);
 extern void prepare_to_swait(struct swait_queue_head *q, struct swait_queue *wait, int state);
 extern long prepare_to_swait_event(struct swait_queue_head *q, struct swait_queue *wait, int state);
 
