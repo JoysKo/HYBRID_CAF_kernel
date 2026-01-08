@@ -927,7 +927,7 @@ rcu_torture_writer(void *arg)
 	VERBOSE_TOROUT_STRING("rcu_torture_writer task started");
 	if (!can_expedite) {
 		pr_alert("%s" TORTURE_FLAG
-			 " GP expediting controlled from boot/sysfs for %s,\n",
+			 " Grace periods expedited from boot/sysfs for %s,\n",
 			 torture_type, cur_ops->name);
 		pr_alert("%s" TORTURE_FLAG
 			 " Disabled dynamic grace-period expediting.\n",
