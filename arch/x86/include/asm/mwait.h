@@ -4,7 +4,6 @@
 #include <linux/sched.h>
 
 #include <asm/cpufeature.h>
-#include <asm/nospec-branch.h>
 
 #define MWAIT_SUBSTATE_MASK		0xf
 #define MWAIT_CSTATE_MASK		0xf
