@@ -1416,6 +1416,8 @@ struct sched_avg {
 	struct util_est			util_est;
 };
 
+#include <linux/sched_data.h>
+
 #ifdef CONFIG_SCHEDSTATS
 struct sched_statistics {
 	u64			wait_start;

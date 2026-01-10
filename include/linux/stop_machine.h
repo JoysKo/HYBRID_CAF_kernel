@@ -16,16 +16,7 @@
  * up and requests are guaranteed to be served as long as the target
  * cpus are online.
  */
-typedef int (*cpu_stop_fn_t)(void *arg);
-
 #ifdef CONFIG_SMP
-
-struct cpu_stop_work {
-	struct list_head	list;		/* cpu_stopper->works */
-	cpu_stop_fn_t		fn;
-	void			*arg;
-	struct cpu_stop_done	*done;
-};
 
 int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg);
 int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *arg);
@@ -39,12 +30,6 @@ void stop_machine_unpark(int cpu);
 #else	/* CONFIG_SMP */
 
 #include <linux/workqueue.h>
-
-struct cpu_stop_work {
-	struct work_struct	work;
-	cpu_stop_fn_t		fn;
-	void			*arg;
-};
 
 static inline int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
 {
