@@ -219,7 +219,7 @@ static const struct regulator_desc act8600_regulators[] = {
 		.ops = &act8865_ldo_ops,
 		.type = REGULATOR_VOLTAGE,
 		.n_voltages = 1,
-		.fixed_uV = 1800000,
+		.fixed_uV = 3300000,
 		.enable_reg = ACT8600_LDO910_CTRL,
 		.enable_mask = ACT8865_ENA,
 		.owner = THIS_MODULE,
@@ -370,7 +370,7 @@ static int act8865_pdata_from_dt(struct device *dev,
 	for (i = 0; i < num_matches; i++) {
 		regulator->id = i;
 		regulator->name = matches[i].name;
-		regulator->platform_data = matches[i].init_data;
+		regulator->init_data = matches[i].init_data;
 		of_node[i] = matches[i].of_node;
 		regulator++;
 	}
@@ -397,7 +397,7 @@ static struct regulator_init_data
 
 	for (i = 0; i < pdata->num_regulators; i++) {
 		if (pdata->regulators[i].id == id)
-			return pdata->regulators[i].platform_data;
+			return pdata->regulators[i].init_data;
 	}
 
 	return NULL;
@@ -416,7 +416,7 @@ static void act8865_power_off(void)
 static int act8865_pmic_probe(struct i2c_client *client,
 			      const struct i2c_device_id *i2c_id)
 {
-	static const struct regulator_desc *regulators;
+	const struct regulator_desc *regulators;
 	struct act8865_platform_data pdata_of, *pdata;
 	struct device *dev = &client->dev;
 	struct device_node **of_node;
