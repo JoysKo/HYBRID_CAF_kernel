@@ -80,7 +80,6 @@ struct cpufreq_policy {
 	unsigned int		last_policy; /* policy before unplug */
 	struct cpufreq_governor	*governor; /* see below */
 	void			*governor_data;
-	bool			governor_enabled; /* governor start/stop flag */
 	char			last_governor[CPUFREQ_NAME_LEN]; /* last governor used */
 
 	struct work_struct	update; /* if update_policy() needs to be
@@ -501,41 +500,8 @@ unsigned int cpufreq_driver_resolve_freq(struct cpufreq_policy *policy,
 int cpufreq_register_governor(struct cpufreq_governor *governor);
 void cpufreq_unregister_governor(struct cpufreq_governor *governor);
 
-/* CPUFREQ DEFAULT GOVERNOR */
-/*
- * Performance governor is fallback governor if any other gov failed to auto
- * load due latency restrictions
- */
-#ifdef CONFIG_CPU_FREQ_GOV_PERFORMANCE
-extern struct cpufreq_governor cpufreq_gov_performance;
-#endif
-#ifdef CONFIG_CPU_FREQ_DEFAULT_GOV_PERFORMANCE
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_performance)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_POWERSAVE)
-extern struct cpufreq_governor cpufreq_gov_powersave;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_powersave)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_USERSPACE)
-extern struct cpufreq_governor cpufreq_gov_userspace;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_userspace)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND)
-extern struct cpufreq_governor cpufreq_gov_ondemand;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_ondemand)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE)
-extern struct cpufreq_governor cpufreq_gov_conservative;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_conservative)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
-extern struct cpufreq_governor cpufreq_gov_interactive;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_SCHED)
-extern struct cpufreq_governor cpufreq_gov_sched;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_sched)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL)
-extern struct cpufreq_governor cpufreq_gov_schedutil;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_schedutil)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_BLU_SCHEDUTIL)
-extern struct cpufreq_governor cpufreq_gov_blu_schedutil;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_blu_schedutil)
-#endif
+struct cpufreq_governor *cpufreq_default_governor(void);
+struct cpufreq_governor *cpufreq_fallback_governor(void);
 
 static inline void cpufreq_policy_apply_limits(struct cpufreq_policy *policy)
 {
@@ -561,10 +527,12 @@ void gov_attr_set_get(struct gov_attr_set *attr_set, struct list_head *list_node
 unsigned int gov_attr_set_put(struct gov_attr_set *attr_set, struct list_head *list_node);
 
 /* Governor sysfs attribute */
+struct dbs_data;
+
 struct governor_attr {
 	struct attribute attr;
-	ssize_t (*show)(struct gov_attr_set *attr_set, char *buf);
-	ssize_t (*store)(struct gov_attr_set *attr_set, const char *buf,
+	ssize_t (*show)(struct dbs_data *dbs_data, char *buf);
+	ssize_t (*store)(struct dbs_data *dbs_data, const char *buf,
 			 size_t count);
 };
 
@@ -605,16 +573,6 @@ static inline void dev_pm_opp_free_cpufreq_table(struct device *dev,
 }
 #endif
 
-static inline bool cpufreq_next_valid(struct cpufreq_frequency_table **pos)
-{
-	while ((*pos)->frequency != CPUFREQ_TABLE_END)
-		if ((*pos)->frequency != CPUFREQ_ENTRY_INVALID)
-			return true;
-		else
-			(*pos)++;
-	return false;
-}
-
 /*
  * cpufreq_for_each_entry -	iterate over a cpufreq_frequency_table
  * @pos:	the cpufreq_frequency_table * to use as a loop cursor.
@@ -631,8 +589,11 @@ static inline bool cpufreq_next_valid(struct cpufreq_frequency_table **pos)
  * @table:      the cpufreq_frequency_table * to iterate over.
  */
 
-#define cpufreq_for_each_valid_entry(pos, table)	\
-	for (pos = table; cpufreq_next_valid(&pos); pos++)
+#define cpufreq_for_each_valid_entry(pos, table)			\
+	for (pos = table; pos->frequency != CPUFREQ_TABLE_END; pos++)	\
+		if (pos->frequency == CPUFREQ_ENTRY_INVALID)		\
+			continue;					\
+		else
 
 int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 				    struct cpufreq_frequency_table *table);

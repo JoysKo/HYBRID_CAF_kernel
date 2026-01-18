@@ -3700,6 +3700,15 @@ static inline unsigned long rlimit_max(unsigned int limit)
 	return task_rlimit_max(current, limit);
 }
 
+#ifdef CONFIG_CPU_FREQ
+struct update_util_data2 {
+	void (*func)(struct update_util_data2 *data,
+		     u64 time, unsigned long util, unsigned long max);
+};
+
+void cpufreq_set_update_util_data(int cpu, struct update_util_data2 *data);
+#endif /* CONFIG_CPU_FREQ */
+
 struct cpu_cycle_counter_cb {
   u64 (*get_cpu_cycle_counter)(int cpu);
   u32 (*get_cpu_cycles_max_per_us)(int cpu);
@@ -3728,6 +3737,6 @@ void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
                        void (*func)(struct update_util_data *data, u64 time,
                                     unsigned int flags));
 void cpufreq_remove_update_util_hook(int cpu);
-#endif /* CONFIG_CPU_FREQ */
 
 #endif
+#endif //_LINUX_SCHED_H
