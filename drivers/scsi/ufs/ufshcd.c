@@ -194,6 +194,12 @@ void ufshcd_update_query_stats(struct ufs_hba *hba,
 #define QUERY_REQ_RETRIES 3
 /* Query request timeout */
 #define QUERY_REQ_TIMEOUT 1500 /* 1.5 seconds */
+/*
+ * Query request timeout for fDeviceInit flag
+ * fDeviceInit query response time for some devices is too large that default
+ * QUERY_REQ_TIMEOUT may not be enough for such devices.
+ */
+#define QUERY_FDEVICEINIT_REQ_TIMEOUT 600 /* msec */
 
 /* Task management command timeout */
 #define TM_CMD_TIMEOUT	100 /* msecs */
@@ -248,7 +254,7 @@ static u32 ufs_query_desc_max_size[] = {
 	QUERY_DESC_INTERCONNECT_MAX_SIZE,
 	QUERY_DESC_STRING_MAX_SIZE,
 	QUERY_DESC_RFU_MAX_SIZE,
-	QUERY_DESC_GEOMETRY_MAZ_SIZE,
+	QUERY_DESC_GEOMETRY_MAX_SIZE,
 	QUERY_DESC_POWER_MAX_SIZE,
 	QUERY_DESC_HEALTH_MAX_SIZE,
 	QUERY_DESC_RFU_MAX_SIZE,
@@ -386,6 +392,10 @@ static int ufshcd_devfreq_target(struct device *dev,
 				unsigned long *freq, u32 flags);
 static int ufshcd_devfreq_get_dev_status(struct device *dev,
 		struct devfreq_dev_status *stat);
+static inline bool ufshcd_valid_tag(struct ufs_hba *hba, int tag)
+{
+	return tag >= 0 && tag < hba->nutrs;
+}
 
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
 static struct devfreq_simple_ondemand_data ufshcd_ondemand_data = {
@@ -1931,6 +1941,11 @@ static int ufshcd_hibern8_hold(struct ufs_hba *hba, bool async)
 		return 0;
 	}
 
+	if (ufshcd_eh_in_progress(hba)) {
+		spin_unlock_irqrestore(hba->host->host_lock, flags);
+		return 0;
+	}
+
 start:
 	switch (hba->hibern8_on_idle.state) {
 	case HIBERN8_EXITED:
@@ -3036,6 +3051,13 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 		cmd->scsi_done(cmd);
 		goto out_unlock;
 	}
+
+	/* if error handling is in progress, don't issue commands */
+	if (ufshcd_eh_in_progress(hba)) {
+		set_host_byte(cmd, DID_ERROR);
+		cmd->scsi_done(cmd);
+		goto out_unlock;
+	}
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
 	hba->req_abort_count = 0;
@@ -3449,6 +3471,29 @@ static int ufshcd_query_flag_retry(struct ufs_hba *hba,
 	return ret;
 }
 
+static int ufshcd_query_flag_retry(struct ufs_hba *hba,
+	enum query_opcode opcode, enum flag_idn idn, bool *flag_res)
+{
+	int ret;
+	int retries;
+
+	for (retries = 0; retries < QUERY_REQ_RETRIES; retries++) {
+		ret = ufshcd_query_flag(hba, opcode, idn, flag_res);
+		if (ret)
+			dev_dbg(hba->dev,
+				"%s: failed with error %d, retries %d\n",
+				__func__, ret, retries);
+		else
+			break;
+	}
+
+	if (ret)
+		dev_err(hba->dev,
+			"%s: query attribute, opcode %d, idn %d, failed with error %d after %d retires\n",
+			__func__, opcode, idn, ret, retries);
+	return ret;
+}
+
 /**
  * ufshcd_query_flag() - API function for sending flag query requests
  * hba: per-adapter instance
@@ -3496,6 +3541,9 @@ int ufshcd_query_flag(struct ufs_hba *hba, enum query_opcode opcode,
 		err = -EINVAL;
 		goto out_unlock;
 	}
+
+	if (idn == QUERY_FLAG_IDN_FDEVICEINIT)
+		timeout = QUERY_FDEVICEINIT_REQ_TIMEOUT;
 
 	err = ufshcd_exec_dev_cmd(hba, DEV_CMD_TYPE_QUERY, timeout);
 
@@ -3593,6 +3641,42 @@ EXPORT_SYMBOL(ufshcd_query_attr);
  * @selector: selector field
  * @attr_val: the attribute value after the query request
  * completes
+ *
+ * Returns 0 for success, non-zero in case of failure
+*/
+static int ufshcd_query_attr_retry(struct ufs_hba *hba,
+	enum query_opcode opcode, enum attr_idn idn, u8 index, u8 selector,
+	u32 *attr_val)
+{
+	int ret = 0;
+	u32 retries;
+
+	 for (retries = QUERY_REQ_RETRIES; retries > 0; retries--) {
+		ret = ufshcd_query_attr(hba, opcode, idn, index,
+						selector, attr_val);
+		if (ret)
+			dev_dbg(hba->dev, "%s: failed with error %d, retries %d\n",
+				__func__, ret, retries);
+		else
+			break;
+	}
+
+	if (ret)
+		dev_err(hba->dev,
+			"%s: query attribute, idn %d, failed with error %d after %d retires\n",
+			__func__, idn, ret, QUERY_REQ_RETRIES);
+	return ret;
+}
+
+/**
+ * ufshcd_query_descriptor - API function for sending descriptor requests
+ * hba: per-adapter instance
+ * opcode: attribute opcode
+ * idn: attribute idn to access
+ * index: index field
+ * selector: selector field
+ * desc_buf: the buffer that contains the descriptor
+ * buf_len: length parameter passed to the device
  *
  * Returns 0 for success, non-zero in case of failure
 */
@@ -4178,10 +4262,10 @@ int ufshcd_dme_set_attr(struct ufs_hba *hba, u32 attr_sel,
 				set, UIC_GET_ATTR_ID(attr_sel), mib_val, ret);
 	} while (ret && peer && --retries);
 
-	if (ret)
+	if (!retries)
 		dev_err(hba->dev, "%s: attr-id 0x%x val 0x%x failed %d retries\n",
-			set, UIC_GET_ATTR_ID(attr_sel), mib_val,
-			UFS_UIC_COMMAND_RETRIES - retries);
+				set, UIC_GET_ATTR_ID(attr_sel), mib_val,
+				retries);
 
 	return ret;
 }
@@ -4249,10 +4333,9 @@ int ufshcd_dme_get_attr(struct ufs_hba *hba, u32 attr_sel,
 				get, UIC_GET_ATTR_ID(attr_sel), ret);
 	} while (ret && peer && --retries);
 
-	if (ret)
+	if (!retries)
 		dev_err(hba->dev, "%s: attr-id 0x%x failed %d retries\n",
-			get, UIC_GET_ATTR_ID(attr_sel),
-			UFS_UIC_COMMAND_RETRIES - retries);
+				get, UIC_GET_ATTR_ID(attr_sel), retries);
 
 	if (mib_val && !ret)
 		*mib_val = uic_cmd.argument3;
