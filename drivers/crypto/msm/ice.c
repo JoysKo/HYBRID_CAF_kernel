@@ -1423,6 +1423,22 @@ static int qcom_ice_reset(struct  platform_device *pdev)
 	return qcom_ice_finish_power_collapse(ice_dev);
 }
 
+// Объявление структуры, которая соответствует реальной в dm.c
+struct local_dm_rq_target_io {
+    /* Нас интересует только смещение до поля info */
+    char _pre_info[5 * sizeof(void *) + sizeof(int)]; // md, ti, orig, clone, work, error
+    union map_info info;
+};
+
+#define dm_rq_target_io local_dm_rq_target_io
+
+union map_info *dm_get_rq_mapinfo(struct request *rq)
+{
+    if (rq && rq->end_io_data)
+        return &((struct dm_rq_target_io *)rq->end_io_data)->info;
+    return NULL;
+}
+
 static int qcom_ice_config_start(struct platform_device *pdev,
 		struct request *req,
 		struct ice_data_setting *setting, bool async)
