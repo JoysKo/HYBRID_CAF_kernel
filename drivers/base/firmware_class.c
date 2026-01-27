@@ -366,6 +366,15 @@ fail:
 	return rc;
 }
 
+static void fw_finish_direct_load(struct device *device,
+				  struct firmware_buf *buf)
+{
+	mutex_lock(&fw_lock);
+	set_bit(FW_STATUS_DONE, &buf->status);
+	complete_all(&buf->completion);
+	mutex_unlock(&fw_lock);
+}
+
 static int fw_get_filesystem_firmware(struct device *device,
 				      struct firmware_buf *buf,
 				      phys_addr_t dest_addr, size_t dest_size)
@@ -397,22 +406,21 @@ static int fw_get_filesystem_firmware(struct device *device,
 			continue;
 		rc = fw_read_file_contents(file, buf);
 		fput(file);
-		if (rc)
-			dev_warn(device, "firmware, attempted to load %s, but failed with error %d\n",
-				path, rc);
-		else
-			break;
+		if (rc) {
+			if (rc == -ENOENT)
+				dev_dbg(device, "loading %s failed with error %d\n",
+					 path, rc);
+			else
+				dev_warn(device, "loading %s failed with error %d\n",
+					 path, rc);
+			continue;
+		}
+		dev_dbg(device, "direct-loading %s\n",
+			buf->fw_id);
+		fw_finish_direct_load(device, buf);
+		break;
 	}
 	__putname(path);
-
-	if (!rc) {
-		dev_dbg(device, "firmware: direct-loading firmware %s\n",
-			buf->fw_id);
-		mutex_lock(&fw_lock);
-		set_bit(FW_STATUS_DONE, &buf->status);
-		complete_all(&buf->completion);
-		mutex_unlock(&fw_lock);
-	}
 
 	return rc;
 }
@@ -1220,7 +1228,7 @@ _request_firmware_prepare(struct firmware **firmware_p, struct fw_desc *desc)
 	}
 
 	if (fw_get_builtin_firmware(firmware, desc->name)) {
-		dev_dbg(desc->device, "firmware: using built-in firmware %s\n",
+		dev_dbg(desc->device, "using built-in %s\n",
 			desc->name);
 		return 0; /* assigned */
 	}
