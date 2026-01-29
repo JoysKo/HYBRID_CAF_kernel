@@ -672,11 +672,11 @@ static void digi_set_termios(struct tty_struct *tty,
 		arg = -1;
 
 		/* reassert DTR and (maybe) RTS on transition from B0 */
-		if ((old_cflag&CBAUD) == B0) {
+		if ((old_cflag & CBAUD) == B0) {
 			/* don't set RTS if using hardware flow control */
 			/* and throttling input */
 			modem_signals = TIOCM_DTR;
-			if (!(tty->termios.c_cflag & CRTSCTS) ||
+			if (!C_CRTSCTS(tty) ||
 			    !test_bit(TTY_THROTTLED, &tty->flags))
 				modem_signals |= TIOCM_RTS;
 			digi_set_modem_signals(port, modem_signals, 1);
@@ -1499,8 +1499,8 @@ static int digi_read_oob_callback(struct urb *urb)
 
 		rts = 0;
 		if (tty)
-			rts = tty->termios.c_cflag & CRTSCTS;
-		
+			rts = C_CRTSCTS(tty);
+
 		if (tty && opcode == DIGI_CMD_READ_INPUT_SIGNALS) {
 			bool wakeup = false;
 
