@@ -184,19 +184,13 @@ void enable_cpu_capabilities(const struct arm64_cpu_capabilities *caps);
 void check_local_cpu_errata(void);
 void __init enable_errata_workarounds(void);
 
-#ifdef CONFIG_HOTPLUG_CPU
 void verify_local_cpu_capabilities(void);
-#else
-static inline void verify_local_cpu_capabilities(void)
-{
-}
-#endif
 
 u64 read_system_reg(u32 id);
 
 static inline bool cpu_supports_mixed_endian_el0(void)
 {
-	return id_aa64mmfr0_mixed_endian_el0(read_cpuid(SYS_ID_AA64MMFR0_EL1));
+	return id_aa64mmfr0_mixed_endian_el0(read_cpuid(ID_AA64MMFR0_EL1));
 }
 
 static inline bool system_supports_32bit_el0(void)

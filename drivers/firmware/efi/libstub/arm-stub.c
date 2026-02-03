@@ -18,6 +18,8 @@
 
 #include "efistub.h"
 
+bool __nokaslr;
+
 static int efi_secureboot_enabled(efi_system_table_t *sys_table_arg)
 {
 	static efi_guid_t const var_guid = EFI_GLOBAL_VARIABLE_GUID;
@@ -217,6 +219,27 @@ unsigned long efi_entry(void *handle, efi_system_table_t *sys_table,
 	if (!cmdline_ptr) {
 		pr_efi_err(sys_table, "getting command line via LOADED_IMAGE_PROTOCOL\n");
 		goto fail;
+	}
+
+	/* check whether 'nokaslr' was passed on the command line */
+	if (IS_ENABLED(CONFIG_RANDOMIZE_BASE)) {
+		static const u8 default_cmdline[] = CONFIG_CMDLINE;
+		const u8 *str, *cmdline = cmdline_ptr;
+
+		if (IS_ENABLED(CONFIG_CMDLINE_FORCE))
+			cmdline = default_cmdline;
+		str = strstr(cmdline, "nokaslr");
+		if (str == cmdline || (str > cmdline && *(str - 1) == ' '))
+			__nokaslr = true;
+	}
+
+	status = handle_kernel_image(sys_table, image_addr, &image_size,
+				     &reserve_addr,
+				     &reserve_size,
+				     dram_base, image);
+	if (status != EFI_SUCCESS) {
+		pr_efi_err(sys_table, "Failed to relocate kernel\n");
+		goto fail_free_cmdline;
 	}
 
 	status = handle_kernel_image(sys_table, image_addr, &image_size,

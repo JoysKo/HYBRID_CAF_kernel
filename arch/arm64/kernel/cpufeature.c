@@ -27,6 +27,7 @@
 #include <asm/cpu.h>
 #include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
+#include <asm/mmu_context.h>
 #include <asm/processor.h>
 #include <asm/sysreg.h>
 #include <asm/virt.h>
@@ -59,13 +60,13 @@ EXPORT_SYMBOL(cpu_hwcaps);
 		.safe_val = SAFE_VAL,			\
 	}
 
-/* Define a feature with signed values */
+/* Define a feature with unsigned values */
 #define ARM64_FTR_BITS(STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL) \
-	__ARM64_FTR_BITS(FTR_SIGNED, STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL)
-
-/* Define a feature with unsigned value */
-#define U_ARM64_FTR_BITS(STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL) \
 	__ARM64_FTR_BITS(FTR_UNSIGNED, STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL)
+
+/* Define a feature with a signed value */
+#define S_ARM64_FTR_BITS(STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL) \
+	__ARM64_FTR_BITS(FTR_SIGNED, STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL)
 
 #define ARM64_FTR_END					\
 	{						\
@@ -94,8 +95,8 @@ static struct arm64_ftr_bits ftr_id_aa64pfr0[] = {
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 28, 4, 0),
 	ARM64_FTR_BITS(FTR_NONSTRICT, FTR_LOWER_SAFE, ID_AA64PFR0_CSV2_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64PFR0_GIC_SHIFT, 4, 0),
-	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR0_ASIMD_SHIFT, 4, ID_AA64PFR0_ASIMD_NI),
-	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR0_FP_SHIFT, 4, ID_AA64PFR0_FP_NI),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR0_ASIMD_SHIFT, 4, ID_AA64PFR0_ASIMD_NI),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR0_FP_SHIFT, 4, ID_AA64PFR0_FP_NI),
 	/* Linux doesn't care about the EL3 */
 	ARM64_FTR_BITS(FTR_NONSTRICT, FTR_EXACT, ID_AA64PFR0_EL3_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64PFR0_EL2_SHIFT, 4, 0),
@@ -106,8 +107,8 @@ static struct arm64_ftr_bits ftr_id_aa64pfr0[] = {
 
 static struct arm64_ftr_bits ftr_id_aa64mmfr0[] = {
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 32, 32, 0),
-	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_TGRAN4_SHIFT, 4, ID_AA64MMFR0_TGRAN4_NI),
-	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_TGRAN64_SHIFT, 4, ID_AA64MMFR0_TGRAN64_NI),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_TGRAN4_SHIFT, 4, ID_AA64MMFR0_TGRAN4_NI),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_TGRAN64_SHIFT, 4, ID_AA64MMFR0_TGRAN64_NI),
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_TGRAN16_SHIFT, 4, ID_AA64MMFR0_TGRAN16_NI),
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64MMFR0_BIGENDEL0_SHIFT, 4, 0),
 	/* Linux shouldn't care about secure memory */
@@ -118,7 +119,7 @@ static struct arm64_ftr_bits ftr_id_aa64mmfr0[] = {
 	 * Differing PARange is fine as long as all peripherals and memory are mapped
 	 * within the minimum PARange of all CPUs
 	 */
-	U_ARM64_FTR_BITS(FTR_NONSTRICT, FTR_LOWER_SAFE, ID_AA64MMFR0_PARANGE_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_NONSTRICT, FTR_LOWER_SAFE, ID_AA64MMFR0_PARANGE_SHIFT, 4, 0),
 	ARM64_FTR_END,
 };
 
@@ -139,30 +140,30 @@ static struct arm64_ftr_bits ftr_id_aa64mmfr2[] = {
 };
 
 static struct arm64_ftr_bits ftr_ctr[] = {
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 31, 1, 1),	/* RES1 */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 31, 1, 1),	/* RES1 */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 30, 1, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 29, 1, 1),	/* DIC */
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 28, 1, 1),	/* IDC */
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_HIGHER_OR_ZERO_SAFE, 24, 4, 0),	/* CWG */
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_HIGHER_OR_ZERO_SAFE, 20, 4, 0),	/* ERG */
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 16, 4, 1),	/* DminLine */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 29, 1, 1),	/* DIC */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 28, 1, 1),	/* IDC */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_HIGHER_OR_ZERO_SAFE, 24, 4, 0),	/* CWG */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_HIGHER_OR_ZERO_SAFE, 20, 4, 0),	/* ERG */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 16, 4, 1),	/* DminLine */
 	/*
 	 * Linux can handle differing I-cache policies. Userspace JITs will
 	 * make use of *minLine
 	 */
-	U_ARM64_FTR_BITS(FTR_NONSTRICT, FTR_EXACT, 14, 2, 0),	/* L1Ip */
+	ARM64_FTR_BITS(FTR_NONSTRICT, FTR_EXACT, 14, 2, 0),	/* L1Ip */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 4, 10, 0),	/* RAZ */
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 0, 4, 0),	/* IminLine */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 0, 4, 0),	/* IminLine */
 	ARM64_FTR_END,
 };
 
 static struct arm64_ftr_bits ftr_id_mmfr0[] = {
-	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 28, 4, 0),	/* InnerShr */
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 28, 4, 0xf),	/* InnerShr */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 24, 4, 0),	/* FCSE */
 	ARM64_FTR_BITS(FTR_NONSTRICT, FTR_LOWER_SAFE, 20, 4, 0),	/* AuxReg */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 16, 4, 0),	/* TCM */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 12, 4, 0),	/* ShareLvl */
-	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 8, 4, 0),	/* OuterShr */
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 8, 4, 0xf),	/* OuterShr */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 4, 4, 0),	/* PMSA */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 0, 4, 0),	/* VMSA */
 	ARM64_FTR_END,
@@ -170,12 +171,12 @@ static struct arm64_ftr_bits ftr_id_mmfr0[] = {
 
 static struct arm64_ftr_bits ftr_id_aa64dfr0[] = {
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 32, 32, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_CTX_CMPS_SHIFT, 4, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_WRPS_SHIFT, 4, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_BRPS_SHIFT, 4, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_PMUVER_SHIFT, 4, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_TRACEVER_SHIFT, 4, 0),
-	U_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_DEBUGVER_SHIFT, 4, 0x6),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_CTX_CMPS_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_WRPS_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, ID_AA64DFR0_BRPS_SHIFT, 4, 0),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_PMUVER_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_TRACEVER_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, ID_AA64DFR0_DEBUGVER_SHIFT, 4, 0x6),
 	ARM64_FTR_END,
 };
 
@@ -218,6 +219,18 @@ static struct arm64_ftr_bits ftr_id_pfr0[] = {
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 8, 4, 0),		/* State2 */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 4, 4, 0),		/* State1 */
 	ARM64_FTR_BITS(FTR_STRICT, FTR_EXACT, 0, 4, 0),		/* State0 */
+	ARM64_FTR_END,
+};
+
+static struct arm64_ftr_bits ftr_id_dfr0[] = {
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 28, 4, 0),
+	S_ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 24, 4, 0xf),	/* PerfMon */
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 20, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 16, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 12, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 8, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 4, 4, 0),
+	ARM64_FTR_BITS(FTR_STRICT, FTR_LOWER_SAFE, 0, 4, 0),
 	ARM64_FTR_END,
 };
 
@@ -266,7 +279,7 @@ static struct arm64_ftr_reg arm64_ftr_regs[] = {
 	/* Op1 = 0, CRn = 0, CRm = 1 */
 	ARM64_FTR_REG(SYS_ID_PFR0_EL1, ftr_id_pfr0),
 	ARM64_FTR_REG(SYS_ID_PFR1_EL1, ftr_generic_32bits),
-	ARM64_FTR_REG(SYS_ID_DFR0_EL1, ftr_generic_32bits),
+	ARM64_FTR_REG(SYS_ID_DFR0_EL1, ftr_id_dfr0),
 	ARM64_FTR_REG(SYS_ID_MMFR0_EL1, ftr_id_mmfr0),
 	ARM64_FTR_REG(SYS_ID_MMFR1_EL1, ftr_generic_32bits),
 	ARM64_FTR_REG(SYS_ID_MMFR2_EL1, ftr_generic_32bits),
@@ -792,7 +805,9 @@ static const struct arm64_cpu_capabilities arm64_hwcaps[] = {
 	HWCAP_CAP(SYS_ID_AA64ISAR0_EL1, ID_AA64ISAR0_CRC32_SHIFT, FTR_UNSIGNED, 1, CAP_HWCAP, HWCAP_CRC32),
 	HWCAP_CAP(SYS_ID_AA64ISAR0_EL1, ID_AA64ISAR0_ATOMICS_SHIFT, FTR_UNSIGNED, 2, CAP_HWCAP, HWCAP_ATOMICS),
 	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_FP_SHIFT, FTR_SIGNED, 0, CAP_HWCAP, HWCAP_FP),
+	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_FP_SHIFT, FTR_SIGNED, 1, CAP_HWCAP, HWCAP_FPHP),
 	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_ASIMD_SHIFT, FTR_SIGNED, 0, CAP_HWCAP, HWCAP_ASIMD),
+	HWCAP_CAP(SYS_ID_AA64PFR0_EL1, ID_AA64PFR0_ASIMD_SHIFT, FTR_SIGNED, 1, CAP_HWCAP, HWCAP_ASIMDHP),
 #ifdef CONFIG_COMPAT
 	HWCAP_CAP(SYS_ID_ISAR5_EL1, ID_ISAR5_AES_SHIFT, FTR_UNSIGNED, 2, CAP_COMPAT_HWCAP2, COMPAT_HWCAP2_PMULL),
 	HWCAP_CAP(SYS_ID_ISAR5_EL1, ID_ISAR5_AES_SHIFT, FTR_UNSIGNED, 1, CAP_COMPAT_HWCAP2, COMPAT_HWCAP2_AES),
@@ -893,8 +908,6 @@ void __init enable_cpu_capabilities(const struct arm64_cpu_capabilities *caps)
 							cpu_online_mask);
 }
 
-#ifdef CONFIG_HOTPLUG_CPU
-
 /*
  * Flag to indicate if we have computed the system wide
  * capabilities based on the boot time active CPUs. This
@@ -916,36 +929,36 @@ static inline void set_sys_caps_initialised(void)
 static u64 __raw_read_system_reg(u32 sys_id)
 {
 	switch (sys_id) {
-	case SYS_ID_PFR0_EL1:		return read_cpuid(SYS_ID_PFR0_EL1);
-	case SYS_ID_PFR1_EL1:		return read_cpuid(SYS_ID_PFR1_EL1);
-	case SYS_ID_DFR0_EL1:		return read_cpuid(SYS_ID_DFR0_EL1);
-	case SYS_ID_MMFR0_EL1:		return read_cpuid(SYS_ID_MMFR0_EL1);
-	case SYS_ID_MMFR1_EL1:		return read_cpuid(SYS_ID_MMFR1_EL1);
-	case SYS_ID_MMFR2_EL1:		return read_cpuid(SYS_ID_MMFR2_EL1);
-	case SYS_ID_MMFR3_EL1:		return read_cpuid(SYS_ID_MMFR3_EL1);
-	case SYS_ID_ISAR0_EL1:		return read_cpuid(SYS_ID_ISAR0_EL1);
-	case SYS_ID_ISAR1_EL1:		return read_cpuid(SYS_ID_ISAR1_EL1);
-	case SYS_ID_ISAR2_EL1:		return read_cpuid(SYS_ID_ISAR2_EL1);
-	case SYS_ID_ISAR3_EL1:		return read_cpuid(SYS_ID_ISAR3_EL1);
-	case SYS_ID_ISAR4_EL1:		return read_cpuid(SYS_ID_ISAR4_EL1);
-	case SYS_ID_ISAR5_EL1:		return read_cpuid(SYS_ID_ISAR4_EL1);
-	case SYS_MVFR0_EL1:		return read_cpuid(SYS_MVFR0_EL1);
-	case SYS_MVFR1_EL1:		return read_cpuid(SYS_MVFR1_EL1);
-	case SYS_MVFR2_EL1:		return read_cpuid(SYS_MVFR2_EL1);
+	case SYS_ID_PFR0_EL1:		return read_cpuid(ID_PFR0_EL1);
+	case SYS_ID_PFR1_EL1:		return read_cpuid(ID_PFR1_EL1);
+	case SYS_ID_DFR0_EL1:		return read_cpuid(ID_DFR0_EL1);
+	case SYS_ID_MMFR0_EL1:		return read_cpuid(ID_MMFR0_EL1);
+	case SYS_ID_MMFR1_EL1:		return read_cpuid(ID_MMFR1_EL1);
+	case SYS_ID_MMFR2_EL1:		return read_cpuid(ID_MMFR2_EL1);
+	case SYS_ID_MMFR3_EL1:		return read_cpuid(ID_MMFR3_EL1);
+	case SYS_ID_ISAR0_EL1:		return read_cpuid(ID_ISAR0_EL1);
+	case SYS_ID_ISAR1_EL1:		return read_cpuid(ID_ISAR1_EL1);
+	case SYS_ID_ISAR2_EL1:		return read_cpuid(ID_ISAR2_EL1);
+	case SYS_ID_ISAR3_EL1:		return read_cpuid(ID_ISAR3_EL1);
+	case SYS_ID_ISAR4_EL1:		return read_cpuid(ID_ISAR4_EL1);
+	case SYS_ID_ISAR5_EL1:		return read_cpuid(ID_ISAR4_EL1);
+	case SYS_MVFR0_EL1:		return read_cpuid(MVFR0_EL1);
+	case SYS_MVFR1_EL1:		return read_cpuid(MVFR1_EL1);
+	case SYS_MVFR2_EL1:		return read_cpuid(MVFR2_EL1);
 
-	case SYS_ID_AA64PFR0_EL1:	return read_cpuid(SYS_ID_AA64PFR0_EL1);
-	case SYS_ID_AA64PFR1_EL1:	return read_cpuid(SYS_ID_AA64PFR0_EL1);
-	case SYS_ID_AA64DFR0_EL1:	return read_cpuid(SYS_ID_AA64DFR0_EL1);
-	case SYS_ID_AA64DFR1_EL1:	return read_cpuid(SYS_ID_AA64DFR0_EL1);
-	case SYS_ID_AA64MMFR0_EL1:	return read_cpuid(SYS_ID_AA64MMFR0_EL1);
-	case SYS_ID_AA64MMFR1_EL1:	return read_cpuid(SYS_ID_AA64MMFR1_EL1);
-	case SYS_ID_AA64MMFR2_EL1:	return read_cpuid(SYS_ID_AA64MMFR2_EL1);
-	case SYS_ID_AA64ISAR0_EL1:	return read_cpuid(SYS_ID_AA64ISAR0_EL1);
-	case SYS_ID_AA64ISAR1_EL1:	return read_cpuid(SYS_ID_AA64ISAR1_EL1);
+	case SYS_ID_AA64PFR0_EL1:	return read_cpuid(ID_AA64PFR0_EL1);
+	case SYS_ID_AA64PFR1_EL1:	return read_cpuid(ID_AA64PFR0_EL1);
+	case SYS_ID_AA64DFR0_EL1:	return read_cpuid(ID_AA64DFR0_EL1);
+	case SYS_ID_AA64DFR1_EL1:	return read_cpuid(ID_AA64DFR0_EL1);
+	case SYS_ID_AA64MMFR0_EL1:	return read_cpuid(ID_AA64MMFR0_EL1);
+	case SYS_ID_AA64MMFR1_EL1:	return read_cpuid(ID_AA64MMFR1_EL1);
+	case SYS_ID_AA64MMFR2_EL1:	return read_cpuid(ID_AA64MMFR2_EL1);
+	case SYS_ID_AA64ISAR0_EL1:	return read_cpuid(ID_AA64ISAR0_EL1);
+	case SYS_ID_AA64ISAR1_EL1:	return read_cpuid(ID_AA64ISAR1_EL1);
 
-	case SYS_CNTFRQ_EL0:		return read_cpuid(SYS_CNTFRQ_EL0);
-	case SYS_CTR_EL0:		return read_cpuid(SYS_CTR_EL0);
-	case SYS_DCZID_EL0:		return read_cpuid(SYS_DCZID_EL0);
+	case SYS_CNTFRQ_EL0:		return read_cpuid(CNTFRQ_EL0);
+	case SYS_CTR_EL0:		return read_cpuid(CTR_EL0);
+	case SYS_DCZID_EL0:		return read_cpuid(DCZID_EL0);
 	default:
 		BUG();
 		return 0;
@@ -953,25 +966,12 @@ static u64 __raw_read_system_reg(u32 sys_id)
 }
 
 /*
- * Park the CPU which doesn't have the capability as advertised
- * by the system.
+ * Check for CPU features that are used in early boot
+ * based on the Boot CPU value.
  */
-static void fail_incapable_cpu(char *cap_type,
-				 const struct arm64_cpu_capabilities *cap)
+static void check_early_cpu_features(void)
 {
-	int cpu = smp_processor_id();
-
-	pr_crit("CPU%d: missing %s : %s\n", cpu, cap_type, cap->desc);
-	/* Mark this CPU absent */
-	set_cpu_present(cpu, 0);
-
-	/* Check if we can park ourselves */
-	if (cpu_ops[cpu] && cpu_ops[cpu]->cpu_die)
-		cpu_ops[cpu]->cpu_die(cpu);
-	asm(
-	"1:	wfe\n"
-	"	wfi\n"
-	"	b	1b");
+	verify_cpu_asid_bits();
 }
 
 /*
@@ -986,6 +986,8 @@ void verify_local_cpu_capabilities(void)
 {
 	int i;
 	const struct arm64_cpu_capabilities *caps;
+
+	check_early_cpu_features();
 
 	/*
 	 * If we haven't computed the system capabilities, there is nothing
@@ -1002,8 +1004,11 @@ void verify_local_cpu_capabilities(void)
 		 * If the new CPU misses an advertised feature, we cannot proceed
 		 * further, park the cpu.
 		 */
-		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i]))
-			fail_incapable_cpu("arm64_features", &caps[i]);
+		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i])) {
+			pr_crit("CPU%d: missing feature: %s\n",
+					smp_processor_id(), caps[i].desc);
+			cpu_die_early();
+		}
 		if (caps[i].enable)
 			caps[i].enable((void *)&caps[i]);
 	}
@@ -1011,18 +1016,13 @@ void verify_local_cpu_capabilities(void)
 	for (i = 0, caps = arm64_hwcaps; caps[i].matches; i++) {
 		if (!cpus_have_hwcap(&caps[i]))
 			continue;
-		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i]))
-			fail_incapable_cpu("arm64_hwcaps", &caps[i]);
+		if (!feature_matches(__raw_read_system_reg(caps[i].sys_reg), &caps[i])) {
+			pr_crit("CPU%d: missing HWCAP: %s\n",
+					smp_processor_id(), caps[i].desc);
+			cpu_die_early();
+		}
 	}
 }
-
-#else	/* !CONFIG_HOTPLUG_CPU */
-
-static inline void set_sys_caps_initialised(void)
-{
-}
-
-#endif	/* CONFIG_HOTPLUG_CPU */
 
 static void __init setup_feature_capabilities(void)
 {

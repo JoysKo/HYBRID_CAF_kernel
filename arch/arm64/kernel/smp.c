@@ -68,6 +68,8 @@ EXPORT_PER_CPU_SYMBOL(cpu_number);
  * where to place its SVC stack
  */
 struct secondary_data secondary_data;
+/* Number of CPUs which aren't online, but looping in kernel text. */
+int cpus_stuck_in_kernel;
 
 enum ipi_msg_type {
 	IPI_RESCHEDULE,
@@ -78,6 +80,16 @@ enum ipi_msg_type {
 	IPI_WAKEUP,
 	IPI_CPU_BACKTRACE,
 };
+
+#ifdef CONFIG_HOTPLUG_CPU
+static int op_cpu_kill(unsigned int cpu);
+#else
+static inline int op_cpu_kill(unsigned int cpu)
+{
+	return -ENOSYS;
+}
+#endif
+
 
 /*
  * Boot a secondary CPU, and assign it the specified idle task.
@@ -96,6 +108,7 @@ static DECLARE_COMPLETION(cpu_running);
 int __cpu_up(unsigned int cpu, struct task_struct *idle)
 {
 	int ret;
+	long status;
 
 	/*
 	 * We need to tell the secondary core where to find its stack and the
@@ -105,6 +118,7 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	secondary_data.task = idle;
 #endif
 	secondary_data.stack = task_stack_page(idle) + THREAD_START_SP;
+	update_cpu_boot_status(CPU_MMU_OFF);
 	__flush_dcache_area(&secondary_data, sizeof(secondary_data));
 
 	/*
@@ -132,6 +146,32 @@ int __cpu_up(unsigned int cpu, struct task_struct *idle)
 	secondary_data.task = NULL;
 #endif
 	secondary_data.stack = NULL;
+	status = READ_ONCE(secondary_data.status);
+	if (ret && status) {
+
+		if (status == CPU_MMU_OFF)
+			status = READ_ONCE(__early_cpu_boot_status);
+
+		switch (status) {
+		default:
+			pr_err("CPU%u: failed in unknown state : 0x%lx\n",
+					cpu, status);
+			break;
+		case CPU_KILL_ME:
+			if (!op_cpu_kill(cpu)) {
+				pr_crit("CPU%u: died during early boot\n", cpu);
+				break;
+			}
+			/* Fall through */
+			pr_crit("CPU%u: may not have shut down cleanly\n", cpu);
+		case CPU_STUCK_IN_KERNEL:
+			pr_crit("CPU%u: is stuck in kernel\n", cpu);
+			cpus_stuck_in_kernel++;
+			break;
+		case CPU_PANIC_KERNEL:
+			panic("CPU%u detected unsupported configuration\n", cpu);
+		}
+	}
 
 	return ret;
 }
@@ -200,6 +240,9 @@ asmlinkage notrace void secondary_start_kernel(void)
 	 */
 	pr_debug("CPU%u: Booted secondary processor [%08x]\n",
 					 cpu, read_cpuid_id());
+	update_cpu_boot_status(CPU_BOOT_SUCCESS);
+	/* Make sure the status update is visible before we complete */
+	smp_wmb();
 	set_cpu_online(cpu, true);
 	complete(&cpu_running);
 
@@ -335,6 +378,30 @@ void __ref cpu_die(void)
 		     : : "r" (task_stack_page(current) + THREAD_START_SP));
 }
 #endif
+
+/*
+ * Kill the calling secondary CPU, early in bringup before it is turned
+ * online.
+ */
+void cpu_die_early(void)
+{
+	int cpu = smp_processor_id();
+
+	pr_crit("CPU%d: will not boot\n", cpu);
+
+	/* Mark this CPU absent */
+	set_cpu_present(cpu, 0);
+
+#ifdef CONFIG_HOTPLUG_CPU
+	update_cpu_boot_status(CPU_KILL_ME);
+	/* Check if we can park ourselves */
+	if (cpu_ops[cpu] && cpu_ops[cpu]->cpu_die)
+		cpu_ops[cpu]->cpu_die(cpu);
+#endif
+	update_cpu_boot_status(CPU_STUCK_IN_KERNEL);
+
+	cpu_park_loop();
+}
 
 static void __init hyp_mode_check(void)
 {
@@ -722,6 +789,13 @@ void arch_send_call_function_single_ipi(int cpu)
 {
 	smp_cross_call_common(cpumask_of(cpu), IPI_CALL_FUNC);
 }
+
+#ifdef CONFIG_ARM64_ACPI_PARKING_PROTOCOL
+void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
+{
+	smp_cross_call(mask, IPI_WAKEUP);
+}
+#endif
 
 #ifdef CONFIG_ARM64_ACPI_PARKING_PROTOCOL
 void arch_send_wakeup_ipi_mask(const struct cpumask *mask)

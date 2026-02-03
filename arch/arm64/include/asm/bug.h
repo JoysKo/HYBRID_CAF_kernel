@@ -20,6 +20,8 @@
 
 #include <asm/brk-imm.h>
 
+#define BUG_BRK_IMM			0x800
+
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 #define _BUGVERBOSE_LOCATION(file, line) __BUGVERBOSE_LOCATION(file, line)
 #define __BUGVERBOSE_LOCATION(file, line)				\

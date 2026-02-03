@@ -409,7 +409,7 @@ static void __init __map_memblock(pgd_t *pgd, phys_addr_t start, phys_addr_t end
 	}
 
 	/*
-	 * This block overlaps the kernel text/rodata mappings.
+	 * This block overlaps the kernel text mapping.
 	 * Map the portion(s) which don't overlap.
 	 */
 	if (start < kernel_start)
@@ -599,6 +599,19 @@ static bool dma_overlap(phys_addr_t start, phys_addr_t end)
 			return true;
 	}
 	return false;
+}
+
+static void __init map_kernel_chunk(pgd_t *pgd, void *va_start, void *va_end,
+				    pgprot_t prot)
+{
+	phys_addr_t pa_start = __pa(va_start);
+	unsigned long size = va_end - va_start;
+
+	BUG_ON(!PAGE_ALIGNED(pa_start));
+	BUG_ON(!PAGE_ALIGNED(size));
+
+	__create_pgd_mapping(pgd, pa_start, (unsigned long)va_start, size, prot,
+			     early_pgtable_alloc);
 }
 
 /*
@@ -1012,7 +1025,7 @@ static void remove_pud_table(pud_t *pud, unsigned long addr,
 					 * (for arm64). Not sure if the
 					 * function above can be called
 					 * concurrently. In doubt,
-					 * I am living it here for now,
+				 	* I am living it here for now,
 					 * but it probably can be removed.
 					 */
 					spin_lock(&init_mm.page_table_lock);
