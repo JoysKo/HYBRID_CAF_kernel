@@ -10,17 +10,19 @@
 #include <linux/pinctrl/pinctrl.h>
 #include <linux/kconfig.h>
 
-struct device;
 struct gpio_desc;
 struct of_phandle_args;
 struct device_node;
 struct seq_file;
+struct gpio_device;
 
 #ifdef CONFIG_GPIOLIB
 
 /**
  * struct gpio_chip - abstract a GPIO controller
- * @label: for diagnostics
+ * @label: a functional name for the GPIO device, such as a part
+ *	number or the name of the SoC IP-block implementing it.
+ * @gpiodev: the internal state holder, opaque struct
  * @parent: optional parent device providing the GPIOs
  * @cdev: class device used by sysfs interface (may be NULL)
  * @owner: helps prevent removal of modules exporting active GPIOs
@@ -107,6 +109,7 @@ struct seq_file;
  */
 struct gpio_chip {
 	const char		*label;
+	struct gpio_device	*gpiodev;
 	struct device		*parent;
 	struct device		*cdev;
 	struct module		*owner;
@@ -205,12 +208,21 @@ static inline int gpiochip_add(struct gpio_chip *chip)
 	return gpiochip_add_data(chip, NULL);
 }
 extern void gpiochip_remove(struct gpio_chip *chip);
+extern int devm_gpiochip_add_data(struct device *dev, struct gpio_chip *chip,
+				  void *data);
+extern void devm_gpiochip_remove(struct device *dev, struct gpio_chip *chip);
+
 extern struct gpio_chip *gpiochip_find(void *data,
 			      int (*match)(struct gpio_chip *chip, void *data));
 
 /* lock/unlock as IRQ */
 int gpiochip_lock_as_irq(struct gpio_chip *chip, unsigned int offset);
 void gpiochip_unlock_as_irq(struct gpio_chip *chip, unsigned int offset);
+bool gpiochip_line_is_irq(struct gpio_chip *chip, unsigned int offset);
+
+/* Line status inquiry for drivers */
+bool gpiochip_line_is_open_drain(struct gpio_chip *chip, unsigned int offset);
+bool gpiochip_line_is_open_source(struct gpio_chip *chip, unsigned int offset);
 
 /* get driver data */
 static inline void *gpiochip_get_data(struct gpio_chip *chip)

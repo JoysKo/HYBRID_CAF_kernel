@@ -16,6 +16,11 @@
 #include <linux/gpio/driver.h>
 #include <linux/gpio/machine.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/idr.h>
+#include <linux/cdev.h>
+#include <linux/fs.h>
+#include <linux/uaccess.h>
+#include <uapi/linux/gpio.h>
 
 #include "gpiolib.h"
 
@@ -41,6 +46,14 @@
 #else
 #define	extra_checks	0
 #endif
+
+/* Device and char device-related information */
+static DEFINE_IDA(gpio_ida);
+static dev_t gpio_devt;
+#define GPIO_DEV_MAX 256 /* 256 GPIO chip devices supported */
+static struct bus_type gpio_bus_type = {
+	.name = "gpio",
+};
 
 /* gpio_lock prevents conflicts during gpio_desc[] table updates.
  * While any GPIO is requested, its gpio_chip is not removable;
@@ -196,55 +209,43 @@ EXPORT_SYMBOL_GPL(gpiod_get_direction);
  */
 static int gpiochip_add_to_list(struct gpio_chip *chip)
 {
-	struct gpio_chip *iterator;
-	struct gpio_chip *previous = NULL;
+	struct gpio_chip *prev, *next;
 
 	if (list_empty(&gpio_chips)) {
+		/* initial entry in list */
 		list_add_tail(&chip->list, &gpio_chips);
 		return 0;
 	}
 
-	list_for_each_entry(iterator, &gpio_chips, list) {
-		if (iterator->base >= chip->base + chip->ngpio) {
-			/*
-			 * Iterator is the first GPIO chip so there is no
-			 * previous one
-			 */
-			if (!previous) {
-				goto found;
-			} else {
-				/*
-				 * We found a valid range(means
-				 * [base, base + ngpio - 1]) between previous
-				 * and iterator chip.
-				 */
-				if (previous->base + previous->ngpio
-						<= chip->base)
-					goto found;
-			}
-		}
-		previous = iterator;
-	}
-
-	/*
-	 * We are beyond the last chip in the list and iterator now
-	 * points to the head.
-	 * Let iterator point to the last chip in the list.
-	 */
-
-	iterator = list_last_entry(&gpio_chips, struct gpio_chip, list);
-	if (iterator->base + iterator->ngpio <= chip->base) {
-		list_add(&chip->list, &iterator->list);
+	next = list_entry(gpio_chips.next, struct gpio_chip, list);
+	if (chip->base + chip->ngpio <= next->base) {
+		/* add before first entry */
+		list_add(&chip->list, &gpio_chips);
 		return 0;
 	}
 
-	dev_err(chip->parent,
-	       "GPIO integer space overlap, cannot add chip\n");
-	return -EBUSY;
+	prev = list_entry(gpio_chips.prev, struct gpio_chip, list);
+	if (prev->base + prev->ngpio <= chip->base) {
+		/* add behind last entry */
+		list_add_tail(&chip->list, &gpio_chips);
+		return 0;
+	}
 
-found:
-	list_add_tail(&chip->list, &iterator->list);
-	return 0;
+	list_for_each_entry_safe(prev, next, &gpio_chips, list) {
+		/* at the end of the list */
+		if (&next->list == &gpio_chips)
+			break;
+
+		/* add between prev and next */
+		if (prev->base + prev->ngpio <= chip->base
+				&& chip->base + chip->ngpio <= next->base) {
+			list_add(&chip->list, &prev->list);
+			return 0;
+		}
+	}
+
+	dev_err(&chip->parent, "GPIO integer space overlap, cannot add chip\n");
+	return -EBUSY;
 }
 
 /**
@@ -297,8 +298,8 @@ static int gpiochip_set_desc_names(struct gpio_chip *gc)
 
 		gpio = gpio_name_to_desc(gc->names[i]);
 		if (gpio)
-			dev_warn(gc->parent, "Detected name collision for "
-				 "GPIO name '%s'\n",
+			dev_warn(&gc->gpiodev->dev,
+				 "Detected name collision for GPIO name '%s'\n",
 				 gc->names[i]);
 	}
 
@@ -307,6 +308,138 @@ static int gpiochip_set_desc_names(struct gpio_chip *gc)
 		gc->desc[i].name = gc->names[i];
 
 	return 0;
+}
+
+/**
+ * gpio_ioctl() - ioctl handler for the GPIO chardev
+ */
+static long gpio_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct gpio_device *gdev = filp->private_data;
+	struct gpio_chip *chip = gdev->chip;
+	int __user *ip = (int __user *)arg;
+
+	/* We fail any subsequent ioctl():s when the chip is gone */
+	if (!chip)
+		return -ENODEV;
+
+	/* Fill in the struct and pass to userspace */
+	if (cmd == GPIO_GET_CHIPINFO_IOCTL) {
+		struct gpiochip_info chipinfo;
+
+		strncpy(chipinfo.name, dev_name(&gdev->dev),
+			sizeof(chipinfo.name));
+		chipinfo.name[sizeof(chipinfo.name)-1] = '\0';
+		chipinfo.lines = chip->ngpio;
+		if (copy_to_user(ip, &chipinfo, sizeof(chipinfo)))
+			return -EFAULT;
+		return 0;
+	} else if (cmd == GPIO_GET_LINEINFO_IOCTL) {
+		struct gpioline_info lineinfo;
+		struct gpio_desc *desc;
+
+		if (copy_from_user(&lineinfo, ip, sizeof(lineinfo)))
+			return -EFAULT;
+		if (lineinfo.line_offset > gdev->ngpio)
+			return -EINVAL;
+
+		desc = &gdev->descs[lineinfo.line_offset];
+		if (desc->name) {
+			strncpy(lineinfo.name, desc->name,
+				sizeof(lineinfo.name));
+			lineinfo.name[sizeof(lineinfo.name)-1] = '\0';
+		} else {
+			lineinfo.name[0] = '\0';
+		}
+		if (desc->label) {
+			strncpy(lineinfo.consumer, desc->label,
+				sizeof(lineinfo.consumer));
+			lineinfo.consumer[sizeof(lineinfo.consumer)-1] = '\0';
+		} else {
+			lineinfo.consumer[0] = '\0';
+		}
+
+		/*
+		 * Userspace only need to know that the kernel is using
+		 * this GPIO so it can't use it.
+		 */
+		lineinfo.flags = 0;
+		if (test_bit(FLAG_REQUESTED, &desc->flags) ||
+		    test_bit(FLAG_IS_HOGGED, &desc->flags) ||
+		    test_bit(FLAG_USED_AS_IRQ, &desc->flags) ||
+		    test_bit(FLAG_EXPORT, &desc->flags) ||
+		    test_bit(FLAG_SYSFS, &desc->flags))
+			lineinfo.flags |= GPIOLINE_FLAG_KERNEL;
+		if (test_bit(FLAG_IS_OUT, &desc->flags))
+			lineinfo.flags |= GPIOLINE_FLAG_IS_OUT;
+		if (test_bit(FLAG_ACTIVE_LOW, &desc->flags))
+			lineinfo.flags |= GPIOLINE_FLAG_ACTIVE_LOW;
+		if (test_bit(FLAG_OPEN_DRAIN, &desc->flags))
+			lineinfo.flags |= GPIOLINE_FLAG_OPEN_DRAIN;
+		if (test_bit(FLAG_OPEN_SOURCE, &desc->flags))
+			lineinfo.flags |= GPIOLINE_FLAG_OPEN_SOURCE;
+
+		if (copy_to_user(ip, &lineinfo, sizeof(lineinfo)))
+			return -EFAULT;
+		return 0;
+	}
+	return -EINVAL;
+}
+
+/**
+ * gpio_chrdev_open() - open the chardev for ioctl operations
+ * @inode: inode for this chardev
+ * @filp: file struct for storing private data
+ * Returns 0 on success
+ */
+static int gpio_chrdev_open(struct inode *inode, struct file *filp)
+{
+	struct gpio_device *gdev = container_of(inode->i_cdev,
+					      struct gpio_device, chrdev);
+
+	/* Fail on open if the backing gpiochip is gone */
+	if (!gdev || !gdev->chip)
+		return -ENODEV;
+	get_device(&gdev->dev);
+	filp->private_data = gdev;
+	return 0;
+}
+
+/**
+ * gpio_chrdev_release() - close chardev after ioctl operations
+ * @inode: inode for this chardev
+ * @filp: file struct for storing private data
+ * Returns 0 on success
+ */
+static int gpio_chrdev_release(struct inode *inode, struct file *filp)
+{
+	struct gpio_device *gdev = container_of(inode->i_cdev,
+					      struct gpio_device, chrdev);
+
+	if (!gdev)
+		return -ENODEV;
+	put_device(&gdev->dev);
+	return 0;
+}
+
+
+static const struct file_operations gpio_fileops = {
+	.release = gpio_chrdev_release,
+	.open = gpio_chrdev_open,
+	.owner = THIS_MODULE,
+	.llseek = noop_llseek,
+	.unlocked_ioctl = gpio_ioctl,
+	.compat_ioctl = gpio_ioctl,
+};
+
+static void gpiodevice_release(struct device *dev)
+{
+	struct gpio_device *gdev = dev_get_drvdata(dev);
+
+	cdev_del(&gdev->chrdev);
+	list_del(&gdev->list);
+	ida_simple_remove(&gpio_ida, gdev->id);
+	kfree(gdev);
 }
 
 /**
@@ -461,13 +594,87 @@ void gpiochip_remove(struct gpio_chip *chip)
 	spin_unlock_irqrestore(&gpio_lock, flags);
 
 	if (requested)
-		dev_crit(chip->parent,
+		dev_crit(&chip->gpiodev->dev,
 			 "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
 
 	kfree(chip->desc);
 	chip->desc = NULL;
 }
 EXPORT_SYMBOL_GPL(gpiochip_remove);
+
+static void devm_gpio_chip_release(struct device *dev, void *res)
+{
+	struct gpio_chip *chip = *(struct gpio_chip **)res;
+
+	gpiochip_remove(chip);
+}
+
+static int devm_gpio_chip_match(struct device *dev, void *res, void *data)
+
+{
+	struct gpio_chip **r = res;
+
+	if (!r || !*r) {
+		WARN_ON(!r || !*r);
+		return 0;
+	}
+
+	return *r == data;
+}
+
+/**
+ * devm_gpiochip_add_data() - Resource manager piochip_add_data()
+ * @dev: the device pointer on which irq_chip belongs to.
+ * @chip: the chip to register, with chip->base initialized
+ * Context: potentially before irqs will work
+ *
+ * Returns a negative errno if the chip can't be registered, such as
+ * because the chip->base is invalid or already associated with a
+ * different chip.  Otherwise it returns zero as a success code.
+ *
+ * The gpio chip automatically be released when the device is unbound.
+ */
+int devm_gpiochip_add_data(struct device *dev, struct gpio_chip *chip,
+			   void *data)
+{
+	struct gpio_chip **ptr;
+	int ret;
+
+	ptr = devres_alloc(devm_gpio_chip_release, sizeof(*ptr),
+			     GFP_KERNEL);
+	if (!ptr)
+		return -ENOMEM;
+
+	ret = gpiochip_add_data(chip, data);
+	if (ret < 0) {
+		devres_free(ptr);
+		return ret;
+	}
+
+	*ptr = chip;
+	devres_add(dev, ptr);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devm_gpiochip_add_data);
+
+/**
+ * devm_gpiochip_remove() - Resource manager of gpiochip_remove()
+ * @dev: device for which which resource was allocated
+ * @chip: the chip to remove
+ *
+ * A gpio_chip with any GPIOs still requested may not be removed.
+ */
+void devm_gpiochip_remove(struct device *dev, struct gpio_chip *chip)
+{
+	int ret;
+
+	ret = devres_release(dev, devm_gpio_chip_release,
+			     devm_gpio_chip_match, chip);
+	if (!ret)
+		WARN_ON(ret);
+}
+EXPORT_SYMBOL_GPL(devm_gpiochip_remove);
 
 /**
  * gpiochip_find() - iterator for locating a specific gpio_chip
@@ -1526,7 +1733,7 @@ void gpiod_set_raw_value(struct gpio_desc *desc, int value)
 {
 	if (!desc)
 		return;
-	/* Should be using gpio_set_value_cansleep() */
+	/* Should be using gpiod_set_value_cansleep() */
 	WARN_ON(desc->chip->can_sleep);
 	_gpiod_set_raw_value(desc, value);
 }
@@ -1547,7 +1754,7 @@ void gpiod_set_value(struct gpio_desc *desc, int value)
 {
 	if (!desc)
 		return;
-	/* Should be using gpio_set_value_cansleep() */
+	/* Should be using gpiod_set_value_cansleep() */
 	WARN_ON(desc->chip->can_sleep);
 	if (test_bit(FLAG_ACTIVE_LOW, &desc->flags))
 		value = !value;
@@ -1673,6 +1880,33 @@ void gpiochip_unlock_as_irq(struct gpio_chip *chip, unsigned int offset)
 	clear_bit(FLAG_USED_AS_IRQ, &chip->desc[offset].flags);
 }
 EXPORT_SYMBOL_GPL(gpiochip_unlock_as_irq);
+
+bool gpiochip_line_is_irq(struct gpio_chip *chip, unsigned int offset)
+{
+	if (offset >= chip->ngpio)
+		return false;
+
+	return test_bit(FLAG_USED_AS_IRQ, &chip->gpiodev->descs[offset].flags);
+}
+EXPORT_SYMBOL_GPL(gpiochip_line_is_irq);
+
+bool gpiochip_line_is_open_drain(struct gpio_chip *chip, unsigned int offset)
+{
+	if (offset >= chip->ngpio)
+		return false;
+
+	return test_bit(FLAG_OPEN_DRAIN, &chip->gpiodev->descs[offset].flags);
+}
+EXPORT_SYMBOL_GPL(gpiochip_line_is_open_drain);
+
+bool gpiochip_line_is_open_source(struct gpio_chip *chip, unsigned int offset)
+{
+	if (offset >= chip->ngpio)
+		return false;
+
+	return test_bit(FLAG_OPEN_SOURCE, &chip->gpiodev->descs[offset].flags);
+}
+EXPORT_SYMBOL_GPL(gpiochip_line_is_open_source);
 
 /**
  * gpiod_get_raw_value_cansleep() - return a gpio's raw value

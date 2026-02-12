@@ -127,6 +127,16 @@ config GPIO_AMDPT
 	  driver for GPIO functionality on Promontory IOHub
 	  Require ACPI ASL code to enumerate as a platform device.
 
+config GPIO_ATH79
+	tristate "Atheros AR71XX/AR724X/AR913X GPIO support"
+	default y if ATH79
+	depends on ATH79 || COMPILE_TEST
+	select GPIO_GENERIC
+	select GPIOLIB_IRQCHIP
+	help
+	  Select this option to enable GPIO driver for
+	  Atheros AR71XX/AR724X/AR913X SoC devices.
+
 config GPIO_BCM_KONA
 	bool "Broadcom Kona GPIO"
 	depends on OF_GPIO && (ARCH_BCM_MOBILE || COMPILE_TEST)
@@ -257,9 +267,16 @@ config GPIO_LYNXPOINT
 
 config GPIO_MB86S7X
 	bool "GPIO support for Fujitsu MB86S7x Platforms"
-	depends on ARCH_MB86S7X
+	depends on ARCH_MB86S7X || COMPILE_TEST
 	help
 	  Say yes here to support the GPIO controller in Fujitsu MB86S70 SoCs.
+
+config GPIO_MENZ127
+	tristate "MEN 16Z127 GPIO support"
+	depends on MCB
+	select GPIO_GENERIC
+	help
+	 Say yes here to support the MEN 16Z127 GPIO Controller
 
 config GPIO_MM_LANTIQ
 	bool "Lantiq Memory mapped GPIOs"
@@ -271,7 +288,7 @@ config GPIO_MM_LANTIQ
 
 config GPIO_MOXART
 	bool "MOXART GPIO support"
-	depends on ARCH_MOXART
+	depends on ARCH_MOXART || COMPILE_TEST
 	select GPIO_GENERIC
 	help
 	  Select this option to enable GPIO driver for
@@ -359,7 +376,7 @@ config GPIO_QPNP_PIN_DEBUG
 
 config GPIO_RCAR
 	tristate "Renesas R-Car GPIO"
-	depends on ARCH_SHMOBILE || COMPILE_TEST
+	depends on ARCH_RENESAS || COMPILE_TEST
 	select GPIOLIB_IRQCHIP
 	help
 	  Say yes here to support GPIO on Renesas R-Car SoCs.
@@ -399,6 +416,14 @@ config GPIO_TB10X
 	bool
 	select GENERIC_IRQ_CHIP
 	select OF_GPIO
+
+config GPIO_TS4800
+	tristate "TS-4800 DIO blocks and compatibles"
+	depends on OF_GPIO
+	depends on SOC_IMX51 || COMPILE_TEST
+	select GPIO_GENERIC
+	help
+	  This driver support TS-4800 FPGA GPIO controllers.
 
 config GPIO_TZ1090
 	bool "Toumaz Xenif TZ1090 GPIO support"
@@ -453,6 +478,7 @@ config GPIO_XGENE_SB
 	tristate "APM X-Gene GPIO standby controller support"
 	depends on ARCH_XGENE && OF_GPIO
 	select GPIO_GENERIC
+	select GPIOLIB_IRQCHIP
 	help
 	  This driver supports the GPIO block within the APM X-Gene
 	  Standby Domain. Say yes here to enable the GPIO functionality.
@@ -723,6 +749,14 @@ config GPIO_SX150X
 	  8 bits:  sx1508q
 	  16 bits: sx1509q
 
+config GPIO_TPIC2810
+	tristate "TPIC2810 8-Bit I2C GPO expander"
+	help
+	  Say yes here to enable the GPO driver for the TI TPIC2810 chip.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called gpio-tpic2810.
+
 endmenu
 
 menu "MFD GPIO expanders"
@@ -865,6 +899,13 @@ config GPIO_TIMBERDALE
 	---help---
 	Add support for the GPIO IP in the timberdale FPGA.
 
+config GPIO_TPS65218
+	tristate "TPS65218 GPIO"
+	depends on MFD_TPS65218
+	help
+	  Select this option to enable GPIO driver for the TPS65218
+	  chip family.
+
 config GPIO_TPS6586X
 	bool "TPS6586X GPIO"
 	depends on MFD_TPS6586X
@@ -881,7 +922,7 @@ config GPIO_TPS65910
 
 config GPIO_TPS65912
 	tristate "TI TPS65912 GPIO"
-	depends on (MFD_TPS65912_I2C || MFD_TPS65912_SPI)
+	depends on MFD_TPS65912
 	help
 	  This driver supports TPS65912 gpio chip
 
@@ -1031,6 +1072,12 @@ config GPIO_MC33880
 	help
 	  SPI driver for Freescale MC33880 high-side/low-side switch.
 	  This provides GPIO interface supporting inputs and outputs.
+
+config GPIO_PISOSR
+	tristate "Generic parallel-in/serial-out shift register"
+	help
+	  GPIO driver for SPI compatible parallel-in/serial-out shift
+	  registers. These are input only devices.
 
 endmenu
 

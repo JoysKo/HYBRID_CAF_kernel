@@ -719,6 +719,8 @@ EXPORT_SYMBOL_GPL(gpiod_unexport);
 int gpiochip_sysfs_register(struct gpio_chip *chip)
 {
 	struct device	*dev;
+	struct device	*parent;
+	struct gpio_device *gdev = chip->gpiodev;
 
 	/*
 	 * Many systems add gpio chips for SOC support very early,
@@ -729,8 +731,17 @@ int gpiochip_sysfs_register(struct gpio_chip *chip)
 	if (!gpio_class.p)
 		return 0;
 
+	/*
+	 * For sysfs backward compatibility we need to preserve this
+	 * preferred parenting to the gpio_chip parent field, if set.
+	 */
+	if (chip->parent)
+		parent = chip->parent;
+	else
+		parent = &gdev->dev;
+
 	/* use chip->base for the ID; it's already known to be unique */
-	dev = device_create_with_groups(&gpio_class, chip->parent,
+	dev = device_create_with_groups(&gpio_class, parent,
 					MKDEV(0, 0),
 					chip, gpiochip_groups,
 					"gpiochip%d", chip->base);

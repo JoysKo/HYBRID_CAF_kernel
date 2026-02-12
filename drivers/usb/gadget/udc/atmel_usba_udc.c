@@ -25,8 +25,6 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 
-#include <asm/gpio.h>
-
 #include "atmel_usba_udc.h"
 #define USBA_VBUS_IRQFLAGS (IRQF_ONESHOT \
 			   | IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING)
