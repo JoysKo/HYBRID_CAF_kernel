@@ -167,13 +167,10 @@ static void devm_memremap_pages_release(struct device *dev, void *res)
 
 void *devm_memremap_pages(struct device *dev, struct resource *res)
 {
-<<<<<<< ours
-=======
 	int is_ram = region_intersects(res->start, resource_size(res),
 				       IORESOURCE_SYSTEM_RAM, IORES_DESC_NONE);
 	resource_size_t key, align_start, align_size;
 	struct dev_pagemap *pgmap;
->>>>>>> theirs
 	struct page_map *page_map;
 	int error, nid, is_ram;
 

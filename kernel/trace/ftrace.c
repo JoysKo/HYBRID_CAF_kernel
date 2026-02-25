@@ -2874,25 +2874,6 @@ ops_references_rec(struct ftrace_ops *ops, struct dyn_ftrace *rec)
 	return 1;
 }
 
-<<<<<<< ours
-static int referenced_filters(struct dyn_ftrace *rec)
-{
-	struct ftrace_ops *ops;
-	int cnt = 0;
-
-	for (ops = ftrace_ops_list; ops != &ftrace_list_end; ops = ops->next) {
-		if (ops_references_rec(ops, rec)) {
-			cnt++;
-			if (ops->flags & FTRACE_OPS_FL_SAVE_REGS)
-				rec->flags |= FTRACE_FL_REGS;
-		}
-	}
-
-	return cnt;
-}
-
-=======
->>>>>>> theirs
 static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 {
 	struct ftrace_page *pg;
@@ -2927,13 +2908,7 @@ static int ftrace_update_code(struct module *mod, struct ftrace_page *new_pgs)
 				return -1;
 
 			p = &pg->records[i];
-<<<<<<< ours
-			if (test)
-				cnt += referenced_filters(p);
-			p->flags += cnt;
-=======
 			p->flags = rec_flags;
->>>>>>> theirs
 
 			/*
 			 * Do the initial record conversion from mcount jump
@@ -5230,49 +5205,7 @@ void ftrace_reset_array_ops(struct trace_array *tr)
 	tr->ops->func = ftrace_stub;
 }
 
-<<<<<<< ours
-static void
-ftrace_ops_control_func(unsigned long ip, unsigned long parent_ip,
-			struct ftrace_ops *op, struct pt_regs *regs)
-{
-	if (unlikely(trace_recursion_test(TRACE_CONTROL_BIT)))
-		return;
-
-	/*
-	 * Some of the ops may be dynamically allocated,
-	 * they must be freed after a synchronize_sched().
-	 */
-	preempt_disable_notrace();
-	trace_recursion_set(TRACE_CONTROL_BIT);
-
-	/*
-	 * Control funcs (perf) uses RCU. Only trace if
-	 * RCU is currently active.
-	 */
-	if (!rcu_is_watching())
-		goto out;
-
-	do_for_each_ftrace_op(op, ftrace_control_list) {
-		if (!(op->flags & FTRACE_OPS_FL_STUB) &&
-		    !ftrace_function_local_disabled(op) &&
-		    ftrace_ops_test(op, ip, regs))
-			op->func(ip, parent_ip, op, regs);
-	} while_for_each_ftrace_op(op);
- out:
-	trace_recursion_clear(TRACE_CONTROL_BIT);
-	preempt_enable_notrace();
-}
-
-static struct ftrace_ops control_ops = {
-	.func	= ftrace_ops_control_func,
-	.flags	= FTRACE_OPS_FL_RECURSION_SAFE | FTRACE_OPS_FL_INITIALIZED,
-	INIT_OPS_HASH(control_ops)
-};
-
-static nokprobe_inline void
-=======
 static inline void
->>>>>>> theirs
 __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 		       struct ftrace_ops *ignored, struct pt_regs *regs)
 {
@@ -5354,14 +5287,10 @@ static void ftrace_ops_assist_func(unsigned long ip, unsigned long parent_ip,
 {
 	int bit;
 
-<<<<<<< ours
-	bit = trace_test_and_set_recursion(TRACE_LIST_START);
-=======
 	if ((op->flags & FTRACE_OPS_FL_RCU) && !rcu_is_watching())
 		return;
 
 	bit = trace_test_and_set_recursion(TRACE_LIST_START, TRACE_LIST_MAX);
->>>>>>> theirs
 	if (bit < 0)
 		return;
 
