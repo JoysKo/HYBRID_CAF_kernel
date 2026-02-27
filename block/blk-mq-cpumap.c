@@ -31,7 +31,7 @@ static int get_first_sibling(unsigned int cpu)
 	return cpu;
 }
 
-static int blk_mq_update_queue_map(unsigned int *map,
+int blk_mq_update_queue_map(unsigned int *map,
 		unsigned int nr_queues, const struct cpumask *online_mask)
 {
 	unsigned int i, nr_cpus, nr_uniq_cpus, queue, first_sibling;
