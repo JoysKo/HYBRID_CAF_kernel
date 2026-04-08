@@ -108,4 +108,10 @@ config LEDS_TRIGGER_CAMERA
 	  This enables direct flash/torch on/off by the driver, kernel space.
 	  If unsure, say Y.
 
+config LEDS_TRIGGER_CUSTOM_NOTIFY
+    tristate "LED Trigger for custom notifications"
+    default y
+    help
+      This allows LEDs to be controlled by custom notification events
+
 endif # LEDS_TRIGGERS
