@@ -53,8 +53,8 @@ static u8 ipvlan_get_v4_hash(const void *iaddr)
 	       IPVLAN_HASH_MASK;
 }
 
-struct ipvl_addr *ipvlan_ht_addr_lookup(const struct ipvl_port *port,
-					const void *iaddr, bool is_v6)
+static struct ipvl_addr *ipvlan_ht_addr_lookup(const struct ipvl_port *port,
+					       const void *iaddr, bool is_v6)
 {
 	struct ipvl_addr *addr;
 	u8 hash;
@@ -266,20 +266,25 @@ static int ipvlan_rcv_frame(struct ipvl_addr *addr, struct sk_buff **pskb,
 	struct sk_buff *skb = *pskb;
 
 	len = skb->len + ETH_HLEN;
-	if (unlikely(!(dev->flags & IFF_UP))) {
-		kfree_skb(skb);
-		goto out;
+	/* Only packets exchanged between two local slaves need to have
+	 * device-up check as well as skb-share check.
+	 */
+	if (local) {
+		if (unlikely(!(dev->flags & IFF_UP))) {
+			kfree_skb(skb);
+			goto out;
+		}
+
+		skb = skb_share_check(skb, GFP_ATOMIC);
+		if (!skb)
+			goto out;
+
+		*pskb = skb;
 	}
-
-	skb = skb_share_check(skb, GFP_ATOMIC);
-	if (!skb)
-		goto out;
-
-	*pskb = skb;
 	skb->dev = dev;
-	skb->pkt_type = PACKET_HOST;
 
 	if (local) {
+		skb->pkt_type = PACKET_HOST;
 		if (dev_forward_skb(ipvlan->dev, skb) == NET_RX_SUCCESS)
 			success = true;
 	} else {
@@ -347,7 +352,7 @@ static struct ipvl_addr *ipvlan_addr_lookup(struct ipvl_port *port,
 	return addr;
 }
 
-static int ipvlan_process_v4_outbound(struct sk_buff *skb)
+static int ipvlan_process_v4_outbound(struct sk_buff *skb, bool xnet)
 {
 	const struct iphdr *ip4h = ip_hdr(skb);
 	struct net_device *dev = skb->dev;
@@ -371,7 +376,7 @@ static int ipvlan_process_v4_outbound(struct sk_buff *skb)
 		ip_rt_put(rt);
 		goto err;
 	}
-	skb_dst_drop(skb);
+	skb_scrub_packet(skb, xnet);
 	skb_dst_set(skb, &rt->dst);
 
 	memset(IPCB(skb), 0, sizeof(*IPCB(skb)));
@@ -389,7 +394,7 @@ out:
 	return ret;
 }
 
-static int ipvlan_process_v6_outbound(struct sk_buff *skb)
+static int ipvlan_process_v6_outbound(struct sk_buff *skb, bool xnet)
 {
 	const struct ipv6hdr *ip6h = ipv6_hdr(skb);
 	struct net_device *dev = skb->dev;
@@ -412,7 +417,7 @@ static int ipvlan_process_v6_outbound(struct sk_buff *skb)
 		dst_release(dst);
 		goto err;
 	}
-	skb_dst_drop(skb);
+	skb_scrub_packet(skb, xnet);
 	skb_dst_set(skb, dst);
 
 	memset(IP6CB(skb), 0, sizeof(*IP6CB(skb)));
@@ -430,8 +435,7 @@ out:
 	return ret;
 }
 
-static int ipvlan_process_outbound(struct sk_buff *skb,
-				   const struct ipvl_dev *ipvlan)
+static int ipvlan_process_outbound(struct sk_buff *skb, bool xnet)
 {
 	struct ethhdr *ethh = eth_hdr(skb);
 	int ret = NET_XMIT_DROP;
@@ -457,9 +461,9 @@ static int ipvlan_process_outbound(struct sk_buff *skb,
 	}
 
 	if (skb->protocol == htons(ETH_P_IPV6))
-		ret = ipvlan_process_v6_outbound(skb);
+		ret = ipvlan_process_v6_outbound(skb, xnet);
 	else if (skb->protocol == htons(ETH_P_IP))
-		ret = ipvlan_process_v4_outbound(skb);
+		ret = ipvlan_process_v4_outbound(skb, xnet);
 	else {
 		pr_warn_ratelimited("Dropped outbound packet type=%x\n",
 				    ntohs(skb->protocol));
@@ -495,6 +499,7 @@ static int ipvlan_xmit_mode_l3(struct sk_buff *skb, struct net_device *dev)
 	void *lyr3h;
 	struct ipvl_addr *addr;
 	int addr_type;
+	bool xnet;
 
 	lyr3h = ipvlan_get_L3_hdr(skb, &addr_type);
 	if (!lyr3h)
@@ -505,8 +510,9 @@ static int ipvlan_xmit_mode_l3(struct sk_buff *skb, struct net_device *dev)
 		return ipvlan_rcv_frame(addr, &skb, true);
 
 out:
+	xnet = !net_eq(dev_net(skb->dev), dev_net(ipvlan->phy_dev));
 	skb->dev = ipvlan->phy_dev;
-	return ipvlan_process_outbound(skb, ipvlan);
+	return ipvlan_process_outbound(skb, xnet);
 }
 
 static int ipvlan_xmit_mode_l2(struct sk_buff *skb, struct net_device *dev)

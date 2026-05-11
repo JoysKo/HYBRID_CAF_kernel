@@ -330,18 +330,16 @@ static void ath10k_debug_fw_stats_reset(struct ath10k *ar)
 {
 	spin_lock_bh(&ar->data_lock);
 	ar->debug.fw_stats_done = false;
-	ar->debug.fw_stats.extended = false;
 	ath10k_fw_stats_pdevs_free(&ar->debug.fw_stats.pdevs);
 	ath10k_fw_stats_vdevs_free(&ar->debug.fw_stats.vdevs);
 	ath10k_fw_stats_peers_free(&ar->debug.fw_stats.peers);
-	ath10k_fw_extd_stats_peers_free(&ar->debug.fw_stats.peers_extd);
 	spin_unlock_bh(&ar->data_lock);
 }
 
 void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct ath10k_fw_stats stats = {};
-	bool is_start, is_started, is_end;
+	bool is_start, is_started, is_end, peer_stats_svc;
 	size_t num_peers;
 	size_t num_vdevs;
 	int ret;
@@ -372,8 +370,12 @@ void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 	if (ath10k_peer_stats_enabled(ar))
 		ath10k_sta_update_rx_duration(ar, &stats);
 
+	peer_stats_svc = test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map);
+	if (peer_stats_svc)
+		ath10k_sta_update_rx_duration(ar, &stats.peers);
+
 	if (ar->debug.fw_stats_done) {
-		if (!ath10k_peer_stats_enabled(ar))
+		if (!peer_stats_svc)
 			ath10k_warn(ar, "received unsolicited stats update event\n");
 
 		goto free;
@@ -425,7 +427,6 @@ free:
 	ath10k_fw_stats_pdevs_free(&stats.pdevs);
 	ath10k_fw_stats_vdevs_free(&stats.vdevs);
 	ath10k_fw_stats_peers_free(&stats.peers);
-	ath10k_fw_extd_stats_peers_free(&stats.peers_extd);
 
 	spin_unlock_bh(&ar->data_lock);
 }
@@ -2429,7 +2430,7 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	struct ath10k *ar = file->private_data;
 	char buf[32];
 	size_t buf_size;
-	int ret;
+	int ret = 0;
 	bool val;
 	u32 pdev_param;
 
@@ -2447,6 +2448,10 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	if (ar->state != ATH10K_STATE_ON &&
 	    ar->state != ATH10K_STATE_RESTARTED) {
 		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags) ^ val))
 		goto exit;
 	}
 
@@ -2474,6 +2479,9 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	else
 		clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
 
+	ath10k_info(ar, "restarting firmware due to btcoex change");
+
+	queue_work(ar->workqueue, &ar->restart_work);
 	ret = count;
 
 exit:

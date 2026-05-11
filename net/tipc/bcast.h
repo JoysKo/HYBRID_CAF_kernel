@@ -45,7 +45,6 @@ struct tipc_nl_msg;
 struct tipc_node_map;
 
 int tipc_bcast_init(struct net *net);
-void tipc_bcast_reinit(struct net *net);
 void tipc_bcast_stop(struct net *net);
 void tipc_bcast_add_peer(struct net *net, struct tipc_link *l,
 			 struct sk_buff_head *xmitq);

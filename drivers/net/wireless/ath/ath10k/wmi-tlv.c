@@ -3937,8 +3937,6 @@ static const struct wmi_ops wmi_tlv_ops = {
 	.gen_adaptive_qcs = ath10k_wmi_tlv_op_gen_adaptive_qcs,
 	.fw_stats_fill = ath10k_wmi_main_op_fw_stats_fill,
 	.get_vdev_subtype = ath10k_wmi_op_get_vdev_subtype,
-	.gen_echo = ath10k_wmi_tlv_op_gen_echo,
-	.gen_set_pdev_mac_addr = ath10k_wmi_tlv_op_gen_set_base_mac_addr,
 };
 
 static const struct wmi_peer_flags_map wmi_tlv_peer_flags_map = {

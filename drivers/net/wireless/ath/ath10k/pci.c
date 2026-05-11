@@ -673,14 +673,14 @@ inline void ath10k_pci_write32(struct ath10k *ar, u32 offset, u32 value)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 
-	ar_pci->opaque_ctx.bus_ops->write32(ar, offset, value);
+	ar_pci->bus_ops->write32(ar, offset, value);
 }
 
 inline u32 ath10k_pci_read32(struct ath10k *ar, u32 offset)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 
-	return ar_pci->opaque_ctx.bus_ops->read32(ar, offset);
+	return ar_pci->bus_ops->read32(ar, offset);
 }
 
 u32 ath10k_pci_soc_read32(struct ath10k *ar, u32 addr)
@@ -855,7 +855,6 @@ static u32 ath10k_pci_targ_cpu_to_ce_addr(struct ath10k *ar, u32 addr)
 		break;
 	case ATH10K_HW_QCA9888:
 	case ATH10K_HW_QCA99X0:
-	case ATH10K_HW_QCA9984:
 	case ATH10K_HW_QCA4019:
 		val = ath10k_pci_read32(ar, PCIE_BAR_REG_ADDRESS);
 		break;
@@ -1508,7 +1507,7 @@ void ath10k_pci_hif_send_complete_check(struct ath10k *ar, u8 pipe,
 	ath10k_ce_per_engine_service(ar, pipe);
 }
 
-static void ath10k_pci_rx_retry_sync(struct ath10k *ar)
+void ath10k_pci_kill_tasklet(struct ath10k *ar)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 
@@ -1586,8 +1585,6 @@ void ath10k_pci_irq_msi_fw_mask(struct ath10k *ar)
 				   CORE_CTRL_ADDRESS, val);
 		break;
 	case ATH10K_HW_QCA99X0:
-	case ATH10K_HW_QCA9984:
-	case ATH10K_HW_QCA9888:
 	case ATH10K_HW_QCA4019:
 		/* TODO: Find appropriate register configuration for QCA99X0
 		 *  to mask irq/MSI.
@@ -1614,8 +1611,6 @@ static void ath10k_pci_irq_msi_fw_unmask(struct ath10k *ar)
 				   CORE_CTRL_ADDRESS, val);
 		break;
 	case ATH10K_HW_QCA99X0:
-	case ATH10K_HW_QCA9984:
-	case ATH10K_HW_QCA9888:
 	case ATH10K_HW_QCA4019:
 		/* TODO: Find appropriate register configuration for QCA99X0
 		 *  to unmask irq/MSI.
@@ -1991,7 +1986,7 @@ static int ath10k_bus_get_num_banks(struct ath10k *ar)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 
-	return ar_pci->opaque_ctx.bus_ops->get_num_banks(ar);
+	return ar_pci->bus_ops->get_num_banks(ar);
 }
 
 int ath10k_pci_init_config(struct ath10k *ar)
@@ -2883,7 +2878,7 @@ static void ath10k_pci_free_irq(struct ath10k *ar)
 	free_irq(ar_pci->pdev->irq, ar);
 }
 
-void ath10k_pci_init_napi(struct ath10k *ar)
+void ath10k_pci_init_irq_tasklets(struct ath10k *ar)
 {
 	netif_napi_add(&ar->napi_dev, &ar->napi, ath10k_pci_napi_poll,
 		       ATH10K_NAPI_BUDGET);
@@ -3134,13 +3129,13 @@ int ath10k_pci_setup_resource(struct ath10k *ar)
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 	int ret;
 
-	spin_lock_init(&ar_pci->opaque_ctx.ce_lock);
+	spin_lock_init(&ar_pci->ce_lock);
 	spin_lock_init(&ar_pci->ps_lock);
 
 	setup_timer(&ar_pci->rx_post_retry, ath10k_pci_rx_replenish_retry,
 		    (unsigned long)ar);
 
-	if (QCA_REV_6174(ar) || QCA_REV_9377(ar))
+	if (QCA_REV_6174(ar))
 		ath10k_pci_override_ce_config(ar);
 
 	ret = ath10k_pci_alloc_pipes(ar);
@@ -3155,8 +3150,7 @@ int ath10k_pci_setup_resource(struct ath10k *ar)
 
 void ath10k_pci_release_resource(struct ath10k *ar)
 {
-	ath10k_pci_rx_retry_sync(ar);
-	netif_napi_del(&ar->napi);
+	ath10k_pci_kill_tasklet(ar);
 	ath10k_pci_ce_deinit(ar);
 	ath10k_pci_free_pipes(ar);
 }
@@ -3245,18 +3239,13 @@ static int ath10k_pci_probe(struct pci_dev *pdev,
 	ar_pci->ar = ar;
 	ar->dev_id = pci_dev->device;
 	ar_pci->pci_ps = pci_ps;
-	ar_pci->opaque_ctx.bus_ops = &ath10k_pci_bus_ops;
-	ar_pci->pci_soft_reset = pci_soft_reset;
-	ar_pci->pci_hard_reset = pci_hard_reset;
+	ar_pci->bus_ops = &ath10k_pci_bus_ops;
 
 	ar->id.vendor = pdev->vendor;
 	ar->id.device = pdev->device;
 	ar->id.subsystem_vendor = pdev->subsystem_vendor;
 	ar->id.subsystem_device = pdev->subsystem_device;
 
-	spin_lock_init(&ar_pci->ps_lock);
-	setup_timer(&ar_pci->rx_post_retry, ath10k_pci_rx_replenish_retry,
-		    (unsigned long)ar);
 	setup_timer(&ar_pci->ps_timer, ath10k_pci_ps_timer,
 		    (unsigned long)ar);
 
@@ -3385,15 +3374,11 @@ static int __init ath10k_pci_init(void)
 		printk(KERN_ERR "failed to register ath10k pci driver: %d\n",
 		       ret1);
 
-	ret2 = ath10k_ahb_init();
-	if (ret2)
-		printk(KERN_ERR "ahb init failed: %d\n", ret2);
+	ret = ath10k_ahb_init();
+	if (ret)
+		printk(KERN_ERR "ahb init failed: %d\n", ret);
 
-	if (ret1 && ret2)
-		return ret1;
-
-	/* registered to at least one bus */
-	return 0;
+	return ret;
 }
 module_init(ath10k_pci_init);
 

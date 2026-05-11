@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Qualcomm Atheros, Inc.
+ * Copyright (c) 2012-2016 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -938,16 +938,16 @@ static int wil_cfg80211_disconnect(struct wiphy *wiphy,
 
 	if (!(test_bit(wil_status_fwconnecting, wil->status) ||
 	      test_bit(wil_status_fwconnected, wil->status))) {
-		wil_err(wil, "Disconnect was called while disconnected\n");
+		wil_err(wil, "%s: Disconnect was called while disconnected\n",
+			__func__);
 		return 0;
 	}
 
-	wil->locally_generated_disc = true;
 	rc = wmi_call(wil, WMI_DISCONNECT_CMDID, NULL, 0,
 		      WMI_DISCONNECT_EVENTID, NULL, 0,
 		      WIL6210_DISCONNECT_TO_MS);
 	if (rc)
-		wil_err(wil, "disconnect error %d\n", rc);
+		wil_err(wil, "%s: disconnect error %d\n", __func__, rc);
 
 	return rc;
 }
@@ -1337,18 +1337,23 @@ static int _wil_cfg80211_merge_extra_ies(const u8 *ies1, u16 ies1_len,
 
 static void wil_print_bcon_data(struct cfg80211_beacon_data *b)
 {
-	wil_hex_dump_misc("head     ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->head, b->head_len, true);
-	wil_hex_dump_misc("tail     ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->tail, b->tail_len, true);
-	wil_hex_dump_misc("BCON IE  ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->beacon_ies, b->beacon_ies_len, true);
-	wil_hex_dump_misc("PROBE    ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->probe_resp, b->probe_resp_len, true);
-	wil_hex_dump_misc("PROBE IE ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->proberesp_ies, b->proberesp_ies_len, true);
-	wil_hex_dump_misc("ASSOC IE ", DUMP_PREFIX_OFFSET, 16, 1,
-			  b->assocresp_ies, b->assocresp_ies_len, true);
+	struct ieee80211_vendor_ie *vie;
+	u32 oui;
+
+	/* IE tag at offset 0, length at offset 1 */
+	if (ie_len < 2 || 2 + ie[1] > ie_len)
+		return NULL;
+
+	if (ie[0] != WLAN_EID_VENDOR_SPECIFIC)
+		return cfg80211_find_ie(ie[0], ies, ies_len);
+
+	/* make sure there is room for 3 bytes OUI + 1 byte OUI type */
+	if (ie[1] < 4)
+		return NULL;
+	vie = (struct ieee80211_vendor_ie *)ie;
+	oui = vie->oui[0] << 16 | vie->oui[1] << 8 | vie->oui[2];
+	return cfg80211_find_vendor_ie(oui, vie->oui_type, ies,
+				       ies_len);
 }
 
 /* internal functions for device reset and starting AP */

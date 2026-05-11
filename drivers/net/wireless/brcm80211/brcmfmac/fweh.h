@@ -181,7 +181,50 @@ enum brcmf_fweh_event_code {
  */
 #define BRCM_OUI				"\x00\x10\x18"
 #define BCMILCP_BCM_SUBTYPE_EVENT		1
-#define BCMILCP_SUBTYPE_VENDOR_LONG		32769
+
+/**
+ * struct brcm_ethhdr - broadcom specific ether header.
+ *
+ * @subtype: subtype for this packet.
+ * @length: TODO: length of appended data.
+ * @version: version indication.
+ * @oui: OUI of this packet.
+ * @usr_subtype: subtype for this OUI.
+ */
+struct brcm_ethhdr {
+	__be16 subtype;
+	__be16 length;
+	u8 version;
+	u8 oui[3];
+	__be16 usr_subtype;
+} __packed;
+
+struct brcmf_event_msg_be {
+	__be16 version;
+	__be16 flags;
+	__be32 event_type;
+	__be32 status;
+	__be32 reason;
+	__be32 auth_type;
+	__be32 datalen;
+	u8 addr[ETH_ALEN];
+	char ifname[IFNAMSIZ];
+	u8 ifidx;
+	u8 bsscfgidx;
+} __packed;
+
+/**
+ * struct brcmf_event - contents of broadcom event packet.
+ *
+ * @eth: standard ether header.
+ * @hdr: broadcom specific ether header.
+ * @msg: common part of the actual event message.
+ */
+struct brcmf_event {
+	struct ethhdr eth;
+	struct brcm_ethhdr hdr;
+	struct brcmf_event_msg_be msg;
+} __packed;
 
 /**
  * struct brcm_ethhdr - broadcom specific ether header.
@@ -305,7 +348,7 @@ static inline void brcmf_fweh_process_skb(struct brcmf_pub *drvr,
 					  struct sk_buff *skb, u16 stype)
 {
 	struct brcmf_event *event_packet;
-	u16 subtype, usr_stype;
+	u16 usr_stype;
 
 	/* only process events when protocol matches */
 	if (skb->protocol != cpu_to_be16(ETH_P_LINK_CTL))
@@ -314,16 +357,8 @@ static inline void brcmf_fweh_process_skb(struct brcmf_pub *drvr,
 	if ((skb->len + ETH_HLEN) < sizeof(*event_packet))
 		return;
 
-	event_packet = (struct brcmf_event *)skb_mac_header(skb);
-
-	/* check subtype if needed */
-	if (unlikely(stype)) {
-		subtype = get_unaligned_be16(&event_packet->hdr.subtype);
-		if (subtype != stype)
-			return;
-	}
-
 	/* check for BRCM oui match */
+	event_packet = (struct brcmf_event *)skb_mac_header(skb);
 	if (memcmp(BRCM_OUI, &event_packet->hdr.oui[0],
 		   sizeof(event_packet->hdr.oui)))
 		return;

@@ -1040,6 +1040,10 @@ set_rcvbuf:
 		sk->sk_incoming_cpu = val;
 		break;
 
+	case SO_CNX_ADVICE:
+		if (val == 1)
+			dst_negative_advice(sk);
+		break;
 	default:
 		ret = -ENOPROTOOPT;
 		break;
@@ -1621,6 +1625,7 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 			newsk = NULL;
 			goto out;
 		}
+		RCU_INIT_POINTER(newsk->sk_reuseport_cb, NULL);
 
 		newsk->sk_err	   = 0;
 		newsk->sk_err_soft = 0;

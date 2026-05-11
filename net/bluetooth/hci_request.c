@@ -24,6 +24,8 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
+#include <net/bluetooth/mgmt.h>
+
 #include "smp.h"
 #include "hci_request.h"
 
@@ -258,6 +260,11 @@ static u8 update_white_list(struct hci_request *req)
 	return 0x01;
 }
 
+static bool scan_use_rpa(struct hci_dev *hdev)
+{
+	return hci_dev_test_flag(hdev, HCI_PRIVACY);
+}
+
 void hci_req_add_le_passive_scan(struct hci_request *req)
 {
 	struct hci_cp_le_set_scan_param param_cp;
@@ -272,7 +279,8 @@ void hci_req_add_le_passive_scan(struct hci_request *req)
 	 * advertising with our address will be correctly reported
 	 * by the controller.
 	 */
-	if (hci_update_random_address(req, false, &own_addr_type))
+	if (hci_update_random_address(req, false, scan_use_rpa(hdev),
+				      &own_addr_type))
 		return;
 
 	/* Adding or removing entries from the white list must
@@ -310,6 +318,29 @@ void hci_req_add_le_passive_scan(struct hci_request *req)
 		    &enable_cp);
 }
 
+static bool adv_use_rpa(struct hci_dev *hdev, uint32_t flags)
+{
+	/* If privacy is not enabled don't use RPA */
+	if (!hci_dev_test_flag(hdev, HCI_PRIVACY))
+		return false;
+
+	/* If basic privacy mode is enabled use RPA */
+	if (!hci_dev_test_flag(hdev, HCI_LIMITED_PRIVACY))
+		return true;
+
+	/* If limited privacy mode is enabled don't use RPA if we're
+	 * both discoverable and bondable.
+	 */
+	if ((flags & MGMT_ADV_FLAG_DISCOV) &&
+	    hci_dev_test_flag(hdev, HCI_BONDABLE))
+		return false;
+
+	/* We're neither bondable nor discoverable in the limited
+	 * privacy mode, therefore use RPA.
+	 */
+	return true;
+}
+
 static void set_random_addr(struct hci_request *req, bdaddr_t *rpa)
 {
 	struct hci_dev *hdev = req->hdev;
@@ -335,7 +366,7 @@ static void set_random_addr(struct hci_request *req, bdaddr_t *rpa)
 }
 
 int hci_update_random_address(struct hci_request *req, bool require_privacy,
-			      u8 *own_addr_type)
+			      bool use_rpa, u8 *own_addr_type)
 {
 	struct hci_dev *hdev = req->hdev;
 	int err;
@@ -344,7 +375,7 @@ int hci_update_random_address(struct hci_request *req, bool require_privacy,
 	 * current RPA has expired or there is something else than
 	 * the current RPA in use, then generate a new one.
 	 */
-	if (hci_dev_test_flag(hdev, HCI_PRIVACY)) {
+	if (use_rpa) {
 		int to;
 
 		*own_addr_type = ADDR_LE_DEV_RANDOM;

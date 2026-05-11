@@ -125,12 +125,10 @@ enum qca9377_chip_id_rev {
 /* QCA4019 1.0 definitions */
 #define QCA4019_HW_1_0_DEV_VERSION     0x01000000
 #define QCA4019_HW_1_0_FW_DIR          ATH10K_FW_DIR "/QCA4019/hw1.0"
+#define QCA4019_HW_1_0_FW_FILE         "firmware.bin"
+#define QCA4019_HW_1_0_OTP_FILE        "otp.bin"
 #define QCA4019_HW_1_0_BOARD_DATA_FILE "board.bin"
 #define QCA4019_HW_1_0_PATCH_LOAD_ADDR  0x1234
-
-/* WCN3990 1.0 definitions */
-#define WCN3990_HW_1_0_DEV_VERSION     ATH10K_HW_WCN3990
-#define WCN3990_HW_1_0_FW_DIR          "/etc/firmware"
 
 #define ATH10K_FW_API2_FILE		"firmware-2.bin"
 #define ATH10K_FW_API3_FILE		"firmware-3.bin"
@@ -227,8 +225,6 @@ enum ath10k_hw_rev {
 	ATH10K_HW_QCA9984,
 	ATH10K_HW_QCA9377,
 	ATH10K_HW_QCA4019,
-	ATH10K_HW_QCA9887,
-	ATH10K_HW_WCN3990,
 };
 
 struct ath10k_hw_regs {
@@ -266,108 +262,6 @@ extern const struct ath10k_hw_regs qca988x_regs;
 extern const struct ath10k_hw_regs qca6174_regs;
 extern const struct ath10k_hw_regs qca99x0_regs;
 extern const struct ath10k_hw_regs qca4019_regs;
-extern const struct ath10k_hw_regs wcn3990_regs;
-
-struct ath10k_hw_ce_regs_addr_map {
-	u32 msb;
-	u32 lsb;
-	u32 mask;
-	unsigned int (*set)(unsigned int offset,
-			    struct ath10k_hw_ce_regs_addr_map *addr_map);
-	unsigned int (*get)(unsigned int offset,
-			    struct ath10k_hw_ce_regs_addr_map *addr_map);
-};
-
-struct ath10k_hw_ce_ctrl1 {
-	u32 addr;
-	u32 hw_mask;
-	u32 sw_mask;
-	u32 hw_wr_mask;
-	u32 sw_wr_mask;
-	u32 reset_mask;
-	u32 reset;
-	struct ath10k_hw_ce_regs_addr_map *src_ring;
-	struct ath10k_hw_ce_regs_addr_map *dst_ring;
-	struct ath10k_hw_ce_regs_addr_map *dmax;
-};
-
-struct ath10k_hw_ce_cmd_halt {
-	u32 status_reset;
-	u32 msb;
-	u32 mask;
-	struct ath10k_hw_ce_regs_addr_map *status;
-};
-
-struct ath10k_hw_ce_host_ie {
-	u32 copy_complete_reset;
-	struct ath10k_hw_ce_regs_addr_map *copy_complete;
-};
-
-struct ath10k_hw_ce_host_wm_regs {
-	u32 dstr_lmask;
-	u32 dstr_hmask;
-	u32 srcr_lmask;
-	u32 srcr_hmask;
-	u32 cc_mask;
-	u32 wm_mask;
-	u32 addr;
-};
-
-struct ath10k_hw_ce_misc_regs {
-	u32 axi_err;
-	u32 dstr_add_err;
-	u32 srcr_len_err;
-	u32 dstr_mlen_vio;
-	u32 dstr_overflow;
-	u32 srcr_overflow;
-	u32 err_mask;
-	u32 addr;
-};
-
-struct ath10k_hw_ce_dst_src_wm_regs {
-	u32 addr;
-	u32 low_rst;
-	u32 high_rst;
-	struct ath10k_hw_ce_regs_addr_map *wm_low;
-	struct ath10k_hw_ce_regs_addr_map *wm_high;
-};
-
-struct ath10k_hw_ce_ctrl1_upd {
-	u32 shift;
-	u32 mask;
-	u32 enable;
-};
-
-struct ath10k_hw_ce_regs {
-	u32 sr_base_addr;
-	u32 sr_size_addr;
-	u32 dr_base_addr;
-	u32 dr_size_addr;
-	u32 ce_cmd_addr;
-	u32 misc_ie_addr;
-	u32 sr_wr_index_addr;
-	u32 dst_wr_index_addr;
-	u32 current_srri_addr;
-	u32 current_drri_addr;
-	u32 ddr_addr_for_rri_low;
-	u32 ddr_addr_for_rri_high;
-	u32 ce_rri_low;
-	u32 ce_rri_high;
-	u32 host_ie_addr;
-	struct ath10k_hw_ce_host_wm_regs *wm_regs;
-	struct ath10k_hw_ce_misc_regs *misc_regs;
-	struct ath10k_hw_ce_ctrl1 *ctrl1_regs;
-	struct ath10k_hw_ce_cmd_halt *cmd_halt;
-	struct ath10k_hw_ce_host_ie *host_ie;
-	struct ath10k_hw_ce_dst_src_wm_regs *wm_srcr;
-	struct ath10k_hw_ce_dst_src_wm_regs *wm_dstr;
-	struct ath10k_hw_ce_ctrl1_upd *upd;
-};
-
-extern struct ath10k_hw_ce_regs wcn3990_ce_regs;
-extern struct ath10k_hw_ce_regs qcax_ce_regs;
-
-extern struct fw_flag wcn3990_fw_flags;
 
 struct ath10k_hw_values {
 	u32 pdev_suspend_option;
@@ -383,9 +277,7 @@ struct ath10k_hw_values {
 extern const struct ath10k_hw_values qca988x_values;
 extern const struct ath10k_hw_values qca6174_values;
 extern const struct ath10k_hw_values qca99x0_values;
-extern const struct ath10k_hw_values qca9888_values;
 extern const struct ath10k_hw_values qca4019_values;
-extern const struct ath10k_hw_values wcn3990_values;
 
 void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
 				u32 cc, u32 rcc, u32 cc_prev, u32 rcc_prev);
@@ -398,7 +290,6 @@ void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
 #define QCA_REV_9984(ar) ((ar)->hw_rev == ATH10K_HW_QCA9984)
 #define QCA_REV_9377(ar) ((ar)->hw_rev == ATH10K_HW_QCA9377)
 #define QCA_REV_40XX(ar) ((ar)->hw_rev == ATH10K_HW_QCA4019)
-#define QCA_REV_WCN3990(ar) ((ar)->hw_rev == ATH10K_HW_WCN3990)
 
 /* Known peculiarities:
  *  - raw appears in nwifi decap, raw and nwifi appear in ethernet decap
@@ -654,8 +545,6 @@ ath10k_rx_desc_get_l3_pad_bytes(struct ath10k_hw_params *hw,
 #define TARGET_10_4_ACTIVE_PEERS		0
 
 #define TARGET_10_4_NUM_QCACHE_PEERS_MAX	512
-#define TARGET_10_4_QCACHE_ACTIVE_PEERS		50
-#define TARGET_10_4_QCACHE_ACTIVE_PEERS_PFC	35
 #define TARGET_10_4_NUM_OFFLOAD_PEERS		0
 #define TARGET_10_4_NUM_OFFLOAD_REORDER_BUFFS	0
 #define TARGET_10_4_NUM_PEER_KEYS		2

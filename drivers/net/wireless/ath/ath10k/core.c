@@ -178,10 +178,12 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.cck_rate_map_rev2 = true,
 		.channel_counters_freq_hz = 150000,
 		.max_probe_resp_desc_thres = 24,
+		.hw_4addr_pad = ATH10K_HW_4ADDR_PAD_BEFORE,
+		.num_msdu_desc = 1424,
+		.qcache_active_peers = 50,
 		.tx_chain_mask = 0xf,
 		.rx_chain_mask = 0xf,
 		.max_spatial_stream = 4,
-		.cal_data_len = 12064,
 		.fw = {
 			.dir = QCA99X0_HW_2_0_FW_DIR,
 			.board = QCA99X0_HW_2_0_BOARD_DATA_FILE,
@@ -320,6 +322,31 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.hw_ops = &wcn3990_ops,
 		.decap_align_bytes = 1,
 	},
+	{
+		.id = QCA4019_HW_1_0_DEV_VERSION,
+		.dev_id = 0,
+		.name = "qca4019 hw1.0",
+		.patch_load_addr = QCA4019_HW_1_0_PATCH_LOAD_ADDR,
+		.uart_pin = 7,
+		.otp_exe_param = 0x0010000,
+		.continuous_frag_desc = true,
+		.channel_counters_freq_hz = 125000,
+		.max_probe_resp_desc_thres = 24,
+		.hw_4addr_pad = ATH10K_HW_4ADDR_PAD_BEFORE,
+		.num_msdu_desc = 2500,
+		.qcache_active_peers = 35,
+		.tx_chain_mask = 0x3,
+		.rx_chain_mask = 0x3,
+		.max_spatial_stream = 2,
+		.fw = {
+			.dir = QCA4019_HW_1_0_FW_DIR,
+			.fw = QCA4019_HW_1_0_FW_FILE,
+			.otp = QCA4019_HW_1_0_OTP_FILE,
+			.board = QCA4019_HW_1_0_BOARD_DATA_FILE,
+			.board_size = QCA4019_BOARD_DATA_SZ,
+			.board_ext_size = QCA4019_BOARD_EXT_DATA_SZ,
+		},
+	},
 };
 
 static const char *const ath10k_core_fw_feature_str[] = {
@@ -337,8 +364,6 @@ static const char *const ath10k_core_fw_feature_str[] = {
 	[ATH10K_FW_FEATURE_SUPPORTS_ADAPTIVE_CCA] = "adaptive-cca",
 	[ATH10K_FW_FEATURE_MFP_SUPPORT] = "mfp",
 	[ATH10K_FW_FEATURE_PEER_FLOW_CONTROL] = "peer-flow-ctrl",
-	[ATH10K_FW_FEATURE_BTCOEX_PARAM] = "btcoex-param",
-	[ATH10K_FW_FEATURE_SKIP_NULL_FUNC_WAR] = "skip-null-func-war",
 };
 
 static unsigned int ath10k_core_get_fw_feature_str(char *buf,
@@ -1689,7 +1714,7 @@ static int ath10k_core_init_firmware_features(struct ath10k *ar)
 	case ATH10K_FW_WMI_OP_VERSION_10_1:
 	case ATH10K_FW_WMI_OP_VERSION_10_2:
 	case ATH10K_FW_WMI_OP_VERSION_10_2_4:
-		if (ath10k_peer_stats_enabled(ar)) {
+		if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map)) {
 			ar->max_num_peers = TARGET_10X_TX_STATS_NUM_PEERS;
 			ar->max_num_stations = TARGET_10X_TX_STATS_NUM_STATIONS;
 		} else {
@@ -1723,15 +1748,9 @@ static int ath10k_core_init_firmware_features(struct ath10k *ar)
 		ar->num_active_peers = TARGET_10_4_ACTIVE_PEERS;
 		ar->max_num_vdevs = TARGET_10_4_NUM_VDEVS;
 		ar->num_tids = TARGET_10_4_TGT_NUM_TIDS;
-		ar->fw_stats_req_mask = WMI_10_4_STAT_PEER |
-					WMI_10_4_STAT_PEER_EXTD;
+		ar->htt.max_num_pending_tx = ar->hw_params.num_msdu_desc;
+		ar->fw_stats_req_mask = WMI_STAT_PEER;
 		ar->max_spatial_stream = ar->hw_params.max_spatial_stream;
-
-		if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-			     fw_file->fw_features))
-			ar->htt.max_num_pending_tx = TARGET_10_4_NUM_MSDU_DESC_PFC;
-		else
-			ar->htt.max_num_pending_tx = TARGET_10_4_NUM_MSDU_DESC;
 		break;
 	case ATH10K_FW_WMI_OP_VERSION_UNSET:
 	case ATH10K_FW_WMI_OP_VERSION_MAX:
@@ -2358,26 +2377,9 @@ struct ath10k *ath10k_core_create(size_t priv_size, struct device *dev,
 		ar->hw_ce_regs = &qcax_ce_regs;
 		ar->hw_values = &qca99x0_values;
 		break;
-	case ATH10K_HW_QCA9888:
-		ar->regs = &qca99x0_regs;
-		ar->hw_ce_regs = &qcax_ce_regs;
-		ar->hw_values = &qca9888_values;
-		break;
 	case ATH10K_HW_QCA4019:
 		ar->regs = &qca4019_regs;
-		ar->hw_ce_regs = &qcax_ce_regs;
 		ar->hw_values = &qca4019_values;
-		break;
-	case ATH10K_HW_WCN3990:
-		ar->regs = &wcn3990_regs;
-		ar->hw_ce_regs = &wcn3990_ce_regs;
-		ar->hw_values = &wcn3990_values;
-		/* WCN3990 chip set is non bmi based */
-		ar->is_bmi = false;
-		ar->fw_flags = &wcn3990_fw_flags;
-		ar->shadow_reg_value = &wcn3990_shadow_reg_value;
-		ar->shadow_reg_address = &wcn3990_shadow_reg_address;
-		ar->rri_on_ddr = true;
 		break;
 	default:
 		ath10k_err(ar, "unsupported core hardware revision %d\n",

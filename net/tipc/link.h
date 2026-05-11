@@ -250,6 +250,20 @@ void tipc_link_set_active(struct tipc_link *l, bool active);
 void tipc_link_reset(struct tipc_link *l_ptr);
 int tipc_link_xmit(struct tipc_link *link,	struct sk_buff_head *list,
 		   struct sk_buff_head *xmitq);
+struct sk_buff_head *tipc_link_inputq(struct tipc_link *l);
+u16 tipc_link_rcv_nxt(struct tipc_link *l);
+u16 tipc_link_acked(struct tipc_link *l);
+u32 tipc_link_id(struct tipc_link *l);
+char *tipc_link_name(struct tipc_link *l);
+char tipc_link_plane(struct tipc_link *l);
+int tipc_link_prio(struct tipc_link *l);
+int tipc_link_window(struct tipc_link *l);
+unsigned long tipc_link_tolerance(struct tipc_link *l);
+void tipc_link_set_tolerance(struct tipc_link *l, u32 tol,
+			     struct sk_buff_head *xmitq);
+void tipc_link_set_prio(struct tipc_link *l, u32 prio,
+			struct sk_buff_head *xmitq);
+void tipc_link_set_abort_limit(struct tipc_link *l, u32 limit);
 void tipc_link_set_queue_limits(struct tipc_link *l, u32 window);
 
 int tipc_nl_link_dump(struct sk_buff *skb, struct netlink_callback *cb);

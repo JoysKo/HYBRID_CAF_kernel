@@ -428,24 +428,6 @@ static void dsa_switch_destroy(struct dsa_switch *ds)
 		hwmon_device_unregister(ds->hwmon_dev);
 #endif
 
-	/* Disable configuration of the CPU and DSA ports */
-	for (port = 0; port < DSA_MAX_PORTS; port++) {
-		if (!(dsa_is_cpu_port(ds, port) || dsa_is_dsa_port(ds, port)))
-			continue;
-
-		port_dn = cd->port_dn[port];
-		if (of_phy_is_fixed_link(port_dn)) {
-			phydev = of_phy_find_device(port_dn);
-			if (phydev) {
-				int addr = phydev->addr;
-
-				phy_device_free(phydev);
-				of_node_put(port_dn);
-				fixed_phy_del(addr);
-			}
-		}
-	}
-
 	/* Destroy network devices for physical switch ports. */
 	for (port = 0; port < DSA_MAX_PORTS; port++) {
 		if (!(ds->phys_port_mask & (1 << port)))
@@ -454,8 +436,20 @@ static void dsa_switch_destroy(struct dsa_switch *ds)
 		if (!ds->ports[port])
 			continue;
 
-		unregister_netdev(ds->ports[port]);
-		free_netdev(ds->ports[port]);
+		dsa_slave_destroy(ds->ports[port]);
+	}
+
+	/* Remove any fixed link PHYs */
+	for (port = 0; port < DSA_MAX_PORTS; port++) {
+		port_dn = cd->port_dn[port];
+		if (of_phy_is_fixed_link(port_dn)) {
+			phydev = of_phy_find_device(port_dn);
+			if (phydev) {
+				phy_device_free(phydev);
+				of_node_put(port_dn);
+				fixed_phy_unregister(phydev);
+			}
+		}
 	}
 
 	mdiobus_unregister(ds->slave_mii_bus);
@@ -954,7 +948,7 @@ static void dsa_remove_dst(struct dsa_switch_tree *dst)
 {
 	int i;
 
-    dst->master_netdev->dsa_ptr = NULL;
+	dst->master_netdev->dsa_ptr = NULL;
 
 	/* If we used a tagging format that doesn't have an ethertype
 	 * field, make sure that all packets from this point get sent

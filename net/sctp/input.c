@@ -221,7 +221,7 @@ int sctp_rcv(struct sk_buff *skb)
 		goto discard_release;
 
 	/* Create an SCTP packet structure. */
-	chunk = sctp_chunkify(skb, asoc, sk);
+	chunk = sctp_chunkify(skb, asoc, sk, GFP_ATOMIC);
 	if (!chunk)
 		goto discard_release;
 	SCTP_INPUT_CB(skb)->chunk = chunk;
@@ -858,28 +858,15 @@ static struct sctp_association *__sctp_lookup_association(
 	struct sctp_transport *transport;
 	int hash;
 
-	/* Optimize here for direct hit, only listening connections can
-	 * have wildcards anyways.
-	 */
-	hash = sctp_assoc_hashfn(net, ntohs(local->v4.sin_port),
-				 ntohs(peer->v4.sin_port));
-	head = &sctp_assoc_hashtable[hash];
-	read_lock(&head->lock);
-	sctp_for_each_hentry(epb, &head->chain) {
-		asoc = sctp_assoc(epb);
-		transport = sctp_assoc_is_match(asoc, net, local, peer);
-		if (transport)
-			goto hit;
-	}
+	t = sctp_addrs_lookup_transport(net, local, peer);
+	if (!t || !sctp_transport_hold(t))
+		goto out;
 
 	read_unlock(&head->lock);
 
 	return NULL;
 
-hit:
-	*pt = transport;
-	sctp_association_hold(asoc);
-	read_unlock(&head->lock);
+out:
 	return asoc;
 }
 
@@ -892,9 +879,9 @@ struct sctp_association *sctp_lookup_association(struct net *net,
 {
 	struct sctp_association *asoc;
 
-	local_bh_disable();
+	rcu_read_lock();
 	asoc = __sctp_lookup_association(net, laddr, paddr, transportp);
-	local_bh_enable();
+	rcu_read_unlock();
 
 	return asoc;
 }

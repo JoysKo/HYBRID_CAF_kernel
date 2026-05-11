@@ -26,7 +26,7 @@
 #include "qed_hsi.h"
 
 extern const struct qed_common_ops qed_common_ops_pass;
-#define DRV_MODULE_VERSION "8.4.0.0"
+#define DRV_MODULE_VERSION "8.7.0.0"
 
 #define MAX_HWFNS_PER_DEVICE    (4)
 #define NAME_SIZE 16
@@ -141,9 +141,6 @@ struct qed_hw_info {
 	u16				opaque_fid;
 	u16				ovlan;
 	u32				part_num[4];
-
-	u32				vendor_id;
-	u32				device_id;
 
 	unsigned char			hw_mac_addr[ETH_ALEN];
 
@@ -300,6 +297,9 @@ struct qed_hwfn {
 	/* Flag indicating whether interrupts are enabled or not*/
 	bool				b_int_enabled;
 	bool				b_int_requested;
+
+	/* True if the driver requests for the link */
+	bool				b_drv_link_init;
 
 	struct qed_mcp_info		*mcp_info;
 

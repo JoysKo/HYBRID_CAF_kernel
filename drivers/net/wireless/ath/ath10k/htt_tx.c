@@ -290,8 +290,7 @@ static void ath10k_htt_tx_free_txq(struct ath10k_htt *htt)
 	struct ath10k *ar = htt->ar;
 	size_t size;
 
-	if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-		      ar->running_fw->fw_file.fw_features))
+	if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->fw_features))
 		return;
 
 	size = sizeof(*htt->tx_q_state.vaddr);
@@ -306,8 +305,7 @@ static int ath10k_htt_tx_alloc_txq(struct ath10k_htt *htt)
 	size_t size;
 	int ret;
 
-	if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-		      ar->running_fw->fw_file.fw_features))
+	if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->fw_features))
 		return 0;
 
 	htt->tx_q_state.num_peers = HTT_TX_Q_STATE_NUM_PEERS;
@@ -364,17 +362,7 @@ int ath10k_htt_tx_alloc(struct ath10k_htt *htt)
 		goto free_frag_desc;
 	}
 
-	size = roundup_pow_of_two(htt->max_num_pending_tx);
-	ret = kfifo_alloc(&htt->txdone_fifo, size, GFP_KERNEL);
-	if (ret) {
-		ath10k_err(ar, "failed to alloc txdone fifo: %d\n", ret);
-		goto free_txq;
-	}
-
 	return 0;
-
-free_txq:
-	ath10k_htt_tx_free_txq(htt);
 
 free_frag_desc:
 	ath10k_htt_tx_free_cont_frag_desc(htt);
@@ -423,8 +411,6 @@ void ath10k_htt_tx_free(struct ath10k_htt *htt)
 
 	ath10k_htt_tx_free_txq(htt);
 	ath10k_htt_tx_free_cont_frag_desc(htt);
-	WARN_ON(!kfifo_is_empty(&htt->txdone_fifo));
-	kfifo_free(&htt->txdone_fifo);
 }
 
 void ath10k_htt_htc_tx_complete(struct ath10k *ar, struct sk_buff *skb)
@@ -627,15 +613,14 @@ int ath10k_htt_send_frag_desc_bank_cfg(struct ath10k_htt *htt)
 	info |= SM(htt->tx_q_state.type,
 		   HTT_FRAG_DESC_BANK_CFG_INFO_Q_STATE_DEPTH_TYPE);
 
-	if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-		     ar->running_fw->fw_file.fw_features))
+	if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->fw_features))
 		info |= HTT_FRAG_DESC_BANK_CFG_INFO_Q_STATE_VALID;
 
 	cfg = &cmd->frag_desc_bank_cfg;
 	cfg->info = info;
 	cfg->num_banks = 1;
 	cfg->desc_size = sizeof(struct htt_msdu_ext_desc);
-	ath10k_htt_set_bank_base_addr(cfg, htt->frag_desc.paddr);
+	cfg->bank_base_addrs[0] = __cpu_to_le32(htt->frag_desc.paddr);
 	cfg->bank_id[0].bank_min_id = 0;
 	cfg->bank_id[0].bank_max_id = __cpu_to_le16(htt->max_num_pending_tx -
 						    1);

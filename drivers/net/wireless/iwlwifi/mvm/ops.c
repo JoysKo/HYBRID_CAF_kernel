@@ -33,6 +33,7 @@
  *
  * Copyright(c) 2012 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
+ * Copyright(c) 2016 Intel Deutschland GmbH
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -201,169 +202,254 @@ static void iwl_mvm_nic_config(struct iwl_op_mode *op_mode)
 				       ~APMG_PS_CTRL_EARLY_PWR_OFF_RESET_DIS);
 }
 
+/**
+ * enum iwl_rx_handler_context context for Rx handler
+ * @RX_HANDLER_SYNC : this means that it will be called in the Rx path
+ *	which can't acquire mvm->mutex.
+ * @RX_HANDLER_ASYNC_LOCKED : If the handler needs to hold mvm->mutex
+ *	(and only in this case!), it should be set as ASYNC. In that case,
+ *	it will be called from a worker with mvm->mutex held.
+ * @RX_HANDLER_ASYNC_UNLOCKED : in case the handler needs to lock the
+ *	mutex itself, it will be called from a worker without mvm->mutex held.
+ */
+enum iwl_rx_handler_context {
+	RX_HANDLER_SYNC,
+	RX_HANDLER_ASYNC_LOCKED,
+	RX_HANDLER_ASYNC_UNLOCKED,
+};
+
+/**
+ * struct iwl_rx_handlers handler for FW notification
+ * @cmd_id: command id
+ * @context: see &iwl_rx_handler_context
+ * @fn: the function is called when notification is received
+ */
 struct iwl_rx_handlers {
 	u16 cmd_id;
-	bool async;
+	enum iwl_rx_handler_context context;
 	void (*fn)(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb);
 };
 
-#define RX_HANDLER(_cmd_id, _fn, _async)	\
-	{ .cmd_id = _cmd_id , .fn = _fn , .async = _async }
-#define RX_HANDLER_GRP(_grp, _cmd, _fn, _async)	\
-	{ .cmd_id = WIDE_ID(_grp, _cmd), .fn = _fn, .async = _async }
+#define RX_HANDLER(_cmd_id, _fn, _context)	\
+	{ .cmd_id = _cmd_id, .fn = _fn, .context = _context }
+#define RX_HANDLER_GRP(_grp, _cmd, _fn, _context)	\
+	{ .cmd_id = WIDE_ID(_grp, _cmd), .fn = _fn, .context = _context }
 
 /*
  * Handlers for fw notifications
  * Convention: RX_HANDLER(CMD_NAME, iwl_mvm_rx_CMD_NAME
  * This list should be in order of frequency for performance purposes.
  *
- * The handler can be SYNC - this means that it will be called in the Rx path
- * which can't acquire mvm->mutex. If the handler needs to hold mvm->mutex (and
- * only in this case!), it should be set as ASYNC. In that case, it will be
- * called from a worker with mvm->mutex held.
+ * The handler can be one from three contexts, see &iwl_rx_handler_context
  */
 static const struct iwl_rx_handlers iwl_mvm_rx_handlers[] = {
-	RX_HANDLER(TX_CMD, iwl_mvm_rx_tx_cmd, false),
-	RX_HANDLER(BA_NOTIF, iwl_mvm_rx_ba_notif, false),
+	RX_HANDLER(TX_CMD, iwl_mvm_rx_tx_cmd, RX_HANDLER_SYNC),
+	RX_HANDLER(BA_NOTIF, iwl_mvm_rx_ba_notif, RX_HANDLER_SYNC),
 
-	RX_HANDLER(BT_PROFILE_NOTIFICATION, iwl_mvm_rx_bt_coex_notif, true),
-	RX_HANDLER(BEACON_NOTIFICATION, iwl_mvm_rx_beacon_notif, true),
-	RX_HANDLER(STATISTICS_NOTIFICATION, iwl_mvm_rx_statistics, true),
+	RX_HANDLER(BT_PROFILE_NOTIFICATION, iwl_mvm_rx_bt_coex_notif,
+		   RX_HANDLER_ASYNC_LOCKED),
+	RX_HANDLER(BEACON_NOTIFICATION, iwl_mvm_rx_beacon_notif,
+		   RX_HANDLER_ASYNC_LOCKED),
+	RX_HANDLER(STATISTICS_NOTIFICATION, iwl_mvm_rx_statistics,
+		   RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER(ANTENNA_COUPLING_NOTIFICATION,
-		   iwl_mvm_rx_ant_coupling_notif, true),
+		   iwl_mvm_rx_ant_coupling_notif, RX_HANDLER_ASYNC_LOCKED),
 
-	RX_HANDLER(TIME_EVENT_NOTIFICATION, iwl_mvm_rx_time_event_notif, false),
-	RX_HANDLER(MCC_CHUB_UPDATE_CMD, iwl_mvm_rx_chub_update_mcc, true),
+	RX_HANDLER(BA_WINDOW_STATUS_NOTIFICATION_ID,
+		   iwl_mvm_window_status_notif, RX_HANDLER_SYNC),
 
-	RX_HANDLER(EOSP_NOTIFICATION, iwl_mvm_rx_eosp_notif, false),
+	RX_HANDLER(TIME_EVENT_NOTIFICATION, iwl_mvm_rx_time_event_notif,
+		   RX_HANDLER_SYNC),
+	RX_HANDLER(MCC_CHUB_UPDATE_CMD, iwl_mvm_rx_chub_update_mcc,
+		   RX_HANDLER_ASYNC_LOCKED),
+
+	RX_HANDLER(EOSP_NOTIFICATION, iwl_mvm_rx_eosp_notif, RX_HANDLER_SYNC),
 
 	RX_HANDLER(SCAN_ITERATION_COMPLETE,
-		   iwl_mvm_rx_lmac_scan_iter_complete_notif, false),
+		   iwl_mvm_rx_lmac_scan_iter_complete_notif, RX_HANDLER_SYNC),
 	RX_HANDLER(SCAN_OFFLOAD_COMPLETE,
-		   iwl_mvm_rx_lmac_scan_complete_notif, true),
+		   iwl_mvm_rx_lmac_scan_complete_notif,
+		   RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER(MATCH_FOUND_NOTIFICATION, iwl_mvm_rx_scan_match_found,
-		   false),
+		   RX_HANDLER_SYNC),
 	RX_HANDLER(SCAN_COMPLETE_UMAC, iwl_mvm_rx_umac_scan_complete_notif,
-		   true),
+		   RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER(SCAN_ITERATION_COMPLETE_UMAC,
-		   iwl_mvm_rx_umac_scan_iter_complete_notif, false),
+		   iwl_mvm_rx_umac_scan_iter_complete_notif, RX_HANDLER_SYNC),
 
-	RX_HANDLER(CARD_STATE_NOTIFICATION, iwl_mvm_rx_card_state_notif, false),
+	RX_HANDLER(CARD_STATE_NOTIFICATION, iwl_mvm_rx_card_state_notif,
+		   RX_HANDLER_SYNC),
 
 	RX_HANDLER(MISSED_BEACONS_NOTIFICATION, iwl_mvm_rx_missed_beacons_notif,
-		   false),
+		   RX_HANDLER_SYNC),
 
-	RX_HANDLER(REPLY_ERROR, iwl_mvm_rx_fw_error, false),
+	RX_HANDLER(REPLY_ERROR, iwl_mvm_rx_fw_error, RX_HANDLER_SYNC),
 	RX_HANDLER(PSM_UAPSD_AP_MISBEHAVING_NOTIFICATION,
-		   iwl_mvm_power_uapsd_misbehaving_ap_notif, false),
-	RX_HANDLER(DTS_MEASUREMENT_NOTIFICATION, iwl_mvm_temp_notif, true),
+		   iwl_mvm_power_uapsd_misbehaving_ap_notif, RX_HANDLER_SYNC),
+	RX_HANDLER(DTS_MEASUREMENT_NOTIFICATION, iwl_mvm_temp_notif,
+		   RX_HANDLER_ASYNC_LOCKED),
 	RX_HANDLER_GRP(PHY_OPS_GROUP, DTS_MEASUREMENT_NOTIF_WIDE,
-		       iwl_mvm_temp_notif, true),
+		       iwl_mvm_temp_notif, RX_HANDLER_ASYNC_LOCKED),
+	RX_HANDLER_GRP(PHY_OPS_GROUP, CT_KILL_NOTIFICATION,
+		       iwl_mvm_ct_kill_notif, RX_HANDLER_SYNC),
 
 	RX_HANDLER(TDLS_CHANNEL_SWITCH_NOTIFICATION, iwl_mvm_rx_tdls_notif,
-		   true),
-	RX_HANDLER(MFUART_LOAD_NOTIFICATION, iwl_mvm_rx_mfuart_notif, false),
-	RX_HANDLER(TOF_NOTIFICATION, iwl_mvm_tof_resp_handler, true),
-
+		   RX_HANDLER_ASYNC_LOCKED),
+	RX_HANDLER(MFUART_LOAD_NOTIFICATION, iwl_mvm_rx_mfuart_notif,
+		   RX_HANDLER_SYNC),
+	RX_HANDLER(TOF_NOTIFICATION, iwl_mvm_tof_resp_handler,
+		   RX_HANDLER_ASYNC_LOCKED),
+	RX_HANDLER_GRP(PROT_OFFLOAD_GROUP, STORED_BEACON_NTF,
+		       iwl_mvm_rx_stored_beacon_notif, RX_HANDLER_SYNC),
+	RX_HANDLER_GRP(DATA_PATH_GROUP, MU_GROUP_MGMT_NOTIF,
+		       iwl_mvm_mu_mimo_grp_notif, RX_HANDLER_SYNC),
 };
 #undef RX_HANDLER
 #undef RX_HANDLER_GRP
-#define CMD(x) [x] = #x
 
-static const char *const iwl_mvm_cmd_strings[REPLY_MAX + 1] = {
-	CMD(MVM_ALIVE),
-	CMD(REPLY_ERROR),
-	CMD(ECHO_CMD),
-	CMD(INIT_COMPLETE_NOTIF),
-	CMD(PHY_CONTEXT_CMD),
-	CMD(MGMT_MCAST_KEY),
-	CMD(TX_CMD),
-	CMD(TXPATH_FLUSH),
-	CMD(SHARED_MEM_CFG),
-	CMD(MAC_CONTEXT_CMD),
-	CMD(TIME_EVENT_CMD),
-	CMD(TIME_EVENT_NOTIFICATION),
-	CMD(BINDING_CONTEXT_CMD),
-	CMD(TIME_QUOTA_CMD),
-	CMD(NON_QOS_TX_COUNTER_CMD),
-	CMD(DC2DC_CONFIG_CMD),
-	CMD(NVM_ACCESS_CMD),
-	CMD(PHY_CONFIGURATION_CMD),
-	CMD(CALIB_RES_NOTIF_PHY_DB),
-	CMD(SET_CALIB_DEFAULT_CMD),
-	CMD(FW_PAGING_BLOCK_CMD),
-	CMD(ADD_STA_KEY),
-	CMD(ADD_STA),
-	CMD(FW_GET_ITEM_CMD),
-	CMD(REMOVE_STA),
-	CMD(LQ_CMD),
-	CMD(SCAN_OFFLOAD_CONFIG_CMD),
-	CMD(MATCH_FOUND_NOTIFICATION),
-	CMD(SCAN_OFFLOAD_REQUEST_CMD),
-	CMD(SCAN_OFFLOAD_ABORT_CMD),
-	CMD(HOT_SPOT_CMD),
-	CMD(SCAN_OFFLOAD_COMPLETE),
-	CMD(SCAN_OFFLOAD_UPDATE_PROFILES_CMD),
-	CMD(SCAN_ITERATION_COMPLETE),
-	CMD(POWER_TABLE_CMD),
-	CMD(WEP_KEY),
-	CMD(REPLY_RX_PHY_CMD),
-	CMD(REPLY_RX_MPDU_CMD),
-	CMD(BEACON_NOTIFICATION),
-	CMD(BEACON_TEMPLATE_CMD),
-	CMD(STATISTICS_CMD),
-	CMD(STATISTICS_NOTIFICATION),
-	CMD(EOSP_NOTIFICATION),
-	CMD(REDUCE_TX_POWER_CMD),
-	CMD(TX_ANT_CONFIGURATION_CMD),
-	CMD(D3_CONFIG_CMD),
-	CMD(D0I3_END_CMD),
-	CMD(PROT_OFFLOAD_CONFIG_CMD),
-	CMD(OFFLOADS_QUERY_CMD),
-	CMD(REMOTE_WAKE_CONFIG_CMD),
-	CMD(WOWLAN_PATTERNS),
-	CMD(WOWLAN_CONFIGURATION),
-	CMD(WOWLAN_TSC_RSC_PARAM),
-	CMD(WOWLAN_TKIP_PARAM),
-	CMD(WOWLAN_KEK_KCK_MATERIAL),
-	CMD(WOWLAN_GET_STATUSES),
-	CMD(WOWLAN_TX_POWER_PER_DB),
-	CMD(SCAN_OFFLOAD_PROFILES_QUERY_CMD),
-	CMD(SCAN_OFFLOAD_HOTSPOTS_CONFIG_CMD),
-	CMD(SCAN_OFFLOAD_HOTSPOTS_QUERY_CMD),
-	CMD(CARD_STATE_NOTIFICATION),
-	CMD(MISSED_BEACONS_NOTIFICATION),
-	CMD(BT_COEX_PRIO_TABLE),
-	CMD(BT_COEX_PROT_ENV),
-	CMD(BT_PROFILE_NOTIFICATION),
-	CMD(BT_CONFIG),
-	CMD(MCAST_FILTER_CMD),
-	CMD(BCAST_FILTER_CMD),
-	CMD(REPLY_SF_CFG_CMD),
-	CMD(REPLY_BEACON_FILTERING_CMD),
-	CMD(CMD_DTS_MEASUREMENT_TRIGGER),
-	CMD(DTS_MEASUREMENT_NOTIFICATION),
-	CMD(REPLY_THERMAL_MNG_BACKOFF),
-	CMD(MAC_PM_POWER_TABLE),
-	CMD(LTR_CONFIG),
-	CMD(BT_COEX_CI),
-	CMD(BT_COEX_UPDATE_SW_BOOST),
-	CMD(BT_COEX_UPDATE_CORUN_LUT),
-	CMD(BT_COEX_UPDATE_REDUCED_TXP),
-	CMD(PSM_UAPSD_AP_MISBEHAVING_NOTIFICATION),
-	CMD(ANTENNA_COUPLING_NOTIFICATION),
-	CMD(SCD_QUEUE_CFG),
-	CMD(SCAN_CFG_CMD),
-	CMD(SCAN_REQ_UMAC),
-	CMD(SCAN_ABORT_UMAC),
-	CMD(SCAN_COMPLETE_UMAC),
-	CMD(TDLS_CHANNEL_SWITCH_CMD),
-	CMD(TDLS_CHANNEL_SWITCH_NOTIFICATION),
-	CMD(TDLS_CONFIG_CMD),
-	CMD(MCC_UPDATE_CMD),
-	CMD(SCAN_ITERATION_COMPLETE_UMAC),
+/* Please keep this array *SORTED* by hex value.
+ * Access is done through binary search
+ */
+static const struct iwl_hcmd_names iwl_mvm_legacy_names[] = {
+	HCMD_NAME(MVM_ALIVE),
+	HCMD_NAME(REPLY_ERROR),
+	HCMD_NAME(ECHO_CMD),
+	HCMD_NAME(INIT_COMPLETE_NOTIF),
+	HCMD_NAME(PHY_CONTEXT_CMD),
+	HCMD_NAME(DBG_CFG),
+	HCMD_NAME(ANTENNA_COUPLING_NOTIFICATION),
+	HCMD_NAME(SCAN_CFG_CMD),
+	HCMD_NAME(SCAN_REQ_UMAC),
+	HCMD_NAME(SCAN_ABORT_UMAC),
+	HCMD_NAME(SCAN_COMPLETE_UMAC),
+	HCMD_NAME(TOF_CMD),
+	HCMD_NAME(TOF_NOTIFICATION),
+	HCMD_NAME(BA_WINDOW_STATUS_NOTIFICATION_ID),
+	HCMD_NAME(ADD_STA_KEY),
+	HCMD_NAME(ADD_STA),
+	HCMD_NAME(REMOVE_STA),
+	HCMD_NAME(FW_GET_ITEM_CMD),
+	HCMD_NAME(TX_CMD),
+	HCMD_NAME(SCD_QUEUE_CFG),
+	HCMD_NAME(TXPATH_FLUSH),
+	HCMD_NAME(MGMT_MCAST_KEY),
+	HCMD_NAME(WEP_KEY),
+	HCMD_NAME(SHARED_MEM_CFG),
+	HCMD_NAME(TDLS_CHANNEL_SWITCH_CMD),
+	HCMD_NAME(MAC_CONTEXT_CMD),
+	HCMD_NAME(TIME_EVENT_CMD),
+	HCMD_NAME(TIME_EVENT_NOTIFICATION),
+	HCMD_NAME(BINDING_CONTEXT_CMD),
+	HCMD_NAME(TIME_QUOTA_CMD),
+	HCMD_NAME(NON_QOS_TX_COUNTER_CMD),
+	HCMD_NAME(LQ_CMD),
+	HCMD_NAME(FW_PAGING_BLOCK_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_REQUEST_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_ABORT_CMD),
+	HCMD_NAME(HOT_SPOT_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_PROFILES_QUERY_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_HOTSPOTS_CONFIG_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_HOTSPOTS_QUERY_CMD),
+	HCMD_NAME(BT_COEX_UPDATE_SW_BOOST),
+	HCMD_NAME(BT_COEX_UPDATE_CORUN_LUT),
+	HCMD_NAME(BT_COEX_UPDATE_REDUCED_TXP),
+	HCMD_NAME(BT_COEX_CI),
+	HCMD_NAME(PHY_CONFIGURATION_CMD),
+	HCMD_NAME(CALIB_RES_NOTIF_PHY_DB),
+	HCMD_NAME(SCAN_OFFLOAD_COMPLETE),
+	HCMD_NAME(SCAN_OFFLOAD_UPDATE_PROFILES_CMD),
+	HCMD_NAME(SCAN_OFFLOAD_CONFIG_CMD),
+	HCMD_NAME(POWER_TABLE_CMD),
+	HCMD_NAME(PSM_UAPSD_AP_MISBEHAVING_NOTIFICATION),
+	HCMD_NAME(REPLY_THERMAL_MNG_BACKOFF),
+	HCMD_NAME(DC2DC_CONFIG_CMD),
+	HCMD_NAME(NVM_ACCESS_CMD),
+	HCMD_NAME(SET_CALIB_DEFAULT_CMD),
+	HCMD_NAME(BEACON_NOTIFICATION),
+	HCMD_NAME(BEACON_TEMPLATE_CMD),
+	HCMD_NAME(TX_ANT_CONFIGURATION_CMD),
+	HCMD_NAME(BT_CONFIG),
+	HCMD_NAME(STATISTICS_CMD),
+	HCMD_NAME(STATISTICS_NOTIFICATION),
+	HCMD_NAME(EOSP_NOTIFICATION),
+	HCMD_NAME(REDUCE_TX_POWER_CMD),
+	HCMD_NAME(CARD_STATE_CMD),
+	HCMD_NAME(CARD_STATE_NOTIFICATION),
+	HCMD_NAME(MISSED_BEACONS_NOTIFICATION),
+	HCMD_NAME(TDLS_CONFIG_CMD),
+	HCMD_NAME(MAC_PM_POWER_TABLE),
+	HCMD_NAME(TDLS_CHANNEL_SWITCH_NOTIFICATION),
+	HCMD_NAME(MFUART_LOAD_NOTIFICATION),
+	HCMD_NAME(RSS_CONFIG_CMD),
+	HCMD_NAME(SCAN_ITERATION_COMPLETE_UMAC),
+	HCMD_NAME(REPLY_RX_PHY_CMD),
+	HCMD_NAME(REPLY_RX_MPDU_CMD),
+	HCMD_NAME(BA_NOTIF),
+	HCMD_NAME(MCC_UPDATE_CMD),
+	HCMD_NAME(MCC_CHUB_UPDATE_CMD),
+	HCMD_NAME(MARKER_CMD),
+	HCMD_NAME(BT_COEX_PRIO_TABLE),
+	HCMD_NAME(BT_COEX_PROT_ENV),
+	HCMD_NAME(BT_PROFILE_NOTIFICATION),
+	HCMD_NAME(BCAST_FILTER_CMD),
+	HCMD_NAME(MCAST_FILTER_CMD),
+	HCMD_NAME(REPLY_SF_CFG_CMD),
+	HCMD_NAME(REPLY_BEACON_FILTERING_CMD),
+	HCMD_NAME(D3_CONFIG_CMD),
+	HCMD_NAME(PROT_OFFLOAD_CONFIG_CMD),
+	HCMD_NAME(OFFLOADS_QUERY_CMD),
+	HCMD_NAME(REMOTE_WAKE_CONFIG_CMD),
+	HCMD_NAME(MATCH_FOUND_NOTIFICATION),
+	HCMD_NAME(CMD_DTS_MEASUREMENT_TRIGGER),
+	HCMD_NAME(DTS_MEASUREMENT_NOTIFICATION),
+	HCMD_NAME(WOWLAN_PATTERNS),
+	HCMD_NAME(WOWLAN_CONFIGURATION),
+	HCMD_NAME(WOWLAN_TSC_RSC_PARAM),
+	HCMD_NAME(WOWLAN_TKIP_PARAM),
+	HCMD_NAME(WOWLAN_KEK_KCK_MATERIAL),
+	HCMD_NAME(WOWLAN_GET_STATUSES),
+	HCMD_NAME(WOWLAN_TX_POWER_PER_DB),
+	HCMD_NAME(SCAN_ITERATION_COMPLETE),
+	HCMD_NAME(D0I3_END_CMD),
+	HCMD_NAME(LTR_CONFIG),
+	HCMD_NAME(REPLY_DEBUG_CMD),
 };
-#undef CMD
+
+/* Please keep this array *SORTED* by hex value.
+ * Access is done through binary search
+ */
+static const struct iwl_hcmd_names iwl_mvm_phy_names[] = {
+	HCMD_NAME(CMD_DTS_MEASUREMENT_TRIGGER_WIDE),
+	HCMD_NAME(CTDP_CONFIG_CMD),
+	HCMD_NAME(TEMP_REPORTING_THRESHOLDS_CMD),
+	HCMD_NAME(CT_KILL_NOTIFICATION),
+	HCMD_NAME(DTS_MEASUREMENT_NOTIF_WIDE),
+};
+
+/* Please keep this array *SORTED* by hex value.
+ * Access is done through binary search
+ */
+static const struct iwl_hcmd_names iwl_mvm_data_path_names[] = {
+	HCMD_NAME(UPDATE_MU_GROUPS_CMD),
+	HCMD_NAME(TRIGGER_RX_QUEUES_NOTIF_CMD),
+	HCMD_NAME(MU_GROUP_MGMT_NOTIF),
+	HCMD_NAME(RX_QUEUES_NOTIFICATION),
+};
+
+/* Please keep this array *SORTED* by hex value.
+ * Access is done through binary search
+ */
+static const struct iwl_hcmd_names iwl_mvm_prot_offload_names[] = {
+	HCMD_NAME(STORED_BEACON_NTF),
+};
+
+static const struct iwl_hcmd_arr iwl_mvm_groups[] = {
+	[LEGACY_GROUP] = HCMD_ARR(iwl_mvm_legacy_names),
+	[LONG_GROUP] = HCMD_ARR(iwl_mvm_legacy_names),
+	[PHY_OPS_GROUP] = HCMD_ARR(iwl_mvm_phy_names),
+	[DATA_PATH_GROUP] = HCMD_ARR(iwl_mvm_data_path_names),
+	[PROT_OFFLOAD_GROUP] = HCMD_ARR(iwl_mvm_prot_offload_names),
+};
 
 /* this forward declaration can avoid to export the function */
 static void iwl_mvm_async_handlers_wk(struct work_struct *wk);
@@ -435,8 +521,11 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 
 	if (iwl_mvm_has_new_rx_api(mvm)) {
 		op_mode->ops = &iwl_mvm_ops_mq;
+		trans->rx_mpdu_cmd_hdr_size = sizeof(struct iwl_rx_mpdu_desc);
 	} else {
 		op_mode->ops = &iwl_mvm_ops;
+		trans->rx_mpdu_cmd_hdr_size =
+			sizeof(struct iwl_rx_mpdu_res_start);
 
 		if (WARN_ON(trans->num_rx_queues > 1))
 			goto out_free;
@@ -454,6 +543,7 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	mvm->sf_state = SF_UNINIT;
 	mvm->low_latency_agg_frame_limit = 6;
 	mvm->cur_ucode = IWL_UCODE_INIT;
+	mvm->drop_bcn_ap_mode = true;
 
 	mutex_init(&mvm->mutex);
 	mutex_init(&mvm->d0i3_suspend_mutex);
@@ -512,7 +602,6 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	iwl_trans_configure(mvm->trans, &trans_cfg);
 
 	trans->rx_mpdu_cmd = REPLY_RX_MPDU_CMD;
-	trans->rx_mpdu_cmd_hdr_size = sizeof(struct iwl_rx_mpdu_res_start);
 	trans->dbg_dest_tlv = mvm->fw->dbg_dest_tlv;
 	trans->dbg_dest_reg_num = mvm->fw->dbg_dest_reg_num;
 	memcpy(trans->dbg_conf_tlv, mvm->fw->dbg_conf_tlv,
@@ -531,9 +620,6 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 
 	IWL_INFO(mvm, "Detected %s, REV=0x%X\n",
 		 mvm->cfg->name, mvm->trans->hw_rev);
-
-	min_backoff = calc_min_backoff(trans, cfg);
-	iwl_mvm_tt_initialize(mvm, min_backoff);
 
 	if (iwlwifi_mod_params.nvm_file)
 		mvm->nvm_file_name = iwlwifi_mod_params.nvm_file;
@@ -563,7 +649,8 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 		mutex_lock(&mvm->mutex);
 		err = iwl_run_init_mvm_ucode(mvm, true);
 		if (!err || !iwlmvm_mod_params.init_dbg)
-			iwl_trans_stop_device(trans);
+			iwl_mvm_stop_device(mvm);
+		iwl_mvm_unref(mvm, IWL_MVM_REF_INIT_UCODE);
 		mutex_unlock(&mvm->mutex);
 		/* returns 0 if successful, 1 if success but in rfkill */
 		if (err < 0 && !iwlmvm_mod_params.init_dbg) {
@@ -585,22 +672,31 @@ iwl_op_mode_mvm_start(struct iwl_trans *trans, const struct iwl_cfg *cfg,
 	if (err)
 		goto out_free;
 
+	min_backoff = calc_min_backoff(trans, cfg);
+	iwl_mvm_thermal_initialize(mvm, min_backoff);
+
 	err = iwl_mvm_dbgfs_register(mvm, dbgfs_dir);
 	if (err)
 		goto out_unregister;
 
 	memset(&mvm->rx_stats, 0, sizeof(struct mvm_statistics_rx));
 
-	/* rpm starts with a taken ref. only set the appropriate bit here. */
-	mvm->refs[IWL_MVM_REF_UCODE_DOWN] = 1;
+	/* The transport always starts with a taken reference, we can
+	 * release it now if d0i3 is supported */
+	if (iwl_mvm_is_d0i3_supported(mvm))
+		iwl_trans_unref(mvm->trans);
 
 	iwl_mvm_tof_init(mvm);
+
+	/* init RSS hash key */
+	get_random_bytes(mvm->secret_key, sizeof(mvm->secret_key));
 
 	return op_mode;
 
  out_unregister:
 	ieee80211_unregister_hw(mvm->hw);
 	iwl_mvm_leds_exit(mvm);
+	iwl_mvm_thermal_exit(mvm);
  out_free:
 	flush_delayed_work(&mvm->fw_dump_wk);
 	iwl_phy_db_free(mvm->phy_db);
@@ -616,9 +712,16 @@ static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
 	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
 	int i;
 
+	/* If d0i3 is supported, we have released the reference that
+	 * the transport started with, so we should take it back now
+	 * that we are leaving.
+	 */
+	if (iwl_mvm_is_d0i3_supported(mvm))
+		iwl_trans_ref(mvm->trans);
+
 	iwl_mvm_leds_exit(mvm);
 
-	iwl_mvm_tt_exit(mvm);
+	iwl_mvm_thermal_exit(mvm);
 
 	ieee80211_unregister_hw(mvm->hw);
 
@@ -653,6 +756,7 @@ static void iwl_op_mode_mvm_stop(struct iwl_op_mode *op_mode)
 struct iwl_async_handler_entry {
 	struct list_head list;
 	struct iwl_rx_cmd_buffer rxb;
+	enum iwl_rx_handler_context context;
 	void (*fn)(struct iwl_mvm *mvm, struct iwl_rx_cmd_buffer *rxb);
 };
 
@@ -679,7 +783,6 @@ static void iwl_mvm_async_handlers_wk(struct work_struct *wk)
 	INIT_LIST_HEAD(&local_list);
 
 	/* Ensure that we are not in stop flow (check iwl_mvm_mac_stop) */
-	mutex_lock(&mvm->mutex);
 
 	/*
 	 * Sync with Rx path with a lock. Remove all the entries from this list,
@@ -690,12 +793,15 @@ static void iwl_mvm_async_handlers_wk(struct work_struct *wk)
 	spin_unlock_bh(&mvm->async_handlers_lock);
 
 	list_for_each_entry_safe(entry, tmp, &local_list, list) {
+		if (entry->context == RX_HANDLER_ASYNC_LOCKED)
+			mutex_lock(&mvm->mutex);
 		entry->fn(mvm, &entry->rxb);
 		iwl_free_rxb(&entry->rxb);
 		list_del(&entry->list);
+		if (entry->context == RX_HANDLER_ASYNC_LOCKED)
+			mutex_unlock(&mvm->mutex);
 		kfree(entry);
 	}
-	mutex_unlock(&mvm->mutex);
 }
 
 static inline void iwl_mvm_rx_check_trigger(struct iwl_mvm *mvm,
@@ -752,7 +858,7 @@ static void iwl_mvm_rx_common(struct iwl_mvm *mvm,
 		if (rx_h->cmd_id != WIDE_ID(pkt->hdr.group_id, pkt->hdr.cmd))
 			continue;
 
-		if (!rx_h->async) {
+		if (rx_h->context == RX_HANDLER_SYNC) {
 			rx_h->fn(mvm, rxb);
 			return;
 		}
@@ -766,6 +872,7 @@ static void iwl_mvm_rx_common(struct iwl_mvm *mvm,
 		entry->rxb._offset = rxb->_offset;
 		entry->rxb._rx_page_order = rxb->_rx_page_order;
 		entry->fn = rx_h->fn;
+		entry->context = rx_h->context;
 		spin_lock(&mvm->async_handlers_lock);
 		list_add_tail(&entry->list, &mvm->async_handlers_list);
 		spin_unlock(&mvm->async_handlers_lock);
@@ -799,20 +906,17 @@ static void iwl_mvm_rx_mq(struct iwl_op_mode *op_mode,
 	if (likely(pkt->hdr.cmd == REPLY_RX_MPDU_CMD))
 		iwl_mvm_rx_rx_mpdu(mvm, napi, rxb);
 	else if (pkt->hdr.cmd == REPLY_RX_PHY_CMD)
-		iwl_mvm_rx_rx_phy_cmd(mvm, rxb);
+		iwl_mvm_rx_phy_cmd_mq(mvm, rxb);
+	else if (unlikely(pkt->hdr.group_id == DATA_PATH_GROUP &&
+			  pkt->hdr.cmd == RX_QUEUES_NOTIFICATION))
+		iwl_mvm_rx_queue_notif(mvm, rxb, 0);
 	else
 		iwl_mvm_rx_common(mvm, rxb, pkt);
 }
 
-static void iwl_mvm_stop_sw_queue(struct iwl_op_mode *op_mode, int queue)
+void iwl_mvm_stop_mac_queues(struct iwl_mvm *mvm, unsigned long mq)
 {
-	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
-	unsigned long mq;
 	int q;
-
-	spin_lock_bh(&mvm->queue_info_lock);
-	mq = mvm->queue_info[queue].hw_queue_to_mac80211;
-	spin_unlock_bh(&mvm->queue_info_lock);
 
 	if (WARN_ON_ONCE(!mq))
 		return;
@@ -820,8 +924,7 @@ static void iwl_mvm_stop_sw_queue(struct iwl_op_mode *op_mode, int queue)
 	for_each_set_bit(q, &mq, IEEE80211_MAX_QUEUES) {
 		if (atomic_inc_return(&mvm->mac80211_queue_stop_count[q]) > 1) {
 			IWL_DEBUG_TX_QUEUES(mvm,
-					    "queue %d (mac80211 %d) already stopped\n",
-					    queue, q);
+					    "mac80211 %d already stopped\n", q);
 			continue;
 		}
 
@@ -829,15 +932,33 @@ static void iwl_mvm_stop_sw_queue(struct iwl_op_mode *op_mode, int queue)
 	}
 }
 
-static void iwl_mvm_wake_sw_queue(struct iwl_op_mode *op_mode, int queue)
+static void iwl_mvm_async_cb(struct iwl_op_mode *op_mode,
+			     const struct iwl_device_cmd *cmd)
+{
+	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
+
+	/*
+	 * For now, we only set the CMD_WANT_ASYNC_CALLBACK for ADD_STA
+	 * commands that need to block the Tx queues.
+	 */
+	iwl_trans_block_txq_ptrs(mvm->trans, false);
+}
+
+static void iwl_mvm_stop_sw_queue(struct iwl_op_mode *op_mode, int hw_queue)
 {
 	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
 	unsigned long mq;
-	int q;
 
 	spin_lock_bh(&mvm->queue_info_lock);
-	mq = mvm->queue_info[queue].hw_queue_to_mac80211;
+	mq = mvm->queue_info[hw_queue].hw_queue_to_mac80211;
 	spin_unlock_bh(&mvm->queue_info_lock);
+
+	iwl_mvm_stop_mac_queues(mvm, mq);
+}
+
+void iwl_mvm_start_mac_queues(struct iwl_mvm *mvm, unsigned long mq)
+{
+	int q;
 
 	if (WARN_ON_ONCE(!mq))
 		return;
@@ -845,13 +966,24 @@ static void iwl_mvm_wake_sw_queue(struct iwl_op_mode *op_mode, int queue)
 	for_each_set_bit(q, &mq, IEEE80211_MAX_QUEUES) {
 		if (atomic_dec_return(&mvm->mac80211_queue_stop_count[q]) > 0) {
 			IWL_DEBUG_TX_QUEUES(mvm,
-					    "queue %d (mac80211 %d) still stopped\n",
-					    queue, q);
+					    "mac80211 %d still stopped\n", q);
 			continue;
 		}
 
 		ieee80211_wake_queue(mvm->hw, q);
 	}
+}
+
+static void iwl_mvm_wake_sw_queue(struct iwl_op_mode *op_mode, int hw_queue)
+{
+	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
+	unsigned long mq;
+
+	spin_lock_bh(&mvm->queue_info_lock);
+	mq = mvm->queue_info[hw_queue].hw_queue_to_mac80211;
+	spin_unlock_bh(&mvm->queue_info_lock);
+
+	iwl_mvm_start_mac_queues(mvm, mq);
 }
 
 void iwl_mvm_set_hw_ctkill_state(struct iwl_mvm *mvm, bool state)
@@ -1135,7 +1267,8 @@ static void iwl_mvm_set_wowlan_data(struct iwl_mvm *mvm,
 	mvm_ap_sta = iwl_mvm_sta_from_mac80211(ap_sta);
 	cmd->is_11n_connection = ap_sta->ht_cap.ht_supported;
 	cmd->offloading_tid = iter_data->offloading_tid;
-
+	cmd->flags = ENABLE_L3_FILTERING | ENABLE_NBNS_FILTERING |
+		ENABLE_DHCP_FILTERING | ENABLE_STORE_BEACON;
 	/*
 	 * The d0i3 uCode takes care of the nonqos counters,
 	 * so configure only the qos seq ones.
@@ -1156,8 +1289,7 @@ int iwl_mvm_enter_d0i3(struct iwl_op_mode *op_mode)
 	struct iwl_wowlan_config_cmd wowlan_config_cmd = {
 		.wakeup_filter = cpu_to_le32(IWL_WOWLAN_WAKEUP_RX_FRAME |
 					     IWL_WOWLAN_WAKEUP_BEACON_MISS |
-					     IWL_WOWLAN_WAKEUP_LINK_CHANGE |
-					     IWL_WOWLAN_WAKEUP_BCN_FILTERING),
+					     IWL_WOWLAN_WAKEUP_LINK_CHANGE),
 	};
 	struct iwl_d3_manager_config d3_cfg_cmd = {
 		.min_sleep_time = cpu_to_le32(1000),
@@ -1199,6 +1331,16 @@ int iwl_mvm_enter_d0i3(struct iwl_op_mode *op_mode)
 
 	/* configure wowlan configuration only if needed */
 	if (mvm->d0i3_ap_sta_id != IWL_MVM_STATION_COUNT) {
+		/* wake on beacons only if beacon storing isn't supported */
+		if (!fw_has_capa(&mvm->fw->ucode_capa,
+				 IWL_UCODE_TLV_CAPA_BEACON_STORING))
+			wowlan_config_cmd.wakeup_filter |=
+				cpu_to_le32(IWL_WOWLAN_WAKEUP_BCN_FILTERING);
+
+		iwl_mvm_wowlan_config_key_params(mvm,
+						 d0i3_iter_data.connected_vif,
+						 true, flags);
+
 		iwl_mvm_set_wowlan_data(mvm, &wowlan_config_cmd,
 					&d0i3_iter_data);
 
@@ -1425,7 +1567,13 @@ static void iwl_mvm_rx_mq_rss(struct iwl_op_mode *op_mode,
 {
 	struct iwl_mvm *mvm = IWL_OP_MODE_GET_MVM(op_mode);
 
-	iwl_mvm_rx_rx_mpdu(mvm, napi, rxb);
+	if (unlikely(pkt->hdr.cmd == FRAME_RELEASE))
+		iwl_mvm_rx_frame_release(mvm, rxb, queue);
+	else if (unlikely(pkt->hdr.cmd == RX_QUEUES_NOTIFICATION &&
+			  pkt->hdr.group_id == DATA_PATH_GROUP))
+		iwl_mvm_rx_queue_notif(mvm, rxb, queue);
+	else
+		iwl_mvm_rx_mpdu_mq(mvm, napi, rxb, queue);
 }
 
 static const struct iwl_op_mode_ops iwl_mvm_ops_mq = {

@@ -8,6 +8,7 @@ struct netns_frags {
 	long			high_thresh;
 	long			low_thresh;
 	int			timeout;
+	int			max_dist;
 	struct inet_frags	*f;
 
 	struct rhashtable       rhashtable ____cacheline_aligned_in_smp;

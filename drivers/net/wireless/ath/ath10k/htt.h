@@ -342,7 +342,6 @@ enum htt_mgmt_tx_status {
 	HTT_MGMT_TX_STATUS_DROP  = 2
 };
 
-/*=== target -> host messages ===============================================*/
 
 enum htt_main_t2h_msg_type {
 	HTT_MAIN_T2H_MSG_TYPE_VERSION_CONF             = 0x0,
@@ -1382,11 +1381,6 @@ struct htt_q_state_conf {
 	u8 pad[2];
 } __packed;
 
-struct bank_base_addr {
-	__le32 low;
-	__le32 high;
-};
-
 struct htt_frag_desc_bank_cfg {
 	u8 info; /* HTT_FRAG_DESC_BANK_CFG_INFO_ */
 	u8 num_banks;
@@ -1507,14 +1501,6 @@ struct htt_tx_mode_switch_ind {
 	struct htt_tx_mode_switch_record records[0];
 } __packed;
 
-struct htt_channel_change {
-	u8 pad[3];
-	__le32 freq;
-	__le32 center_freq1;
-	__le32 center_freq2;
-	__le32 phymode;
-} __packed;
-
 union htt_rx_pn_t {
 	/* WEP: 24-bit PN */
 	u32 pn24;
@@ -1565,7 +1551,6 @@ struct htt_resp {
 		struct htt_tx_fetch_ind tx_fetch_ind;
 		struct htt_tx_fetch_confirm tx_fetch_confirm;
 		struct htt_tx_mode_switch_ind tx_mode_switch_ind;
-		struct htt_channel_change chan_change;
 	};
 } __packed;
 
@@ -1732,13 +1717,10 @@ struct ath10k_htt {
 	} txbuf;
 
 	struct {
-		bool enabled;
 		struct htt_q_state *vaddr;
 		dma_addr_t paddr;
-		u16 num_push_allowed;
 		u16 num_peers;
 		u16 num_tids;
-		enum htt_tx_mode_switch_mode mode;
 		enum htt_q_depth_type type;
 	} tx_q_state;
 };

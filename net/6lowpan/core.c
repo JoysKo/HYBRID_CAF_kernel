@@ -26,6 +26,32 @@ void lowpan_netdev_setup(struct net_device *dev, enum lowpan_lltypes lltype)
 }
 EXPORT_SYMBOL(lowpan_netdev_setup);
 
+static int lowpan_event(struct notifier_block *unused,
+			unsigned long event, void *ptr)
+{
+	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
+	int i;
+
+	if (dev->type != ARPHRD_6LOWPAN)
+		return NOTIFY_DONE;
+
+	switch (event) {
+	case NETDEV_DOWN:
+		for (i = 0; i < LOWPAN_IPHC_CTX_TABLE_SIZE; i++)
+			clear_bit(LOWPAN_IPHC_CTX_FLAG_ACTIVE,
+				  &lowpan_priv(dev)->ctx.table[i].flags);
+		break;
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block lowpan_notifier = {
+	.notifier_call = lowpan_event,
+};
+
 static int __init lowpan_module_init(void)
 {
 	request_module_nowait("ipv6");

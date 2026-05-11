@@ -460,7 +460,9 @@ struct iwl_trans_config {
 	bool bc_table_dword;
 	bool scd_set_active;
 	bool wide_cmd_header;
-	const char *const *command_names;
+	bool sw_csum_tx;
+	const struct iwl_hcmd_arr *command_groups;
+	int command_groups_size;
 
 	u32 sdio_adma_addr;
 };
@@ -566,9 +568,9 @@ struct iwl_trans_ops {
 	void (*fw_alive)(struct iwl_trans *trans, u32 scd_addr);
 	void (*stop_device)(struct iwl_trans *trans, bool low_power);
 
-	void (*d3_suspend)(struct iwl_trans *trans, bool test);
+	void (*d3_suspend)(struct iwl_trans *trans, bool test, bool reset);
 	int (*d3_resume)(struct iwl_trans *trans, enum iwl_d3_status *status,
-			 bool test);
+			 bool test, bool reset);
 
 	int (*send_cmd)(struct iwl_trans *trans, struct iwl_host_cmd *cmd);
 
@@ -641,6 +643,11 @@ enum iwl_d0i3_mode {
 	IWL_D0I3_MODE_ON_IDLE,
 	IWL_D0I3_MODE_ON_SUSPEND,
 };
+
+/* Max time to wait for trans to become idle/non-idle on d0i3
+ * enter/exit (in msecs).
+ */
+#define IWL_TRANS_IDLE_TIMEOUT 2000
 
 /**
  * struct iwl_trans - transport common data
@@ -726,9 +733,9 @@ struct iwl_trans {
 	struct iwl_fw_paging *paging_db;
 	void *paging_download_buf;
 
-	enum iwl_d0i3_mode d0i3_mode;
-
-	bool wowlan_d0i3;
+	enum iwl_plat_pm_mode system_pm_mode;
+	enum iwl_plat_pm_mode runtime_pm_mode;
+	bool suspending;
 
 	/* pointer to trans specific struct */
 	/*Ensure that this pointer will always be aligned to sizeof pointer */
@@ -814,22 +821,23 @@ static inline void iwl_trans_stop_device(struct iwl_trans *trans)
 	_iwl_trans_stop_device(trans, true);
 }
 
-static inline void iwl_trans_d3_suspend(struct iwl_trans *trans, bool test)
+static inline void iwl_trans_d3_suspend(struct iwl_trans *trans, bool test,
+					bool reset)
 {
 	might_sleep();
 	if (trans->ops->d3_suspend)
-		trans->ops->d3_suspend(trans, test);
+		trans->ops->d3_suspend(trans, test, reset);
 }
 
 static inline int iwl_trans_d3_resume(struct iwl_trans *trans,
 				      enum iwl_d3_status *status,
-				      bool test)
+				      bool test, bool reset)
 {
 	might_sleep();
 	if (!trans->ops->d3_resume)
 		return 0;
 
-	return trans->ops->d3_resume(trans, status, test);
+	return trans->ops->d3_resume(trans, status, test, reset);
 }
 
 static inline void iwl_trans_ref(struct iwl_trans *trans)

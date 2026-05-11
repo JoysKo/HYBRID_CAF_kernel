@@ -184,7 +184,7 @@ interfaces to the kernel module settings.
 
 For more information, please see the manpage (man batctl).
 
-batctl is available on http://www.open-mesh.org/
+batctl is available on https://www.open-mesh.org/
 
 
 CONTACT

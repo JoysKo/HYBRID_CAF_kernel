@@ -42,10 +42,15 @@
 #include <linux/bitops.h>
 #include <linux/if_vlan.h>
 #include <net/switchdev.h>
+#include <net/devlink.h>
 
 #include "core.h"
 
 #define MLXSW_SP_VFID_BASE VLAN_N_VID
+
+#define MLXSW_SP_PORTS_PER_CLUSTER_MAX 4
+
+#define MLXSW_SP_PORT_BASE_SPEED 25000	/* Mb/s */
 
 struct mlxsw_sp_port;
 
@@ -65,10 +70,9 @@ struct mlxsw_sp {
 #define MLXSW_SP_MAX_AGEING_TIME 1000000
 #define MLXSW_SP_DEFAULT_AGEING_TIME 300
 	u32 ageing_time;
-	struct {
-		struct net_device *dev;
-		unsigned int ref_count;
-	} master_bridge;
+	struct mlxsw_sp_upper master_bridge;
+	struct mlxsw_sp_upper lags[MLXSW_SP_LAG_MAX];
+	u8 port_to_module[MLXSW_PORT_MAX_PORTS];
 };
 
 struct mlxsw_sp_port_pcpu_stats {
@@ -89,13 +93,15 @@ struct mlxsw_sp_port {
 	u8 learning:1,
 	   learning_sync:1,
 	   uc_flood:1,
-	   bridged:1;
+	   bridged:1,
+	   lagged:1,
+	   split:1;
 	u16 pvid;
 	/* 802.1Q bridge VLANs */
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 	/* VLAN interfaces */
-	unsigned long active_vfids[BITS_TO_LONGS(VLAN_N_VID)];
-	u16 nr_vfids;
+	struct list_head vports_list;
+	struct devlink_port devlink_port;
 };
 
 enum mlxsw_sp_flood_table {

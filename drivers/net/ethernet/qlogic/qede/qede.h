@@ -24,7 +24,7 @@
 #include <linux/qed/qed_eth_if.h>
 
 #define QEDE_MAJOR_VERSION		8
-#define QEDE_MINOR_VERSION		4
+#define QEDE_MINOR_VERSION		7
 #define QEDE_REVISION_VERSION		0
 #define QEDE_ENGINEERING_VERSION	0
 #define DRV_MODULE_VERSION __stringify(QEDE_MAJOR_VERSION) "."	\
@@ -100,6 +100,12 @@ struct qede_stats {
 	u64 tx_mac_ctrl_frames;
 };
 
+struct qede_vlan {
+	struct list_head list;
+	u16 vid;
+	bool configured;
+};
+
 struct qede_dev {
 	struct qed_dev			*cdev;
 	struct net_device		*ndev;
@@ -153,6 +159,11 @@ struct qede_dev {
 	u16			q_num_rx_buffers; /* Must be a power of two */
 	u16			q_num_tx_buffers; /* Must be a power of two */
 
+	bool gro_disable;
+	struct list_head vlan_list;
+	u16 configured_vlans;
+	u16 non_configured_vlans;
+	bool accept_any_vlan;
 	struct delayed_work		sp_task;
 	unsigned long			sp_flags;
 };
@@ -177,6 +188,24 @@ struct sw_rx_data {
 	DEFINE_DMA_UNMAP_ADDR(mapping);
 };
 
+enum qede_agg_state {
+	QEDE_AGG_STATE_NONE  = 0,
+	QEDE_AGG_STATE_START = 1,
+	QEDE_AGG_STATE_ERROR = 2
+};
+
+struct qede_agg_info {
+	struct sw_rx_data replace_buf;
+	dma_addr_t replace_buf_mapping;
+	struct sw_rx_data start_buf;
+	dma_addr_t start_buf_mapping;
+	struct eth_fast_path_rx_tpa_start_cqe start_cqe;
+	enum qede_agg_state agg_state;
+	struct sk_buff *skb;
+	int frag_id;
+	u16 vlan_tag;
+};
+
 struct qede_rx_queue {
 	__le16			*hw_cons_ptr;
 	struct sw_rx_data	*sw_rx_ring;
@@ -185,6 +214,9 @@ struct qede_rx_queue {
 	struct qed_chain	rx_bd_ring;
 	struct qed_chain	rx_comp_ring;
 	void __iomem		*hw_rxq_prod_addr;
+
+	/* GRO */
+	struct qede_agg_info	tpa_info[ETH_TPA_MAX_AGGS_NUM];
 
 	int			rx_buf_size;
 

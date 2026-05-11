@@ -90,7 +90,6 @@ struct ath10k;
 enum ath10k_bus {
 	ATH10K_BUS_PCI,
 	ATH10K_BUS_AHB,
-	ATH10K_BUS_SNOC,
 };
 
 static inline const char *ath10k_bus_str(enum ath10k_bus bus)
@@ -100,8 +99,6 @@ static inline const char *ath10k_bus_str(enum ath10k_bus bus)
 		return "pci";
 	case ATH10K_BUS_AHB:
 		return "ahb";
-	case ATH10K_BUS_SNOC:
-		return "snoc";
 	}
 
 	return "unknown";
@@ -190,13 +187,6 @@ struct ath10k_fw_stats_peer {
 	u32 peer_rssi;
 	u32 peer_tx_rate;
 	u32 peer_rx_rate; /* 10x only */
-	u32 rx_duration;
-};
-
-struct ath10k_fw_extd_stats_peer {
-	struct list_head list;
-
-	u8 peer_macaddr[ETH_ALEN];
 	u32 rx_duration;
 };
 
@@ -578,20 +568,6 @@ enum ath10k_fw_features {
 	 */
 	ATH10K_FW_FEATURE_PEER_FLOW_CONTROL = 13,
 
-	/* Firmware supports BT-Coex without reloading firmware via pdev param.
-	 * To support Bluetooth coexistence pdev param, WMI_COEX_GPIO_SUPPORT of
-	 * extended resource config should be enabled always. This firmware IE
-	 * is used to configure WMI_COEX_GPIO_SUPPORT.
-	 */
-	ATH10K_FW_FEATURE_BTCOEX_PARAM = 14,
-
-	/* Older firmware with HTT delivers incorrect tx status for null func
-	 * frames to driver, but this fixed in 10.2 and 10.4 firmware versions.
-	 * Also this workaround results in reporting of incorrect null func
-	 * status for 10.4. This flag is used to skip the workaround.
-	 */
-	ATH10K_FW_FEATURE_SKIP_NULL_FUNC_WAR = 15,
-
 	/* keep last */
 	ATH10K_FW_FEATURE_COUNT,
 };
@@ -787,7 +763,56 @@ struct ath10k {
 	struct ath10k_htc htc;
 	struct ath10k_htt htt;
 
-	struct ath10k_hw_params hw_params;
+	struct ath10k_hw_params {
+		u32 id;
+		u16 dev_id;
+		const char *name;
+		u32 patch_load_addr;
+		int uart_pin;
+		u32 otp_exe_param;
+
+		/* This is true if given HW chip has a quirky Cycle Counter
+		 * wraparound which resets to 0x7fffffff instead of 0. All
+		 * other CC related counters (e.g. Rx Clear Count) are divided
+		 * by 2 so they never wraparound themselves.
+		 */
+		bool has_shifted_cc_wraparound;
+
+		/* Some of chip expects fragment descriptor to be continuous
+		 * memory for any TX operation. Set continuous_frag_desc flag
+		 * for the hardware which have such requirement.
+		 */
+		bool continuous_frag_desc;
+
+		u32 channel_counters_freq_hz;
+
+		/* Mgmt tx descriptors threshold for limiting probe response
+		 * frames.
+		 */
+		u32 max_probe_resp_desc_thres;
+
+		/* The padding bytes's location is different on various chips */
+		enum ath10k_hw_4addr_pad hw_4addr_pad;
+
+		u32 num_msdu_desc;
+		u32 qcache_active_peers;
+		u32 tx_chain_mask;
+		u32 rx_chain_mask;
+		u32 max_spatial_stream;
+
+		struct ath10k_hw_params_fw {
+			const char *dir;
+			const char *fw;
+			const char *otp;
+			const char *board;
+			size_t board_size;
+			size_t board_ext_size;
+		} fw;
+	} hw_params;
+
+	const struct firmware *board;
+	const void *board_data;
+	size_t board_len;
 
 	/* contains the firmware images used with ATH10K_FIRMWARE_MODE_NORMAL */
 	struct ath10k_fw_components normal_mode_fw;

@@ -155,10 +155,10 @@ struct ath10k_pci_supp_chip {
 	u32 rev_id;
 };
 
-enum ath10k_pci_irq_mode {
-	ATH10K_PCI_IRQ_AUTO = 0,
-	ATH10K_PCI_IRQ_LEGACY = 1,
-	ATH10K_PCI_IRQ_MSI = 2,
+struct ath10k_bus_ops {
+	u32 (*read32)(struct ath10k *ar, u32 offset);
+	void (*write32)(struct ath10k *ar, u32 offset, u32 value);
+	int (*get_num_banks)(struct ath10k *ar);
 };
 
 struct ath10k_pci {
@@ -220,11 +220,7 @@ struct ath10k_pci {
 	 */
 	bool pci_ps;
 
-	/* Chip specific pci reset routine used to do a safe reset */
-	int (*pci_soft_reset)(struct ath10k *ar);
-
-	/* Chip specific pci full reset function */
-	int (*pci_hard_reset)(struct ath10k *ar);
+	const struct ath10k_bus_ops *bus_ops;
 
 	/* Keep this entry in the last, memory for struct ath10k_ahb is
 	 * allocated (ahb support enabled case) in the continuation of
@@ -280,7 +276,8 @@ void ath10k_pci_free_pipes(struct ath10k *ar);
 void ath10k_pci_free_pipes(struct ath10k *ar);
 void ath10k_pci_rx_replenish_retry(unsigned long ptr);
 void ath10k_pci_ce_deinit(struct ath10k *ar);
-void ath10k_pci_init_napi(struct ath10k *ar);
+void ath10k_pci_init_irq_tasklets(struct ath10k *ar);
+void ath10k_pci_kill_tasklet(struct ath10k *ar);
 int ath10k_pci_init_pipes(struct ath10k *ar);
 int ath10k_pci_init_config(struct ath10k *ar);
 void ath10k_pci_rx_post(struct ath10k *ar);
@@ -288,7 +285,6 @@ void ath10k_pci_flush(struct ath10k *ar);
 void ath10k_pci_enable_legacy_irq(struct ath10k *ar);
 bool ath10k_pci_irq_pending(struct ath10k *ar);
 void ath10k_pci_disable_and_clear_legacy_irq(struct ath10k *ar);
-void ath10k_pci_irq_msi_fw_mask(struct ath10k *ar);
 int ath10k_pci_wait_for_target_init(struct ath10k *ar);
 int ath10k_pci_setup_resource(struct ath10k *ar);
 void ath10k_pci_release_resource(struct ath10k *ar);

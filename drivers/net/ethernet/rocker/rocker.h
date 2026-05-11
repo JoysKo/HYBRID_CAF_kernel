@@ -101,6 +101,23 @@ enum rocker_dma_type {
 #define ROCKER_DMA_RX_DEFAULT_SIZE	64ul
 #define ROCKER_DMA_RX_DESC_SIZE		256
 
+struct rocker {
+	struct pci_dev *pdev;
+	u8 __iomem *hw_addr;
+	struct msix_entry *msix_entries;
+	unsigned int port_count;
+	struct rocker_port **ports;
+	struct {
+		u64 id;
+	} hw;
+	unsigned long ageing_time;
+	spinlock_t cmd_ring_lock;		/* for cmd ring accesses */
+	struct rocker_dma_ring_info cmd_ring;
+	struct rocker_dma_ring_info event_ring;
+	struct rocker_world_ops *wops;
+	void *wpriv;
+};
+
 /* Rocker DMA descriptor struct */
 struct rocker_desc {
 	u64 buf_addr;

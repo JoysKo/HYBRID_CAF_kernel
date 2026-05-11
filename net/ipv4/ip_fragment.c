@@ -54,8 +54,6 @@
  * code now. If you change something here, _PLEASE_ update ipv6/reassembly.c
  * as well. Or notify me, at least. --ANK
  */
-
-static int sysctl_ipfrag_max_dist __read_mostly = 64;
 static const char ip_frag_cache_name[] = "ip4-frags";
 
 /* Use skb->cb to track consecutive/adjacent fragments coming at
@@ -142,7 +140,7 @@ static void ip4_frag_init(struct inet_frag_queue *q, const void *a)
 
 	q->key.v4 = *key;
 	qp->ecn = 0;
-	qp->peer = sysctl_ipfrag_max_dist ?
+	qp->peer = q->net->max_dist ?
 		inet_getpeer_v4(net->ipv4.peers, key->saddr, key->vif, 1) :
 		NULL;
 }
@@ -292,7 +290,7 @@ static struct ipq *ip_find(struct net *net, struct iphdr *iph,
 static int ip_frag_too_far(struct ipq *qp)
 {
 	struct inet_peer *peer = qp->peer;
-	unsigned int max = sysctl_ipfrag_max_dist;
+	unsigned int max = qp->q.net->max_dist;
 	unsigned int start, end;
 
 	int rc;
@@ -793,11 +791,21 @@ static struct ctl_table ip4_frags_ns_ctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_jiffies,
 	},
+	{
+		.procname	= "ipfrag_max_dist",
+		.data		= &init_net.ipv4.frags.max_dist,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &dist_min
+	},
 	{ }
 };
 
 /* secret interval has been deprecated */
 static int ip4_frags_secret_interval_unused;
+
+/* Шаблон таблицы (без привязки к конкретному неймспейсу) */
 static struct ctl_table ip4_frags_ctl_table[] = {
 	{
 		.procname	= "ipfrag_secret_interval",
@@ -808,11 +816,11 @@ static struct ctl_table ip4_frags_ctl_table[] = {
 	},
 	{
 		.procname	= "ipfrag_max_dist",
-		.data		= &sysctl_ipfrag_max_dist,
+		.data		= NULL,  /* будет заполнено в ip4_frags_ns_ctl_register */
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &dist_min,
+		.extra1		= (void *)&dist_min,
 	},
 	{ }
 };
@@ -834,10 +842,7 @@ static int __net_init ip4_frags_ns_ctl_register(struct net *net)
 		table[1].data = &net->ipv4.frags.low_thresh;
 		table[1].extra2 = &net->ipv4.frags.high_thresh;
 		table[2].data = &net->ipv4.frags.timeout;
-
-		/* Don't export sysctls to unprivileged users */
-		if (net->user_ns != &init_user_ns)
-			table[0].procname = NULL;
+		table[3].data = &net->ipv4.frags.max_dist;
 	}
 
 	hdr = register_net_sysctl(net, "net/ipv4", table);
@@ -852,6 +857,16 @@ err_reg:
 		kfree(table);
 err_alloc:
 	return -ENOMEM;
+}
+
+/* Функция инициализации неймспейса */
+static int __net_init ip4_frags_init_net(struct net *net)
+{
+	/* Устанавливаем значение по умолчанию */
+	net->ipv4.frags.max_dist = 64;
+	
+	/* Регистрируем sysctl */
+	return ip4_frags_ns_ctl_register(net);
 }
 
 static void __net_exit ip4_frags_ns_ctl_unregister(struct net *net)
@@ -908,7 +923,8 @@ static int __net_init ipv4_frags_init_net(struct net *net)
 	 * by TTL.
 	 */
 	net->ipv4.frags.timeout = IP_FRAG_TIME;
-
+	
+	net->ipv4.frags.max_dist = 64;
 	net->ipv4.frags.f = &ip4_frags;
 
 	res = inet_frags_init_net(&net->ipv4.frags);

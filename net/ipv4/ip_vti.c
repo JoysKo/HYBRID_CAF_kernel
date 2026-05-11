@@ -112,7 +112,7 @@ static int vti_rcv_tunnel(struct sk_buff *skb)
 
 		if (!xfrm4_policy_check(NULL, XFRM_POLICY_IN, skb))
 			goto drop;
-		if (iptunnel_pull_header(skb, 0, tpi.proto))
+		if (iptunnel_pull_header(skb, 0, tpi.proto, false))
 			goto drop;
 		return ip_tunnel_rcv(tunnel, skb, &tpi, NULL, false);
 	}

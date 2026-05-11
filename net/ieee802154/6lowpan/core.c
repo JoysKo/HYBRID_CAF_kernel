@@ -225,11 +225,10 @@ static int lowpan_device_event(struct notifier_block *unused,
 			lowpan_dellink(wpan_dev->lowpan_dev, NULL);
 		break;
 	default:
-		break;
+		return NOTIFY_DONE;
 	}
 
-out:
-	return NOTIFY_DONE;
+	return NOTIFY_OK;
 }
 
 static struct notifier_block lowpan_dev_notifier = {

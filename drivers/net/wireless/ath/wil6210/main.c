@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Qualcomm Atheros, Inc.
+ * Copyright (c) 2012-2016 Qualcomm Atheros, Inc.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -22,9 +22,6 @@
 #include "txrx.h"
 #include "wmi.h"
 #include "boot_loader.h"
-
-#define WAIT_FOR_HALP_VOTE_MS 100
-#define WAIT_FOR_SCAN_ABORT_MS 1000
 
 bool debug_fw; /* = false; */
 module_param(debug_fw, bool, 0444);
@@ -173,12 +170,8 @@ __acquires(&sta->tid_rx_lock) __releases(&sta->tid_rx_lock)
 		     cid, sta->status);
 	/* inform upper/lower layers */
 	if (sta->status != wil_sta_unused) {
-		if (!from_event) {
-			bool del_sta = (wdev->iftype == NL80211_IFTYPE_AP) ?
-						disable_ap_sme : false;
-			wmi_disconnect_sta(wil, sta->addr, reason_code,
-					   true, del_sta);
-		}
+		if (!from_event)
+			wmi_disconnect_sta(wil, sta->addr, reason_code, true);
 
 		switch (wdev->iftype) {
 		case NL80211_IFTYPE_AP:
@@ -239,7 +232,7 @@ static void _wil6210_disconnect(struct wil6210_priv *wil, const u8 *bssid,
 		return;
 
 	might_sleep();
-	wil_info(wil, "bssid=%pM, reason=%d, ev%s\n", bssid,
+	wil_info(wil, "%s(bssid=%pM, reason=%d, ev%s)\n", __func__, bssid,
 		 reason_code, from_event ? "+" : "-");
 
 	/* Cases are:
@@ -1208,6 +1201,8 @@ int wil_up(struct wil6210_priv *wil)
 
 int __wil_down(struct wil6210_priv *wil)
 {
+	int rc;
+
 	WARN_ON(!mutex_is_locked(&wil->mutex));
 
 	set_bit(wil_status_resetting, wil->status);
@@ -1224,10 +1219,17 @@ int __wil_down(struct wil6210_priv *wil)
 
 	wil_ftm_stop_operations(wil);
 
-	mutex_lock(&wil->p2p_wdev_mutex);
-	wil_p2p_stop_radio_operations(wil);
-	wil_abort_scan(wil, false);
-	mutex_unlock(&wil->p2p_wdev_mutex);
+	if (test_bit(wil_status_fwconnected, wil->status) ||
+	    test_bit(wil_status_fwconnecting, wil->status)) {
+
+		mutex_unlock(&wil->mutex);
+		rc = wmi_call(wil, WMI_DISCONNECT_CMDID, NULL, 0,
+			      WMI_DISCONNECT_EVENTID, NULL, 0,
+			      WIL6210_DISCONNECT_TO_MS);
+		mutex_lock(&wil->mutex);
+		if (rc)
+			wil_err(wil, "timeout waiting for disconnect\n");
+	}
 
 	wil_reset(wil, false);
 

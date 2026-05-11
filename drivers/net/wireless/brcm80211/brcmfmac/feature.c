@@ -129,16 +129,42 @@ static void brcmf_feat_iovar_int_set(struct brcmf_if *ifp,
 void brcmf_feat_attach(struct brcmf_pub *drvr)
 {
 	struct brcmf_if *ifp = brcmf_get_ifp(drvr, 0);
+	struct brcmf_pno_macaddr_le pfn_mac;
+	u32 wowl_cap;
+	s32 err;
+
+	brcmf_feat_firmware_capabilities(ifp);
 
 	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_MCHAN, "mchan");
 	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_PNO, "pfn");
 	if (drvr->bus_if->wowl_supported)
 		brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_WOWL, "wowl");
-	if (drvr->bus_if->chip != BRCM_CC_43362_CHIP_ID)
-		brcmf_feat_iovar_int_set(ifp, BRCMF_FEAT_MBSS, "mbss", 0);
-	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_P2P, "p2p");
+	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_WOWL)) {
+		err = brcmf_fil_iovar_int_get(ifp, "wowl_cap", &wowl_cap);
+		if (!err) {
+			ifp->drvr->feat_flags |= BIT(BRCMF_FEAT_WOWL_ARP_ND);
+			if (wowl_cap & BRCMF_WOWL_PFN_FOUND)
+				ifp->drvr->feat_flags |=
+					BIT(BRCMF_FEAT_WOWL_ND);
+			if (wowl_cap & BRCMF_WOWL_GTK_FAILURE)
+				ifp->drvr->feat_flags |=
+					BIT(BRCMF_FEAT_WOWL_GTK);
+		}
+	}
+	/* MBSS does not work for 43362 */
+	if (drvr->bus_if->chip == BRCM_CC_43362_CHIP_ID)
+		ifp->drvr->feat_flags &= ~BIT(BRCMF_FEAT_MBSS);
+	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_RSDB, "rsdb_mode");
+	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_TDLS, "tdls_enable");
+	brcmf_feat_iovar_int_get(ifp, BRCMF_FEAT_MFP, "mfp");
 
-	if (brcmf_feature_disable) {
+	pfn_mac.version = BRCMF_PFN_MACADDR_CFG_VER;
+	err = brcmf_fil_iovar_data_get(ifp, "pfn_macaddr", &pfn_mac,
+				       sizeof(pfn_mac));
+	if (!err)
+		ifp->drvr->feat_flags |= BIT(BRCMF_FEAT_SCAN_RANDOM_MAC);
+
+	if (drvr->settings->feature_disable) {
 		brcmf_dbg(INFO, "Features: 0x%02x, disable: 0x%02x\n",
 			  ifp->drvr->feat_flags, brcmf_feature_disable);
 		ifp->drvr->feat_flags &= ~brcmf_feature_disable;

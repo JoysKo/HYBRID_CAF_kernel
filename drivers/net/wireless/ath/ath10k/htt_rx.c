@@ -2333,8 +2333,9 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	}
 	case HTT_T2H_MSG_TYPE_RX_IND:
-		ath10k_htt_rx_proc_rx_ind(htt, &resp->rx_ind);
-		break;
+		skb_queue_tail(&htt->rx_compl_q, skb);
+		tasklet_schedule(&htt->txrx_compl_task);
+		return;
 	case HTT_T2H_MSG_TYPE_PEER_MAP: {
 		struct htt_peer_map_event ev = {
 			.vdev_id = resp->peer_map.vdev_id,
@@ -2431,8 +2432,9 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	}
 	case HTT_T2H_MSG_TYPE_RX_IN_ORD_PADDR_IND: {
-		__skb_queue_tail(&htt->rx_in_ord_compl_q, skb);
-		return false;
+		skb_queue_tail(&htt->rx_in_ord_compl_q, skb);
+		tasklet_schedule(&htt->txrx_compl_task);
+		return;
 	}
 	case HTT_T2H_MSG_TYPE_TX_CREDIT_UPDATE_IND:
 		break;
@@ -2449,21 +2451,10 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 	}
 	case HTT_T2H_MSG_TYPE_AGGR_CONF:
 		break;
-	case HTT_T2H_MSG_TYPE_TX_FETCH_IND: {
-		struct sk_buff *tx_fetch_ind = skb_copy(skb, GFP_ATOMIC);
-
-		if (!tx_fetch_ind) {
-			ath10k_warn(ar, "failed to copy htt tx fetch ind\n");
-			break;
-		}
-		skb_queue_tail(&htt->tx_fetch_ind_q, tx_fetch_ind);
-		break;
-	}
+	case HTT_T2H_MSG_TYPE_TX_FETCH_IND:
 	case HTT_T2H_MSG_TYPE_TX_FETCH_CONFIRM:
-		ath10k_htt_rx_tx_fetch_confirm(ar, skb);
-		break;
 	case HTT_T2H_MSG_TYPE_TX_MODE_SWITCH_IND:
-		ath10k_htt_rx_tx_mode_switch_ind(ar, skb);
+		/* TODO: Implement pull-push logic */
 		break;
 	case HTT_T2H_MSG_TYPE_EN_STATS:
 	default:
@@ -2487,37 +2478,33 @@ EXPORT_SYMBOL(ath10k_htt_rx_pktlog_completion_handler);
 
 int ath10k_htt_txrx_compl_task(struct ath10k *ar, int budget)
 {
-	struct ath10k_htt *htt = &ar->htt;
-	struct htt_tx_done tx_done = {};
-	struct sk_buff_head tx_ind_q;
+	struct ath10k_htt *htt = (struct ath10k_htt *)ptr;
+	struct ath10k *ar = htt->ar;
+	struct sk_buff_head tx_q;
+	struct sk_buff_head rx_q;
+	struct sk_buff_head rx_ind_q;
+	struct htt_resp *resp;
 	struct sk_buff *skb;
 	unsigned long flags;
-	int quota = 0, done, num_rx_msdus;
-	bool resched_napi = false;
 
-	__skb_queue_head_init(&tx_ind_q);
+	__skb_queue_head_init(&tx_q);
+	__skb_queue_head_init(&rx_q);
+	__skb_queue_head_init(&rx_ind_q);
 
-	/* Since in-ord-ind can deliver more than 1 A-MSDU in single event,
-	 * process it first to utilize full available quota.
-	 */
-	while (quota < budget) {
-		if (skb_queue_empty(&htt->rx_in_ord_compl_q))
-			break;
+	spin_lock_irqsave(&htt->tx_compl_q.lock, flags);
+	skb_queue_splice_init(&htt->tx_compl_q, &tx_q);
+	spin_unlock_irqrestore(&htt->tx_compl_q.lock, flags);
 
-		skb = __skb_dequeue(&htt->rx_in_ord_compl_q);
-		if (!skb) {
-			resched_napi = true;
-			goto exit;
-		}
+	spin_lock_irqsave(&htt->rx_compl_q.lock, flags);
+	skb_queue_splice_init(&htt->rx_compl_q, &rx_q);
+	spin_unlock_irqrestore(&htt->rx_compl_q.lock, flags);
 
-		spin_lock_bh(&htt->rx_ring.lock);
-		num_rx_msdus = ath10k_htt_rx_in_ord_ind(ar, skb);
-		spin_unlock_bh(&htt->rx_ring.lock);
-		if (num_rx_msdus < 0) {
-			resched_napi = true;
-			goto exit;
-		}
+	spin_lock_irqsave(&htt->rx_in_ord_compl_q.lock, flags);
+	skb_queue_splice_init(&htt->rx_in_ord_compl_q, &rx_ind_q);
+	spin_unlock_irqrestore(&htt->rx_in_ord_compl_q.lock, flags);
 
+	while ((skb = __skb_dequeue(&tx_q))) {
+		ath10k_htt_rx_frm_tx_compl(htt->ar, skb);
 		dev_kfree_skb_any(skb);
 		if (num_rx_msdus > 0)
 			quota += num_rx_msdus;
@@ -2529,60 +2516,19 @@ int ath10k_htt_txrx_compl_task(struct ath10k *ar, int budget)
 		}
 	}
 
-	while (quota < budget) {
-		/* no more data to receive */
-		if (!atomic_read(&htt->num_mpdus_ready))
-			break;
-
-		num_rx_msdus = ath10k_htt_rx_handle_amsdu(htt);
-		if (num_rx_msdus < 0) {
-			resched_napi = true;
-			goto exit;
-		}
-
-		quota += num_rx_msdus;
-		atomic_dec(&htt->num_mpdus_ready);
-		if ((quota > ATH10K_NAPI_QUOTA_LIMIT) &&
-		    atomic_read(&htt->num_mpdus_ready)) {
-			resched_napi = true;
-			goto exit;
-		}
-	}
-
-	/* From NAPI documentation:
-	 *  The napi poll() function may also process TX completions, in which
-	 *  case if it processes the entire TX ring then it should count that
-	 *  work as the rest of the budget.
-	 */
-	if ((quota < budget) && !kfifo_is_empty(&htt->txdone_fifo))
-		quota = budget;
-
-	/* kfifo_get: called only within txrx_tasklet so it's neatly serialized.
-	 * From kfifo_get() documentation:
-	 *  Note that with only one concurrent reader and one concurrent writer,
-	 *  you don't need extra locking to use these macro.
-	 */
-	while (kfifo_get(&htt->txdone_fifo, &tx_done))
-		ath10k_txrx_tx_unref(htt, &tx_done);
-
-	ath10k_mac_tx_push_pending(ar);
-
-	spin_lock_irqsave(&htt->tx_fetch_ind_q.lock, flags);
-	skb_queue_splice_init(&htt->tx_fetch_ind_q, &tx_ind_q);
-	spin_unlock_irqrestore(&htt->tx_fetch_ind_q.lock, flags);
-
-	while ((skb = __skb_dequeue(&tx_ind_q))) {
-		ath10k_htt_rx_tx_fetch_ind(ar, skb);
+	while ((skb = __skb_dequeue(&rx_q))) {
+		resp = (struct htt_resp *)skb->data;
+		spin_lock_bh(&htt->rx_ring.lock);
+		ath10k_htt_rx_handler(htt, &resp->rx_ind);
+		spin_unlock_bh(&htt->rx_ring.lock);
 		dev_kfree_skb_any(skb);
 	}
 
-exit:
-	ath10k_htt_rx_msdu_buff_replenish(htt);
-	/* In case of rx failure or more data to read, report budget
-	 * to reschedule NAPI poll
-	 */
-	done = resched_napi ? budget : quota;
-
-	return done;
+	while ((skb = __skb_dequeue(&rx_ind_q))) {
+		spin_lock_bh(&htt->rx_ring.lock);
+		ath10k_htt_rx_in_ord_ind(ar, skb);
+		spin_unlock_bh(&htt->rx_ring.lock);
+		dev_kfree_skb_any(skb);
+	}
 }
 EXPORT_SYMBOL(ath10k_htt_txrx_compl_task);

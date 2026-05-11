@@ -241,6 +241,14 @@ enum iwl_wowlan_wakeup_filters {
 	IWL_WOWLAN_WAKEUP_BCN_FILTERING			= BIT(16),
 }; /* WOWLAN_WAKEUP_FILTER_API_E_VER_4 */
 
+enum iwl_wowlan_flags {
+	IS_11W_ASSOC		= BIT(0),
+	ENABLE_L3_FILTERING	= BIT(1),
+	ENABLE_NBNS_FILTERING	= BIT(2),
+	ENABLE_DHCP_FILTERING	= BIT(3),
+	ENABLE_STORE_BEACON	= BIT(4),
+};
+
 struct iwl_wowlan_config_cmd {
 	__le32 wakeup_filter;
 	__le16 non_qos_seq;

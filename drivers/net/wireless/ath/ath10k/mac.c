@@ -4628,7 +4628,7 @@ static int ath10k_start(struct ieee80211_hw *hw)
 
 	ar->ani_enabled = true;
 
-	if (ath10k_peer_stats_enabled(ar)) {
+	if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map)) {
 		param = ar->wmi.pdev_param->peer_stats_update_period;
 		ret = ath10k_wmi_pdev_set_param(ar, param,
 						PEER_DEFAULT_STATS_UPDATE_PERIOD);
@@ -4638,19 +4638,6 @@ static int ath10k_start(struct ieee80211_hw *hw)
 				    ret);
 			goto err_core_stop;
 		}
-	}
-
-	param = ar->wmi.pdev_param->enable_btcoex;
-	if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map) &&
-	    test_bit(ATH10K_FW_FEATURE_BTCOEX_PARAM,
-		     ar->running_fw->fw_file.fw_features)) {
-		ret = ath10k_wmi_pdev_set_param(ar, param, 0);
-		if (ret) {
-			ath10k_warn(ar,
-				    "failed to set btcoex param: %d\n", ret);
-			goto err_core_stop;
-		}
-		clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
 	}
 
 	ar->num_started_vdevs = 0;

@@ -73,8 +73,8 @@
 #define BY_PASS_MIN_LEVEL (KENREL_MIN_LEVEL + MLX5_BY_PASS_NUM_PRIOS +\
 			   LEFTOVERS_MAX_FT)
 
-#define KERNEL_MAX_FT 2
-#define KERNEL_NUM_PRIOS 1
+#define KERNEL_MAX_FT 3
+#define KERNEL_NUM_PRIOS 2
 #define KENREL_MIN_LEVEL 2
 
 #define ANCHOR_MAX_FT 1
@@ -367,6 +367,7 @@ static void del_rule(struct fs_node *node)
 	memcpy(match_value, fte->val, sizeof(fte->val));
 	fs_get_obj(ft, fg->node.parent);
 	list_del(&rule->node.list);
+<<<<<<< HEAD
 	if (rule->sw_action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		mutex_lock(&rule->dest_attr.ft->lock);
 		list_del(&rule->next_ft);
@@ -374,6 +375,10 @@ static void del_rule(struct fs_node *node)
 	}
 	fte->dests_size--;
 	if (fte->dests_size) {
+=======
+	if ((fte->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) &&
+	    --fte->dests_size) {
+>>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		err = mlx5_cmd_update_fte(dev, ft,
 					  fg->id, fte);
 		if (err)
@@ -837,7 +842,8 @@ static struct mlx5_flow_rule *alloc_rule(struct mlx5_flow_destination *dest)
 
 	INIT_LIST_HEAD(&rule->next_ft);
 	rule->node.type = FS_TYPE_FLOW_DEST;
-	memcpy(&rule->dest_attr, dest, sizeof(*dest));
+	if (dest)
+		memcpy(&rule->dest_attr, dest, sizeof(*dest));
 
 	return rule;
 }
@@ -860,12 +866,19 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 	 * end of the list for forward to next prio rules.
 	 */
 	tree_init_node(&rule->node, 1, del_rule);
+<<<<<<< HEAD
 	if (dest && dest->type != MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE)
 		list_add(&rule->node.list, &fte->node.children);
 	else
 		list_add_tail(&rule->node.list, &fte->node.children);
 	fte->dests_size++;
 	if (fte->dests_size == 1)
+=======
+	list_add_tail(&rule->node.list, &fte->node.children);
+	if (dest)
+		fte->dests_size++;
+	if (fte->dests_size == 1 || !dest)
+>>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		err = mlx5_cmd_create_fte(get_dev(&ft->node),
 					  ft, fg->id, fte);
 	else
@@ -881,7 +894,8 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 free_rule:
 	list_del(&rule->node.list);
 	kfree(rule);
-	fte->dests_size--;
+	if (dest)
+		fte->dests_size--;
 	return ERR_PTR(err);
 }
 
@@ -1130,6 +1144,7 @@ mlx5_add_flow_rule(struct mlx5_flow_table *ft,
 	u32 sw_action = action;
 	struct fs_prio *prio;
 
+<<<<<<< HEAD
 	fs_get_obj(prio, ft->node.parent);
 	if (action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
 		if (!fwd_next_prio_supported(ft))
@@ -1146,6 +1161,21 @@ mlx5_add_flow_rule(struct mlx5_flow_table *ft,
 		} else {
 			mutex_unlock(&root->chain_lock);
 			return ERR_PTR(-EOPNOTSUPP);
+=======
+	if ((action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) && !dest)
+		return ERR_PTR(-EINVAL);
+
+	nested_lock_ref_node(&ft->node, FS_MUTEX_GRANDPARENT);
+	fs_for_each_fg(g, ft)
+		if (compare_match_criteria(g->mask.match_criteria_enable,
+					   match_criteria_enable,
+					   g->mask.match_criteria,
+					   match_criteria)) {
+			rule = add_rule_fg(g, match_value,
+					   action, flow_tag, dest);
+			if (!IS_ERR(rule) || PTR_ERR(rule) != -ENOSPC)
+				goto unlock;
+>>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		}
 	}
 

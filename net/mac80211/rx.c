@@ -4,6 +4,7 @@
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2007-2010	Johannes Berg <johannes@sipsolutions.net>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
+ * Copyright(c) 2015 - 2016 Intel Deutschland GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -18,6 +19,7 @@
 #include <linux/etherdevice.h>
 #include <linux/rcupdate.h>
 #include <linux/export.h>
+#include <linux/bitops.h>
 #include <net/mac80211.h>
 #include <net/ieee80211_radiotap.h>
 #include <asm/unaligned.h>
@@ -800,6 +802,26 @@ static ieee80211_rx_result ieee80211_rx_mesh_check(struct ieee80211_rx_data *rx)
 	return RX_CONTINUE;
 }
 
+static inline bool ieee80211_rx_reorder_ready(struct tid_ampdu_rx *tid_agg_rx,
+					      int index)
+{
+	struct sk_buff_head *frames = &tid_agg_rx->reorder_buf[index];
+	struct sk_buff *tail = skb_peek_tail(frames);
+	struct ieee80211_rx_status *status;
+
+	if (tid_agg_rx->reorder_buf_filtered & BIT_ULL(index))
+		return true;
+
+	if (!tail)
+		return false;
+
+	status = IEEE80211_SKB_RXCB(tail);
+	if (status->flag & RX_FLAG_AMSDU_MORE)
+		return false;
+
+	return true;
+}
+
 static void ieee80211_release_reorder_frame(struct ieee80211_sub_if_data *sdata,
 					    struct tid_ampdu_rx *tid_agg_rx,
 					    int index,
@@ -814,7 +836,7 @@ static void ieee80211_release_reorder_frame(struct ieee80211_sub_if_data *sdata,
 	if (skb_queue_empty(skb_list))
 		goto no_frame;
 
-	if (!ieee80211_rx_reorder_ready(skb_list)) {
+	if (!ieee80211_rx_reorder_ready(tid_agg_rx, index)) {
 		__skb_queue_purge(skb_list);
 		goto no_frame;
 	}
@@ -828,6 +850,7 @@ static void ieee80211_release_reorder_frame(struct ieee80211_sub_if_data *sdata,
 	}
 
 no_frame:
+	tid_agg_rx->reorder_buf_filtered &= ~BIT_ULL(index);
 	tid_agg_rx->head_seq_num = ieee80211_sn_inc(tid_agg_rx->head_seq_num);
 }
 
@@ -868,7 +891,7 @@ static void ieee80211_sta_reorder_release(struct ieee80211_sub_if_data *sdata,
 
 	/* release the buffer until next missing frame */
 	index = tid_agg_rx->head_seq_num % tid_agg_rx->buf_size;
-	if (!ieee80211_rx_reorder_ready(&tid_agg_rx->reorder_buf[index]) &&
+	if (!ieee80211_rx_reorder_ready(tid_agg_rx, index) &&
 	    tid_agg_rx->stored_mpdu_num) {
 		/*
 		 * No buffers ready to be released, but check whether any
@@ -877,8 +900,7 @@ static void ieee80211_sta_reorder_release(struct ieee80211_sub_if_data *sdata,
 		int skipped = 1;
 		for (j = (index + 1) % tid_agg_rx->buf_size; j != index;
 		     j = (j + 1) % tid_agg_rx->buf_size) {
-			if (!ieee80211_rx_reorder_ready(
-					&tid_agg_rx->reorder_buf[j])) {
+			if (!ieee80211_rx_reorder_ready(tid_agg_rx, j)) {
 				skipped++;
 				continue;
 			}
@@ -905,8 +927,7 @@ static void ieee80211_sta_reorder_release(struct ieee80211_sub_if_data *sdata,
 				 skipped) & IEEE80211_SN_MASK;
 			skipped = 0;
 		}
-	} else while (ieee80211_rx_reorder_ready(
-				&tid_agg_rx->reorder_buf[index])) {
+	} else while (ieee80211_rx_reorder_ready(tid_agg_rx, index)) {
 		ieee80211_release_reorder_frame(sdata, tid_agg_rx, index,
 						frames);
 		index =	tid_agg_rx->head_seq_num % tid_agg_rx->buf_size;
@@ -917,8 +938,7 @@ static void ieee80211_sta_reorder_release(struct ieee80211_sub_if_data *sdata,
 
 		for (; j != (index - 1) % tid_agg_rx->buf_size;
 		     j = (j + 1) % tid_agg_rx->buf_size) {
-			if (ieee80211_rx_reorder_ready(
-					&tid_agg_rx->reorder_buf[j]))
+			if (ieee80211_rx_reorder_ready(tid_agg_rx, j))
 				break;
 		}
 
@@ -989,7 +1009,7 @@ static bool ieee80211_sta_manage_reorder_buf(struct ieee80211_sub_if_data *sdata
 	index = mpdu_seq_num % tid_agg_rx->buf_size;
 
 	/* check if we already stored this frame */
-	if (ieee80211_rx_reorder_ready(&tid_agg_rx->reorder_buf[index])) {
+	if (ieee80211_rx_reorder_ready(tid_agg_rx, index)) {
 		dev_kfree_skb(skb);
 		goto out;
 	}
@@ -1100,6 +1120,9 @@ ieee80211_rx_h_check_dup(struct ieee80211_rx_data *rx)
 {
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)rx->skb->data;
 	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(rx->skb);
+
+	if (status->flag & RX_FLAG_DUP_VALIDATED)
+		return RX_CONTINUE;
 
 	/*
 	 * Drop duplicate 802.11 retransmissions
@@ -2318,9 +2341,6 @@ ieee80211_rx_h_amsdu(struct ieee80211_rx_data *rx)
 	skb->dev = dev;
 	__skb_queue_head_init(&frame_list);
 
-	if (skb_linearize(skb))
-		return RX_DROP_UNUSABLE;
-
 	if (rx->key) {
 		/*
 		 * We should not receive A-MSDUs on pre-HT connections,
@@ -2426,6 +2446,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 			spin_lock_bh(&mppath->state_lock);
 			if (!ether_addr_equal(mppath->mpp, mpp_addr))
 				memcpy(mppath->mpp, mpp_addr, ETH_ALEN);
+			mppath->exp_time = jiffies;
 			spin_unlock_bh(&mppath->state_lock);
 		}
 		rcu_read_unlock();
@@ -2877,6 +2898,11 @@ ieee80211_rx_h_action(struct ieee80211_rx_data *rx)
 						    opmode, status->band);
 			goto handled;
 		}
+		case WLAN_VHT_ACTION_GROUPID_MGMT: {
+			if (len < IEEE80211_MIN_ACTION_SIZE + 25)
+				goto invalid;
+			goto queue;
+		}
 		default:
 			break;
 		}
@@ -3221,7 +3247,7 @@ static void ieee80211_rx_cooked_monitor(struct ieee80211_rx_data *rx,
 	ieee80211_add_rx_radiotap_header(local, skb, rate, needed_headroom,
 					 false);
 
-	skb_set_mac_header(skb, 0);
+	skb_reset_mac_header(skb);
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
 	skb->pkt_type = PACKET_OTHERHOST;
 	skb->protocol = htons(ETH_P_802_2);
@@ -3422,6 +3448,85 @@ void ieee80211_release_reorder_timeout(struct sta_info *sta, int tid)
 
 	ieee80211_rx_handlers(&rx, &frames);
 }
+
+void ieee80211_mark_rx_ba_filtered_frames(struct ieee80211_sta *pubsta, u8 tid,
+					  u16 ssn, u64 filtered,
+					  u16 received_mpdus)
+{
+	struct sta_info *sta;
+	struct tid_ampdu_rx *tid_agg_rx;
+	struct sk_buff_head frames;
+	struct ieee80211_rx_data rx = {
+		/* This is OK -- must be QoS data frame */
+		.security_idx = tid,
+		.seqno_idx = tid,
+	};
+	int i, diff;
+
+	if (WARN_ON(!pubsta || tid >= IEEE80211_NUM_TIDS))
+		return;
+
+	__skb_queue_head_init(&frames);
+
+	sta = container_of(pubsta, struct sta_info, sta);
+
+	rx.sta = sta;
+	rx.sdata = sta->sdata;
+	rx.local = sta->local;
+
+	rcu_read_lock();
+	tid_agg_rx = rcu_dereference(sta->ampdu_mlme.tid_rx[tid]);
+	if (!tid_agg_rx)
+		goto out;
+
+	spin_lock_bh(&tid_agg_rx->reorder_lock);
+
+	if (received_mpdus >= IEEE80211_SN_MODULO >> 1) {
+		int release;
+
+		/* release all frames in the reorder buffer */
+		release = (tid_agg_rx->head_seq_num + tid_agg_rx->buf_size) %
+			   IEEE80211_SN_MODULO;
+		ieee80211_release_reorder_frames(sta->sdata, tid_agg_rx,
+						 release, &frames);
+		/* update ssn to match received ssn */
+		tid_agg_rx->head_seq_num = ssn;
+	} else {
+		ieee80211_release_reorder_frames(sta->sdata, tid_agg_rx, ssn,
+						 &frames);
+	}
+
+	/* handle the case that received ssn is behind the mac ssn.
+	 * it can be tid_agg_rx->buf_size behind and still be valid */
+	diff = (tid_agg_rx->head_seq_num - ssn) & IEEE80211_SN_MASK;
+	if (diff >= tid_agg_rx->buf_size) {
+		tid_agg_rx->reorder_buf_filtered = 0;
+		goto release;
+	}
+	filtered = filtered >> diff;
+	ssn += diff;
+
+	/* update bitmap */
+	for (i = 0; i < tid_agg_rx->buf_size; i++) {
+		int index = (ssn + i) % tid_agg_rx->buf_size;
+
+		tid_agg_rx->reorder_buf_filtered &= ~BIT_ULL(index);
+		if (filtered & BIT_ULL(i))
+			tid_agg_rx->reorder_buf_filtered |= BIT_ULL(index);
+	}
+
+	/* now process also frames that the filter marking released */
+	ieee80211_sta_reorder_release(sta->sdata, tid_agg_rx, &frames);
+
+release:
+	spin_unlock_bh(&tid_agg_rx->reorder_lock);
+
+	ieee80211_rx_handlers(&rx, &frames);
+
+ out:
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL(ieee80211_mark_rx_ba_filtered_frames);
 
 /* main receive path */
 
