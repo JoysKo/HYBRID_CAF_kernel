@@ -40,7 +40,7 @@
  * to run the rebalance_domains for all idle cores and the cpu_capacity can be
  * updated during this sequence.
  */
-static DEFINE_PER_CPU(unsigned long, cpu_scale);
+static DEFINE_PER_CPU(unsigned long, cpu_scale) = SCHED_CAPACITY_SCALE;
 
 unsigned long scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
@@ -619,27 +619,6 @@ static void __init reset_cpu_topology(void)
 		cpumask_clear(&cpu_topo->core_sibling);
 		cpumask_clear(&cpu_topo->thread_sibling);
 	}
-}
-
-static void __init reset_cpu_capacity(void)
-{
-	unsigned int cpu;
-
-	for_each_possible_cpu(cpu)
-		set_capacity_scale(cpu, SCHED_CAPACITY_SCALE);
-}
-
-/*
- * init_cpu_topology is called at boot when only one cpu is running
- * which prevent simultaneous write access to cpu_topology array
- */
-void __init init_cpu_topology(void)
-{
-	unsigned int cpu;
-
-	/* init core mask and capacity */
-	reset_cpu_topology();
-	reset_cpu_capacity();
 	smp_wmb();
 
 	if (parse_dt_topology()) {
