@@ -2255,4 +2255,3 @@ static void lexical_error(const char *fmt, ...)
 
 	treesource_error = true;
 }
-
