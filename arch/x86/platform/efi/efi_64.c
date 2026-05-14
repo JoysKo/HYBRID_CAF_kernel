@@ -15,6 +15,8 @@
  *
  */
 
+#define pr_fmt(fmt) "efi: " fmt
+
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/mm.h>
@@ -161,7 +163,8 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	 * and ident-map those pages containing the map before calling
 	 * phys_efi_set_virtual_address_map().
 	 */
-	if (kernel_map_pages_in_pgd(pgd, pa_memmap, pa_memmap, num_pages, _PAGE_NX)) {
+	pfn = pa_memmap >> PAGE_SHIFT;
+	if (kernel_map_pages_in_pgd(pgd, pfn, pa_memmap, num_pages, _PAGE_NX | _PAGE_RW)) {
 		pr_err("Error ident-mapping new memmap (0x%lx)!\n", pa_memmap);
 		return 1;
 	}
@@ -177,6 +180,25 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	if (!IS_ENABLED(CONFIG_EFI_MIXED))
 		return 0;
 
+	/*
+	 * Map all of RAM so that we can access arguments in the 1:1
+	 * mapping when making EFI runtime calls.
+	 */
+	for_each_efi_memory_desc(&memmap, md) {
+		if (md->type != EFI_CONVENTIONAL_MEMORY &&
+		    md->type != EFI_LOADER_DATA &&
+		    md->type != EFI_LOADER_CODE)
+			continue;
+
+		pfn = md->phys_addr >> PAGE_SHIFT;
+		npages = md->num_pages;
+
+		if (kernel_map_pages_in_pgd(pgd, pfn, md->phys_addr, npages, _PAGE_RW)) {
+			pr_err("Failed to map 1:1 memory\n");
+			return 1;
+		}
+	}
+
 	page = alloc_page(GFP_KERNEL|__GFP_DMA32);
 	if (!page)
 		panic("Unable to allocate EFI runtime stack < 4GB\n");
@@ -184,10 +206,10 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	efi_scratch.phys_stack = virt_to_phys(page_address(page));
 	efi_scratch.phys_stack += PAGE_SIZE; /* stack grows down */
 
-	npages = (_end - _text) >> PAGE_SHIFT;
+	npages = (_etext - _text) >> PAGE_SHIFT;
 	text = __pa(_text);
 
-	if (kernel_map_pages_in_pgd(pgd, text >> PAGE_SHIFT, text, npages, 0)) {
+	if (kernel_map_pages_in_pgd(pgd, pfn, text, npages, _PAGE_RW)) {
 		pr_err("Failed to map kernel text 1:1\n");
 		return 1;
 	}
@@ -204,8 +226,9 @@ void __init efi_cleanup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 
 static void __init __map_region(efi_memory_desc_t *md, u64 va)
 {
-	pgd_t *pgd = (pgd_t *)__va(real_mode_header->trampoline_pgd);
-	unsigned long pf = 0;
+	unsigned long flags = _PAGE_RW;
+	unsigned long pfn;
+	pgd_t *pgd = efi_pgd;
 
 	if (!(md->attribute & EFI_MEMORY_WB))
 		pf |= _PAGE_PCD;
@@ -301,13 +324,50 @@ void __init parse_efi_setup(u64 phys_addr, u32 data_len)
 	efi_setup = phys_addr + sizeof(struct setup_data);
 }
 
-void __init efi_runtime_mkexec(void)
+void __init efi_runtime_update_mappings(void)
 {
-	if (!efi_enabled(EFI_OLD_MEMMAP))
+	unsigned long pfn;
+	pgd_t *pgd = efi_pgd;
+	efi_memory_desc_t *md;
+	void *p;
+
+	if (efi_enabled(EFI_OLD_MEMMAP)) {
+		if (__supported_pte_mask & _PAGE_NX)
+			runtime_code_page_mkexec();
+		return;
+	}
+
+	if (!efi_enabled(EFI_NX_PE_DATA))
 		return;
 
-	if (__supported_pte_mask & _PAGE_NX)
-		runtime_code_page_mkexec();
+	for (p = memmap.map; p < memmap.map_end; p += memmap.desc_size) {
+		unsigned long pf = 0;
+		md = p;
+
+		if (!(md->attribute & EFI_MEMORY_RUNTIME))
+			continue;
+
+		if (!(md->attribute & EFI_MEMORY_WB))
+			pf |= _PAGE_PCD;
+
+		if ((md->attribute & EFI_MEMORY_XP) ||
+			(md->type == EFI_RUNTIME_SERVICES_DATA))
+			pf |= _PAGE_NX;
+
+		if (!(md->attribute & EFI_MEMORY_RO) &&
+			(md->type != EFI_RUNTIME_SERVICES_CODE))
+			pf |= _PAGE_RW;
+
+		/* Update the 1:1 mapping */
+		pfn = md->phys_addr >> PAGE_SHIFT;
+		if (kernel_map_pages_in_pgd(pgd, pfn, md->phys_addr, md->num_pages, pf))
+			pr_warn("Error mapping PA 0x%llx -> VA 0x%llx!\n",
+				   md->phys_addr, md->virt_addr);
+
+		if (kernel_map_pages_in_pgd(pgd, pfn, md->virt_addr, md->num_pages, pf))
+			pr_warn("Error mapping PA 0x%llx -> VA 0x%llx!\n",
+				   md->phys_addr, md->virt_addr);
+	}
 }
 
 void __init efi_dump_pagetable(void)
