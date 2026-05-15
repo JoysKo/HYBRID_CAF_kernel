@@ -208,8 +208,8 @@ static int ashmem_mmap(struct file *file, struct vm_area_struct *vma)
 
 	/* requested protection bits must match our allowed protection mask */
 	prot_mask = READ_ONCE(asma->prot_mask);
-	if ((vma->vm_flags & ~calc_vm_prot_bits(prot_mask) &
-		     calc_vm_prot_bits(PROT_MASK)))
+	if ((vma->vm_flags & ~calc_vm_prot_bits(prot_mask, 0) &
+		     calc_vm_prot_bits(PROT_MASK, 0)))
 		return -EPERM;
 
 	vma->vm_flags &= ~calc_vm_may_flags(~prot_mask);

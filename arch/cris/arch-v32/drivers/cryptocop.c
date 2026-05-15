@@ -2719,9 +2719,7 @@ static int cryptocop_ioctl_process(struct inode *inode, struct file *filp, unsig
 	/* Acquire the mm page semaphore. */
 	down_read(&current->mm->mmap_sem);
 
-	err = get_user_pages(current,
-			     current->mm,
-			     (unsigned long int)(oper.indata + prev_ix),
+	err = get_user_pages((unsigned long int)(oper.indata + prev_ix),
 			     noinpages,
 			     0,  /* read access only for in data */
 			     inpages,
@@ -2735,9 +2733,7 @@ static int cryptocop_ioctl_process(struct inode *inode, struct file *filp, unsig
 	}
 	noinpages = err;
 	if (oper.do_cipher){
-		err = get_user_pages(current,
-				     current->mm,
-				     (unsigned long int)oper.cipher_outdata,
+		err = get_user_pages((unsigned long int)oper.cipher_outdata,
 				     nooutpages,
 				     FOLL_WRITE, /* write access for out data */
 				     outpages,

@@ -1,3 +1,4 @@
+#define __DISABLE_GUP_DEPRECATED 1
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/err.h>
@@ -13,6 +14,7 @@
 #include <linux/rwsem.h>
 #include <linux/hugetlb.h>
 
+#include <asm/mmu_context.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
@@ -321,6 +323,8 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 		return -ENOENT;
 	if (*flags & FOLL_WRITE)
 		fault_flags |= FAULT_FLAG_WRITE;
+	if (*flags & FOLL_REMOTE)
+		fault_flags |= FAULT_FLAG_REMOTE;
 	if (nonblocking)
 		fault_flags |= FAULT_FLAG_ALLOW_RETRY;
 	if (*flags & FOLL_NOWAIT)
@@ -371,6 +375,8 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 {
 	vm_flags_t vm_flags = vma->vm_flags;
+	int write = (gup_flags & FOLL_WRITE);
+	int foreign = (gup_flags & FOLL_REMOTE);
 
 	if (vm_flags & (VM_IO | VM_PFNMAP))
 		return -EFAULT;
@@ -378,32 +384,21 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
 	if (gup_flags & FOLL_ANON && !vma_is_anonymous(vma))
 		return -EFAULT;
 
-	if (gup_flags & FOLL_WRITE) {
+	if (write) {
 		if (!(vm_flags & VM_WRITE)) {
 			if (!(gup_flags & FOLL_FORCE))
 				return -EFAULT;
-			/*
-			 * We used to let the write,force case do COW in a
-			 * VM_MAYWRITE VM_SHARED !VM_WRITE vma, so ptrace could
-			 * set a breakpoint in a read-only mapping of an
-			 * executable, without corrupting the file (yet only
-			 * when that file had been opened for writing!).
-			 * Anon pages in shared mappings are surprising: now
-			 * just reject it.
-			 */
 			if (!is_cow_mapping(vm_flags))
 				return -EFAULT;
 		}
 	} else if (!(vm_flags & VM_READ)) {
 		if (!(gup_flags & FOLL_FORCE))
 			return -EFAULT;
-		/*
-		 * Is there actually any vma we can reach here which does not
-		 * have VM_MAYREAD set?
-		 */
 		if (!(vm_flags & VM_MAYREAD))
 			return -EFAULT;
 	}
+	if (!arch_vma_access_permitted(vma, write, false, foreign))
+		return -EFAULT;
 	return 0;
 }
 
@@ -570,6 +565,28 @@ next_page:
 }
 EXPORT_SYMBOL(__get_user_pages);
 
+bool vma_permits_fault(struct vm_area_struct *vma, unsigned int fault_flags)
+{
+	bool write   = !!(fault_flags & FAULT_FLAG_WRITE);
+	bool foreign = !!(fault_flags & FAULT_FLAG_REMOTE);
+	vm_flags_t vm_flags = write ? VM_WRITE : VM_READ;
+
+	if (!(vm_flags & vma->vm_flags))
+		return false;
+
+	/*
+	 * The architecture might have a hardware protection
+	 * mechanism other than read/write that can deny access.
+	 *
+	 * gup always represents data access, not instruction
+	 * fetches, so execute=false here:
+	 */
+	if (!arch_vma_access_permitted(vma, write, false, foreign))
+		return false;
+
+	return true;
+}
+
 /*
  * fixup_user_fault() - manually resolve a user page fault
  * @tsk:	the task_struct to use for page fault accounting, or
@@ -598,21 +615,25 @@ EXPORT_SYMBOL(__get_user_pages);
  * This has the same semantics wrt the @mm->mmap_sem as does filemap_fault().
  */
 int fixup_user_fault(struct task_struct *tsk, struct mm_struct *mm,
-		     unsigned long address, unsigned int fault_flags)
+		     unsigned long address, unsigned int fault_flags,
+		     bool *unlocked)
 {
 	struct vm_area_struct *vma;
-	vm_flags_t vm_flags;
-	int ret;
+	int ret, major = 0;
 
+	if (unlocked)
+		fault_flags |= FAULT_FLAG_ALLOW_RETRY;
+
+retry:
 	vma = find_extend_vma(mm, address);
 	if (!vma || address < vma->vm_start)
 		return -EFAULT;
 
-	vm_flags = (fault_flags & FAULT_FLAG_WRITE) ? VM_WRITE : VM_READ;
-	if (!(vm_flags & vma->vm_flags))
+	if (!vma_permits_fault(vma, fault_flags))
 		return -EFAULT;
 
 	ret = handle_mm_fault(mm, vma, address, fault_flags);
+	major |= ret & VM_FAULT_MAJOR;
 	if (ret & VM_FAULT_ERROR) {
 		if (ret & VM_FAULT_OOM)
 			return -ENOMEM;
@@ -622,8 +643,19 @@ int fixup_user_fault(struct task_struct *tsk, struct mm_struct *mm,
 			return -EFAULT;
 		BUG();
 	}
+
+	if (ret & VM_FAULT_RETRY) {
+		down_read(&mm->mmap_sem);
+		if (!(fault_flags & FAULT_FLAG_TRIED)) {
+			*unlocked = true;
+			fault_flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			fault_flags |= FAULT_FLAG_TRIED;
+			goto retry;
+		}
+	}
+
 	if (tsk) {
-		if (ret & VM_FAULT_MAJOR)
+		if (major)
 			tsk->maj_flt++;
 		else
 			tsk->min_flt++;
@@ -807,7 +839,7 @@ long get_user_pages_unlocked(struct task_struct *tsk, struct mm_struct *mm,
 EXPORT_SYMBOL(get_user_pages_unlocked);
 
 /*
- * get_user_pages() - pin user pages in memory
+ * get_user_pages_remote() - pin user pages in memory
  * @tsk:	the task_struct to use for page fault accounting, or
  *		NULL if faults are not to be recorded.
  * @mm:		mm_struct of target mm
@@ -860,6 +892,23 @@ EXPORT_SYMBOL(get_user_pages_unlocked);
  * get_user_pages_locked|unlocked or get_user_pages_fast. Nothing
  * should use get_user_pages because it cannot pass
  * FAULT_FLAG_ALLOW_RETRY to handle_mm_fault.
+ */
+long get_user_pages_remote(struct task_struct *tsk, struct mm_struct *mm,
+		    unsigned long start, unsigned long nr_pages,
+		    unsigned int gup_flags, struct page **pages,
+		    struct vm_area_struct **vmas)
+{
+	return __get_user_pages_locked(tsk, mm, start, nr_pages,
+				       pages, vmas, NULL, false,
+				       gup_flags | FOLL_TOUCH | FOLL_REMOTE);
+}
+EXPORT_SYMBOL(get_user_pages_remote);
+
+/*
+ * This is the same as get_user_pages_remote(), just with a
+ * less-flexible calling convention where we assume that the task
+ * and mm being operated on are the current task's.  We also
+ * obviously don't pass FOLL_REMOTE in here.
  */
 long get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		unsigned long start, unsigned long nr_pages,
@@ -1097,6 +1146,9 @@ static int gup_pte_range(pmd_t pmd, unsigned long addr, unsigned long end,
 		 */
 		if (!pte_present(pte) || pte_special(pte) ||
 			pte_protnone(pte) || (write && !pte_write(pte)))
+			goto pte_unmap;
+
+		if (!arch_pte_access_permitted(pte, write))
 			goto pte_unmap;
 
 		VM_BUG_ON(!pfn_valid(pte_pfn(pte)));

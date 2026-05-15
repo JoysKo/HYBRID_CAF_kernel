@@ -523,6 +523,8 @@ static void do_fault(struct work_struct *work)
 	mm = fault->state->mm;
 	address = fault->address;
 
+	flags |= FAULT_FLAG_REMOTE;
+
 	down_read(&mm->mmap_sem);
 	vma = find_extend_vma(mm, address);
 	if (!vma || address < vma->vm_start) {
