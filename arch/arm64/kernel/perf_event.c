@@ -70,19 +70,17 @@ enum armv8_pmuv3_perf_types {
 	ARMV8_PMUV3_PERFCTR_BUS_CYCLES				= 0x1D,
 };
 
+/* ARMv8 implementation defined event types. */
+#define ARMV8_IMPDEF_PERFCTR_L1_DCACHE_ACCESS_LD		0x40
+#define ARMV8_IMPDEF_PERFCTR_L1_DCACHE_ACCESS_ST		0x41
+#define ARMV8_IMPDEF_PERFCTR_L1_DCACHE_REFILL_LD		0x42
+#define ARMV8_IMPDEF_PERFCTR_L1_DCACHE_REFILL_ST		0x43
+#define ARMV8_IMPDEF_PERFCTR_DTLB_REFILL_LD			0x4C
+#define ARMV8_IMPDEF_PERFCTR_DTLB_REFILL_ST			0x4D
+
 /* ARMv8 Cortex-A53 specific event types. */
 enum armv8_a53_pmu_perf_types {
 	ARMV8_A53_PERFCTR_PREFETCH_LINEFILL			= 0xC2,
-};
-
-/* ARMv8 Cortex-A57 specific event types. */
-enum armv8_a57_perf_types {
-	ARMV8_A57_PERFCTR_L1_DCACHE_ACCESS_LD			= 0x40,
-	ARMV8_A57_PERFCTR_L1_DCACHE_ACCESS_ST			= 0x41,
-	ARMV8_A57_PERFCTR_L1_DCACHE_REFILL_LD			= 0x42,
-	ARMV8_A57_PERFCTR_L1_DCACHE_REFILL_ST			= 0x43,
-	ARMV8_A57_PERFCTR_DTLB_REFILL_LD			= 0x4c,
-	ARMV8_A57_PERFCTR_DTLB_REFILL_ST			= 0x4d,
 };
 
 /* PMUv3 HW events mapping. */
@@ -160,16 +158,16 @@ static const unsigned armv8_a57_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 					      [PERF_COUNT_HW_CACHE_RESULT_MAX] = {
 	PERF_CACHE_MAP_ALL_UNSUPPORTED,
 
-	[C(L1D)][C(OP_READ)][C(RESULT_ACCESS)]	= ARMV8_A57_PERFCTR_L1_DCACHE_ACCESS_LD,
-	[C(L1D)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_A57_PERFCTR_L1_DCACHE_REFILL_LD,
-	[C(L1D)][C(OP_WRITE)][C(RESULT_ACCESS)]	= ARMV8_A57_PERFCTR_L1_DCACHE_ACCESS_ST,
-	[C(L1D)][C(OP_WRITE)][C(RESULT_MISS)]	= ARMV8_A57_PERFCTR_L1_DCACHE_REFILL_ST,
+	[C(L1D)][C(OP_READ)][C(RESULT_ACCESS)]	= ARMV8_IMPDEF_PERFCTR_L1_DCACHE_ACCESS_LD,
+	[C(L1D)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_IMPDEF_PERFCTR_L1_DCACHE_REFILL_LD,
+	[C(L1D)][C(OP_WRITE)][C(RESULT_ACCESS)]	= ARMV8_IMPDEF_PERFCTR_L1_DCACHE_ACCESS_ST,
+	[C(L1D)][C(OP_WRITE)][C(RESULT_MISS)]	= ARMV8_IMPDEF_PERFCTR_L1_DCACHE_REFILL_ST,
 
 	[C(L1I)][C(OP_READ)][C(RESULT_ACCESS)]	= ARMV8_PMUV3_PERFCTR_L1_ICACHE_ACCESS,
 	[C(L1I)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_PMUV3_PERFCTR_L1_ICACHE_REFILL,
 
-	[C(DTLB)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_A57_PERFCTR_DTLB_REFILL_LD,
-	[C(DTLB)][C(OP_WRITE)][C(RESULT_MISS)]	= ARMV8_A57_PERFCTR_DTLB_REFILL_ST,
+	[C(DTLB)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_IMPDEF_PERFCTR_DTLB_REFILL_LD,
+	[C(DTLB)][C(OP_WRITE)][C(RESULT_MISS)]	= ARMV8_IMPDEF_PERFCTR_DTLB_REFILL_ST,
 
 	[C(ITLB)][C(OP_READ)][C(RESULT_MISS)]	= ARMV8_PMUV3_PERFCTR_ITLB_REFILL,
 
@@ -210,9 +208,10 @@ static const unsigned armv8_a57_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 #define ARMV8_PMCR_D		(1 << 3) /* CCNT counts every 64th cpu cycle */
 #define ARMV8_PMCR_X		(1 << 4) /* Export to ETM */
 #define ARMV8_PMCR_DP		(1 << 5) /* Disable CCNT if non-invasive debug*/
+#define ARMV8_PMCR_LC		(1 << 6) /* Overflow on 64 bit cycle counter */
 #define	ARMV8_PMCR_N_SHIFT	11	 /* Number of counters supported */
 #define	ARMV8_PMCR_N_MASK	0x1f
-#define	ARMV8_PMCR_MASK		0x3f	 /* Mask for writable bits */
+#define	ARMV8_PMCR_MASK		0x7f	 /* Mask for writable bits */
 
 /*
  * PMOVSR: counters overflow flag status reg
@@ -223,8 +222,8 @@ static const unsigned armv8_a57_perf_cache_map[PERF_COUNT_HW_CACHE_MAX]
 /*
  * PMXEVTYPER: Event selection reg
  */
-#define	ARMV8_EVTYPE_MASK	0xc80003ff	/* Mask for writable bits */
-#define	ARMV8_EVTYPE_EVENT	0x3ff		/* Mask for EVENT bits */
+#define	ARMV8_EVTYPE_MASK	0xc800ffff	/* Mask for writable bits */
+#define	ARMV8_EVTYPE_EVENT	0xffff		/* Mask for EVENT bits */
 
 /*
  * Event filters for PMUv3
@@ -302,9 +301,16 @@ static inline void armv8pmu_write_counter(struct perf_event *event, u32 value)
 	if (!armv8pmu_counter_valid(cpu_pmu, idx))
 		pr_err("CPU%u writing wrong counter %d\n",
 			smp_processor_id(), idx);
-	else if (idx == ARMV8_IDX_CYCLE_COUNTER)
+	else if (idx == ARMV8_IDX_CYCLE_COUNTER) {
+		/*
+		 * Set the upper 32bits as this is a 64bit counter but we only
+		 * count using the lower 32bits and we want an interrupt when
+		 * it overflows.
+		 */
+		u64 value64 = 0xffffffff00000000ULL | value;
+
 		armv8pmu_pmccntr_write_reg(value);
-	else if (armv8pmu_select_counter(idx) == idx)
+	} else if (armv8pmu_select_counter(idx) == idx)
 		armv8pmu_pmxevcntr_write_reg(value);
 }
 
@@ -618,8 +624,11 @@ static void armv8pmu_reset(void *info)
 		armv8pmu_disable_intens(idx);
 	}
 
-	/* Initialize & Reset PMNC: C and P bits. */
-	armv8pmu_pmcr_write(armv8pmu_pmcr_read() | ARMV8_PMCR_P | ARMV8_PMCR_C);
+	/*
+	 * Initialize & Reset PMNC. Request overflow interrupt for
+	 * 64 bit cycle counter but cheat in armv8pmu_write_counter().
+	 */
+	armv8pmu_pmcr_write(armv8pmu_pmcr_read() | ARMV8_PMCR_P | ARMV8_PMCR_C | ARMV8_PMCR_LC);
 
 	armv8pmu_init_usermode();
 }
