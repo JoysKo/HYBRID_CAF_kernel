@@ -443,7 +443,7 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 	dbgbuf->height = buf->height;
 
 	if (dbgbuf->dmabuf && (dbgbuf->buflen > 0)) {
-		dma_buf_begin_cpu_access(dbgbuf->dmabuf, 0, dbgbuf->buflen,
+		dma_buf_begin_cpu_access(dbgbuf->dmabuf,
 				DMA_FROM_DEVICE);
 		dbgbuf->vaddr = dma_buf_kmap(dbgbuf->dmabuf, 0);
 		SDEROT_DBG("vaddr mapping: 0x%p/%ld w:%d/h:%d\n",
@@ -460,7 +460,7 @@ static void sde_hw_rotator_unmap_vaddr(struct sde_dbg_buf *dbgbuf)
 {
 	if (dbgbuf->vaddr) {
 		dma_buf_kunmap(dbgbuf->dmabuf, 0, dbgbuf->vaddr);
-		dma_buf_end_cpu_access(dbgbuf->dmabuf, 0, dbgbuf->buflen,
+		dma_buf_end_cpu_access(dbgbuf->dmabuf,
 				DMA_FROM_DEVICE);
 	}
 
@@ -1338,7 +1338,7 @@ static int sde_hw_rotator_swts_map(struct sde_hw_rotator *rot)
 		goto err_unmap;
 	}
 
-	dma_buf_begin_cpu_access(data->srcp_dma_buf, 0, data->len,
+	dma_buf_begin_cpu_access(data->srcp_dma_buf,
 			DMA_FROM_DEVICE);
 	rot->swts_buffer = dma_buf_kmap(data->srcp_dma_buf, 0);
 	if (IS_ERR_OR_NULL(rot->swts_buffer)) {
@@ -1375,7 +1375,7 @@ static void sde_hw_rotator_swtc_unmap(struct sde_hw_rotator *rot)
 
 	data = &rot->swts_buf;
 
-	dma_buf_end_cpu_access(data->srcp_dma_buf, 0, data->len,
+	dma_buf_end_cpu_access(data->srcp_dma_buf,
 			DMA_FROM_DEVICE);
 	dma_buf_kunmap(data->srcp_dma_buf, 0, rot->swts_buffer);
 	rot->swts_buffer = NULL;

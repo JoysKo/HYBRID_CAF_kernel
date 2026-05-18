@@ -127,13 +127,6 @@ static void atmel_hlcdc_crtc_mode_set_nofb(struct drm_crtc *c)
 	clk_disable_unprepare(crtc->dc->hlcdc->sys_clk);
 }
 
-static bool atmel_hlcdc_crtc_mode_fixup(struct drm_crtc *crtc,
-					const struct drm_display_mode *mode,
-					struct drm_display_mode *adjusted_mode)
-{
-	return true;
-}
-
 static void atmel_hlcdc_crtc_disable(struct drm_crtc *c)
 {
 	struct drm_device *dev = c->dev;
@@ -267,7 +260,6 @@ static void atmel_hlcdc_crtc_atomic_flush(struct drm_crtc *crtc,
 }
 
 static const struct drm_crtc_helper_funcs lcdc_crtc_helper_funcs = {
-	.mode_fixup = atmel_hlcdc_crtc_mode_fixup,
 	.mode_set = drm_helper_crtc_mode_set,
 	.mode_set_nofb = atmel_hlcdc_crtc_mode_set_nofb,
 	.mode_set_base = drm_helper_crtc_mode_set_base,
@@ -284,24 +276,6 @@ static void atmel_hlcdc_crtc_destroy(struct drm_crtc *c)
 
 	drm_crtc_cleanup(c);
 	kfree(crtc);
-}
-
-void atmel_hlcdc_crtc_cancel_page_flip(struct drm_crtc *c,
-				       struct drm_file *file)
-{
-	struct atmel_hlcdc_crtc *crtc = drm_crtc_to_atmel_hlcdc_crtc(c);
-	struct drm_pending_vblank_event *event;
-	struct drm_device *dev = c->dev;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dev->event_lock, flags);
-	event = crtc->event;
-	if (event && event->base.file_priv == file) {
-		event->base.destroy(&event->base);
-		drm_vblank_put(dev, crtc->id);
-		crtc->event = NULL;
-	}
-	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
 static void atmel_hlcdc_crtc_finish_page_flip(struct atmel_hlcdc_crtc *crtc)
@@ -373,4 +347,3 @@ fail:
 	atmel_hlcdc_crtc_destroy(&crtc->base);
 	return ret;
 }
-

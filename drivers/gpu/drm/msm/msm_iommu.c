@@ -28,65 +28,16 @@ static int msm_fault_handler(struct iommu_domain *iommu, struct device *dev,
 	return 0;
 }
 
-static void iommu_get_clocks(struct msm_iommu *iommu, struct device *dev)
-{
-	struct property *prop;
-	const char *name;
-	int i = 0;
-
-	iommu->nr_clocks =
-		of_property_count_strings(dev->of_node, "clock-names");
-
-	if (iommu->nr_clocks < 0)
-		return;
-
-	if (WARN_ON(iommu->nr_clocks > ARRAY_SIZE(iommu->clocks)))
-		iommu->nr_clocks = ARRAY_SIZE(iommu->clocks);
-
-	of_property_for_each_string(dev->of_node, "clock-names", prop, name) {
-		if (i == iommu->nr_clocks)
-			break;
-
-		iommu->clocks[i++] =  clk_get(dev, name);
-	}
-}
-
-
-static void msm_iommu_clocks_enable(struct msm_mmu *mmu)
-{
-	struct msm_iommu *iommu = to_msm_iommu(mmu);
-	int i;
-
-	if (!iommu->nr_clocks)
-		iommu_get_clocks(iommu, mmu->dev->parent);
-
-	for (i = 0; i < iommu->nr_clocks; i++) {
-		if (iommu->clocks[i])
-			clk_prepare_enable(iommu->clocks[i]);
-	}
-}
-
-static void msm_iommu_clocks_disable(struct msm_mmu *mmu)
-{
-	struct msm_iommu *iommu = to_msm_iommu(mmu);
-	int i;
-
-	for (i = 0; i < iommu->nr_clocks; i++) {
-		if (iommu->clocks[i])
-			clk_disable_unprepare(iommu->clocks[i]);
-	}
-}
-
-static int msm_iommu_attach(struct msm_mmu *mmu, const char **names,
-		int cnt)
+static int msm_iommu_attach(struct msm_mmu *mmu, const char * const *names,
+			    int cnt)
 {
 	struct msm_iommu *iommu = to_msm_iommu(mmu);
 
 	return iommu_attach_device(iommu->domain, mmu->dev);
 }
 
-static int msm_iommu_attach_user(struct msm_mmu *mmu, const char **names,
-		int cnt)
+static void msm_iommu_detach(struct msm_mmu *mmu, const char * const *names,
+			     int cnt)
 {
 	struct msm_iommu *iommu = to_msm_iommu(mmu);
 	int ret, val = 1;

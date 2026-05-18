@@ -8,15 +8,14 @@ http://github.com/freedreno/envytools/
 git clone https://github.com/freedreno/envytools.git
 
 The rules-ng-ng source files this header was generated from are:
-- ./adreno.xml               (    431 bytes, from 2016-10-24 21:12:27)
-- ./freedreno_copyright.xml  (   1572 bytes, from 2016-10-24 21:12:27)
-- ./adreno/a2xx.xml          (  32901 bytes, from 2016-10-24 21:12:27)
-- ./adreno/adreno_common.xml (  12025 bytes, from 2016-10-24 21:12:27)
-- ./adreno/adreno_pm4.xml    (  19684 bytes, from 2016-10-24 21:12:27)
-- ./adreno/a3xx.xml          (  83840 bytes, from 2016-10-24 21:12:27)
-- ./adreno/a4xx.xml          ( 110708 bytes, from 2016-10-24 21:12:27)
-- ./adreno/a5xx.xml          (  81207 bytes, from 2016-10-26 19:36:59)
-- ./adreno/ocmem.xml         (   1773 bytes, from 2016-10-24 21:12:27)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno.xml               (    398 bytes, from 2015-09-24 17:25:31)
+- /home/robclark/src/freedreno/envytools/rnndb/freedreno_copyright.xml  (   1572 bytes, from 2016-02-10 17:07:21)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a2xx.xml          (  32901 bytes, from 2015-05-20 20:03:14)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_common.xml (  11518 bytes, from 2016-02-10 21:03:25)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_pm4.xml    (  16166 bytes, from 2016-02-11 21:20:31)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a3xx.xml          (  83967 bytes, from 2016-02-10 17:07:21)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a4xx.xml          ( 109916 bytes, from 2016-02-20 18:44:48)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/ocmem.xml         (   1773 bytes, from 2015-09-24 17:30:00)
 
 Copyright (C) 2013-2016 by the following authors:
 - Rob Clark <robdclark@gmail.com> (robclark)
@@ -184,21 +183,6 @@ enum adreno_pm4_type3_packets {
 	CP_WAIT_MEM_WRITES = 18,
 	CP_COND_REG_EXEC = 71,
 	CP_MEM_TO_REG = 66,
-	CP_EXEC_CS = 51,
-	CP_PERFCOUNTER_ACTION = 80,
-	CP_SMMU_TABLE_UPDATE = 83,
-	CP_CONTEXT_REG_BUNCH = 92,
-	CP_YIELD_ENABLE = 28,
-	CP_SKIP_IB2_ENABLE_GLOBAL = 29,
-	CP_SKIP_IB2_ENABLE_LOCAL = 35,
-	CP_SET_SUBDRAW_SIZE = 53,
-	CP_SET_VISIBILITY_OVERRIDE = 100,
-	CP_PREEMPT_ENABLE_GLOBAL = 105,
-	CP_PREEMPT_ENABLE_LOCAL = 106,
-	CP_CONTEXT_SWITCH_YIELD = 107,
-	CP_SET_RENDER_MODE = 108,
-	CP_COMPUTE_CHECKPOINT = 110,
-	CP_MEM_TO_MEM = 115,
 	IN_IB_PREFETCH_END = 23,
 	IN_SUBBLK_PREFETCH = 31,
 	IN_INSTR_PREFETCH = 32,
@@ -558,79 +542,6 @@ static inline uint32_t CP_REG_TO_MEM_0_CNT(uint32_t val)
 static inline uint32_t CP_REG_TO_MEM_1_DEST(uint32_t val)
 {
 	return ((val) << CP_REG_TO_MEM_1_DEST__SHIFT) & CP_REG_TO_MEM_1_DEST__MASK;
-}
-
-#define REG_CP_DISPATCH_COMPUTE_0				0x00000000
-
-#define REG_CP_DISPATCH_COMPUTE_1				0x00000001
-#define CP_DISPATCH_COMPUTE_1_X__MASK				0xffffffff
-#define CP_DISPATCH_COMPUTE_1_X__SHIFT				0
-static inline uint32_t CP_DISPATCH_COMPUTE_1_X(uint32_t val)
-{
-	return ((val) << CP_DISPATCH_COMPUTE_1_X__SHIFT) & CP_DISPATCH_COMPUTE_1_X__MASK;
-}
-
-#define REG_CP_DISPATCH_COMPUTE_2				0x00000002
-#define CP_DISPATCH_COMPUTE_2_Y__MASK				0xffffffff
-#define CP_DISPATCH_COMPUTE_2_Y__SHIFT				0
-static inline uint32_t CP_DISPATCH_COMPUTE_2_Y(uint32_t val)
-{
-	return ((val) << CP_DISPATCH_COMPUTE_2_Y__SHIFT) & CP_DISPATCH_COMPUTE_2_Y__MASK;
-}
-
-#define REG_CP_DISPATCH_COMPUTE_3				0x00000003
-#define CP_DISPATCH_COMPUTE_3_Z__MASK				0xffffffff
-#define CP_DISPATCH_COMPUTE_3_Z__SHIFT				0
-static inline uint32_t CP_DISPATCH_COMPUTE_3_Z(uint32_t val)
-{
-	return ((val) << CP_DISPATCH_COMPUTE_3_Z__SHIFT) & CP_DISPATCH_COMPUTE_3_Z__MASK;
-}
-
-#define REG_CP_SET_RENDER_MODE_0				0x00000000
-
-#define REG_CP_SET_RENDER_MODE_1				0x00000001
-#define CP_SET_RENDER_MODE_1_ADDR_0_LO__MASK			0xffffffff
-#define CP_SET_RENDER_MODE_1_ADDR_0_LO__SHIFT			0
-static inline uint32_t CP_SET_RENDER_MODE_1_ADDR_0_LO(uint32_t val)
-{
-	return ((val) << CP_SET_RENDER_MODE_1_ADDR_0_LO__SHIFT) & CP_SET_RENDER_MODE_1_ADDR_0_LO__MASK;
-}
-
-#define REG_CP_SET_RENDER_MODE_2				0x00000002
-#define CP_SET_RENDER_MODE_2_ADDR_0_HI__MASK			0xffffffff
-#define CP_SET_RENDER_MODE_2_ADDR_0_HI__SHIFT			0
-static inline uint32_t CP_SET_RENDER_MODE_2_ADDR_0_HI(uint32_t val)
-{
-	return ((val) << CP_SET_RENDER_MODE_2_ADDR_0_HI__SHIFT) & CP_SET_RENDER_MODE_2_ADDR_0_HI__MASK;
-}
-
-#define REG_CP_SET_RENDER_MODE_3				0x00000003
-#define CP_SET_RENDER_MODE_3_GMEM_ENABLE			0x00000010
-
-#define REG_CP_SET_RENDER_MODE_4				0x00000004
-
-#define REG_CP_SET_RENDER_MODE_5				0x00000005
-#define CP_SET_RENDER_MODE_5_ADDR_1_LEN__MASK			0xffffffff
-#define CP_SET_RENDER_MODE_5_ADDR_1_LEN__SHIFT			0
-static inline uint32_t CP_SET_RENDER_MODE_5_ADDR_1_LEN(uint32_t val)
-{
-	return ((val) << CP_SET_RENDER_MODE_5_ADDR_1_LEN__SHIFT) & CP_SET_RENDER_MODE_5_ADDR_1_LEN__MASK;
-}
-
-#define REG_CP_SET_RENDER_MODE_6				0x00000006
-#define CP_SET_RENDER_MODE_6_ADDR_1_LO__MASK			0xffffffff
-#define CP_SET_RENDER_MODE_6_ADDR_1_LO__SHIFT			0
-static inline uint32_t CP_SET_RENDER_MODE_6_ADDR_1_LO(uint32_t val)
-{
-	return ((val) << CP_SET_RENDER_MODE_6_ADDR_1_LO__SHIFT) & CP_SET_RENDER_MODE_6_ADDR_1_LO__MASK;
-}
-
-#define REG_CP_SET_RENDER_MODE_7				0x00000007
-#define CP_SET_RENDER_MODE_7_ADDR_1_HI__MASK			0xffffffff
-#define CP_SET_RENDER_MODE_7_ADDR_1_HI__SHIFT			0
-static inline uint32_t CP_SET_RENDER_MODE_7_ADDR_1_HI(uint32_t val)
-{
-	return ((val) << CP_SET_RENDER_MODE_7_ADDR_1_HI__SHIFT) & CP_SET_RENDER_MODE_7_ADDR_1_HI__MASK;
 }
 
 

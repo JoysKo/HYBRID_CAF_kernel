@@ -22,11 +22,13 @@
  * Authors: Ben Skeggs
  */
 
+#include <linux/apple-gmux.h>
 #include <linux/console.h>
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
+#include <linux/vgaarb.h>
 #include <linux/vga_switcheroo.h>
 
 #include "drmP.h"
@@ -196,6 +198,7 @@ nouveau_accel_init(struct nouveau_drm *drm)
 			break;
 		case FERMI_CHANNEL_GPFIFO:
 		case KEPLER_CHANNEL_GPFIFO_A:
+		case KEPLER_CHANNEL_GPFIFO_B:
 		case MAXWELL_CHANNEL_GPFIFO_A:
 			ret = nvc0_fence_create(drm);
 			break;
@@ -213,13 +216,13 @@ nouveau_accel_init(struct nouveau_drm *drm)
 
 	if (device->info.family >= NV_DEVICE_INFO_V0_KEPLER) {
 		ret = nouveau_channel_new(drm, &drm->device,
-					  KEPLER_CHANNEL_GPFIFO_A_V0_ENGINE_CE0|
-					  KEPLER_CHANNEL_GPFIFO_A_V0_ENGINE_CE1,
+					  NVA06F_V0_ENGINE_CE0 |
+					  NVA06F_V0_ENGINE_CE1,
 					  0, &drm->cechan);
 		if (ret)
 			NV_ERROR(drm, "failed to create ce channel, %d\n", ret);
 
-		arg0 = KEPLER_CHANNEL_GPFIFO_A_V0_ENGINE_GR;
+		arg0 = NVA06F_V0_ENGINE_GR;
 		arg1 = 1;
 	} else
 	if (device->info.chipset >= 0xa3 &&
@@ -312,16 +315,16 @@ static int nouveau_drm_probe(struct pci_dev *pdev,
 	bool boot = false;
 	int ret;
 
-	/* We need to check that the chipset is supported before booting
-	 * fbdev off the hardware, as there's no way to put it back.
+	/*
+	 * apple-gmux is needed on dual GPU MacBook Pro
+	 * to probe the panel if we're the inactive GPU.
 	 */
-	ret = nvkm_device_pci_new(pdev, NULL, "error", true, false, 0, &device);
-	if (ret)
-		return ret;
+	if (IS_ENABLED(CONFIG_VGA_ARB) && IS_ENABLED(CONFIG_VGA_SWITCHEROO) &&
+	    apple_gmux_present() && pdev != vga_default_device() &&
+	    !vga_switcheroo_handler_flags())
+		return -EPROBE_DEFER;
 
-	nvkm_device_del(&device);
-
-	/* Remove conflicting drivers (vesafb, efifb etc). */
+	/* remove conflicting drivers (vesafb, efifb etc) */
 	aper = alloc_apertures(3);
 	if (!aper)
 		return -ENOMEM;
@@ -373,7 +376,7 @@ nouveau_get_hdmi_dev(struct nouveau_drm *drm)
 	struct pci_dev *pdev = drm->dev->pdev;
 
 	if (!pdev) {
-		DRM_INFO("not a PCI device; no HDMI\n");
+		NV_DEBUG(drm, "not a PCI device; no HDMI\n");
 		drm->hdmi_device = NULL;
 		return;
 	}

@@ -56,73 +56,11 @@ struct drm_msm_timespec {
 	__s64 tv_nsec;         /* nanoseconds */
 };
 
-/* From CEA.861.3 */
-#define HDR_EOTF_SMTPE_ST2084	0x2
-#define HDR_EOTF_HLG		0x3
-
-/* hdr hdmi state takes possible values of 0, 1 and 2 respectively */
-#define DRM_MSM_HDR_DISABLE  0
-#define DRM_MSM_HDR_ENABLE   1
-#define DRM_MSM_HDR_RESET    2
-
-/*
- * HDR Metadata
- * These are defined as per EDID spec and shall be used by the sink
- * to set the HDR metadata for playback from userspace.
- */
-
-#define HDR_PRIMARIES_COUNT   3
-
-struct drm_msm_ext_panel_hdr_metadata {
-	__u32 eotf;             /* electro optical transfer function */
-	__u32 hdr_supported;    /* HDR supported */
-	__u32 display_primaries_x[HDR_PRIMARIES_COUNT]; /* Primaries x */
-	__u32 display_primaries_y[HDR_PRIMARIES_COUNT]; /* Primaries y */
-	__u32 white_point_x;    /* white_point_x */
-	__u32 white_point_y;    /* white_point_y */
-	__u32 max_luminance;    /* Max luminance */
-	__u32 min_luminance;    /* Min Luminance */
-	__u32 max_content_light_level; /* max content light level */
-	__u32 max_average_light_level; /* max average light level */
-};
-
-/**
- * HDR Control
- * This encapsulates the HDR metadata as well as a state control
- * for the HDR metadata as required by the HDMI spec to send the
- * relevant metadata depending on the state of the HDR playback.
- * hdr_state: Controls HDR state, takes values ENABLE(1)/DISABLE(0)
- * hdr_meta: Metadata sent by the userspace for the HDR clip
- */
-
-#define DRM_MSM_EXT_PANEL_HDR_CTRL
-struct drm_msm_ext_panel_hdr_ctrl {
-	__u8 hdr_state;                                 /* HDR state */
-	struct drm_msm_ext_panel_hdr_metadata hdr_meta; /* HDR metadata */
-};
-
-/**
- * HDR sink properties
- * These are defined as per EDID spec and shall be used by the userspace
- * to determine the HDR properties to be set to the sink.
- */
-struct drm_msm_ext_panel_hdr_properties {
-	__u8 hdr_metadata_type_one;   /* static metadata type one */
-	__u32 hdr_supported;          /* HDR supported */
-	__u32 hdr_eotf;               /* electro optical transfer function */
-	__u32 hdr_max_luminance;      /* Max luminance */
-	__u32 hdr_avg_luminance;      /* Avg luminance */
-	__u32 hdr_min_luminance;      /* Min Luminance */
-};
-
-#define MSM_PARAM_GPU_ID             0x01
-#define MSM_PARAM_GMEM_SIZE          0x02
-#define MSM_PARAM_CHIP_ID            0x03
-#define MSM_PARAM_MAX_FREQ           0x04
-#define MSM_PARAM_TIMESTAMP          0x05
-#define MSM_PARAM_GMEM_BASE          0x06
-#define MSM_PARAM_NR_RINGS           0x07
-#define MSM_PARAM_GPU_HANG_TIMEOUT   0xa0 /* timeout in ms */
+#define MSM_PARAM_GPU_ID     0x01
+#define MSM_PARAM_GMEM_SIZE  0x02
+#define MSM_PARAM_CHIP_ID    0x03
+#define MSM_PARAM_MAX_FREQ   0x04
+#define MSM_PARAM_TIMESTAMP  0x05
 
 struct drm_msm_param {
 	__u32 pipe;           /* in, MSM_PIPE_x */

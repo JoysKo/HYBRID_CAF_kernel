@@ -136,7 +136,7 @@ module_param(fbdev, bool, 0600);
 #endif
 
 static char *vram = "16m";
-MODULE_PARM_DESC(vram, "Configure VRAM size (for devices without IOMMU/GPUMMU");
+MODULE_PARM_DESC(vram, "Configure VRAM size (for devices without IOMMU/GPUMMU)");
 module_param(vram, charp, 0);
 
 /*
@@ -288,6 +288,11 @@ static int msm_unload(struct drm_device *dev)
 	}
 
 	drm_kms_helper_poll_fini(dev);
+
+#ifdef CONFIG_DRM_FBDEV_EMULATION
+	if (fbdev && priv->fbdev)
+		msm_fbdev_free(dev);
+#endif
 	drm_mode_config_cleanup(dev);
 	drm_vblank_cleanup(dev);
 
@@ -2438,7 +2443,7 @@ static int __init msm_drm_register(void)
 	msm_smmu_driver_init();
 	msm_dsi_register();
 	msm_edp_register();
-	hdmi_register();
+	msm_hdmi_register();
 	adreno_register();
 	init_completion(&wait_display_completion);
 	return platform_driver_register(&msm_platform_driver);
@@ -2448,7 +2453,7 @@ static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
 	platform_driver_unregister(&msm_platform_driver);
-	hdmi_unregister();
+	msm_hdmi_unregister();
 	adreno_unregister();
 	msm_edp_unregister();
 	msm_dsi_unregister();

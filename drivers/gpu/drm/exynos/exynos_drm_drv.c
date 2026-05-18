@@ -340,20 +340,6 @@ static void exynos_drm_preclose(struct drm_device *dev,
 
 static void exynos_drm_postclose(struct drm_device *dev, struct drm_file *file)
 {
-	struct drm_pending_event *e, *et;
-	unsigned long flags;
-
-	if (!file->driver_priv)
-		return;
-
-	spin_lock_irqsave(&dev->event_lock, flags);
-	/* Release all events handled by page flip handler but not freed. */
-	list_for_each_entry_safe(e, et, &file->event_list, link) {
-		list_del(&e->link);
-		e->destroy(e);
-	}
-	spin_unlock_irqrestore(&dev->event_lock, flags);
-
 	kfree(file->driver_priv);
 	file->driver_priv = NULL;
 }
@@ -371,6 +357,8 @@ static const struct vm_operations_struct exynos_drm_gem_vm_ops = {
 
 static const struct drm_ioctl_desc exynos_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(EXYNOS_GEM_CREATE, exynos_drm_gem_create_ioctl,
+			DRM_AUTH | DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(EXYNOS_GEM_MAP, exynos_drm_gem_map_ioctl,
 			DRM_AUTH | DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(EXYNOS_GEM_GET, exynos_drm_gem_get_ioctl,
 			DRM_RENDER_ALLOW),

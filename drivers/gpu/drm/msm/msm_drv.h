@@ -538,6 +538,7 @@ struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
 
 struct drm_fb_helper *msm_fbdev_init(struct drm_device *dev);
+void msm_fbdev_free(struct drm_device *dev);
 
 struct msm_gpu_submitqueue;
 int msm_submitqueue_init(struct msm_file_private *ctx);
@@ -553,10 +554,10 @@ void msm_submitqueue_close(struct msm_file_private *ctx);
 void msm_submitqueue_destroy(struct kref *kref);
 
 struct hdmi;
-int hdmi_modeset_init(struct hdmi *hdmi, struct drm_device *dev,
+int msm_hdmi_modeset_init(struct hdmi *hdmi, struct drm_device *dev,
 		struct drm_encoder *encoder);
-void __init hdmi_register(void);
-void __exit hdmi_unregister(void);
+void __init msm_hdmi_register(void);
+void __exit msm_hdmi_unregister(void);
 
 struct msm_edp;
 void __init msm_edp_register(void);

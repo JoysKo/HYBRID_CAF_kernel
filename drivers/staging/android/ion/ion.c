@@ -336,8 +336,8 @@ static void *ion_dma_buf_kmap(struct dma_buf *dmabuf, unsigned long offset)
 	return buffer->vaddr + offset * PAGE_SIZE;
 }
 
-static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
-					size_t len, enum dma_data_direction dir)
+static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
+					enum dma_data_direction dir)
 {
 	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
 						 iommu_data);
@@ -345,8 +345,8 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf, size_t start,
 	return PTR_RET(__ion_map_kernel(buffer));
 }
 
-static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf, size_t start,
-				       size_t len, enum dma_data_direction dir)
+static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
+					enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
 						 iommu_data);

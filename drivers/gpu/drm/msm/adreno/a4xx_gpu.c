@@ -114,7 +114,7 @@ static void a4xx_enable_hwcg(struct msm_gpu *gpu)
 }
 
 
-static bool a4xx_me_init(struct msm_gpu *gpu)
+static void a4xx_me_init(struct msm_gpu *gpu)
 {
 	struct msm_ringbuffer *ring = gpu->rb[0];
 
@@ -293,7 +293,9 @@ static int a4xx_hw_init(struct msm_gpu *gpu)
 	/* clear ME_HALT to start micro engine */
 	gpu_write(gpu, REG_A4XX_CP_ME_CNTL, 0);
 
-	return a4xx_me_init(gpu) ? 0 : -EINVAL;
+	a4xx_me_init(gpu);
+
+	return 0;
 }
 
 static void a4xx_recover(struct msm_gpu *gpu)
@@ -350,6 +352,13 @@ static irqreturn_t a4xx_irq(struct msm_gpu *gpu)
 
 	status = gpu_read(gpu, REG_A4XX_RBBM_INT_0_STATUS);
 	DBG("%s: Int status %08x", gpu->name, status);
+
+	if (status & A4XX_INT0_CP_REG_PROTECT_FAULT) {
+		uint32_t reg = gpu_read(gpu, REG_A4XX_CP_PROTECT_STATUS);
+		printk("CP | Protected mode error| %s | addr=%x\n",
+			reg & (1 << 24) ? "WRITE" : "READ",
+			(reg & 0xFFFFF) >> 2);
+	}
 
 	gpu_write(gpu, REG_A4XX_RBBM_INT_CLEAR_CMD, status);
 
@@ -505,8 +514,16 @@ static int a4xx_pm_suspend(struct msm_gpu *gpu) {
 
 static int a4xx_get_timestamp(struct msm_gpu *gpu, uint64_t *value)
 {
-	*value = gpu_read64(gpu, REG_A4XX_RBBM_PERFCTR_CP_0_LO,
-		REG_A4XX_RBBM_PERFCTR_CP_0_HI);
+	uint32_t hi, lo, tmp;
+
+	tmp = gpu_read(gpu, REG_A4XX_RBBM_PERFCTR_CP_0_HI);
+	do {
+		hi = tmp;
+		lo = gpu_read(gpu, REG_A4XX_RBBM_PERFCTR_CP_0_LO);
+		tmp = gpu_read(gpu, REG_A4XX_RBBM_PERFCTR_CP_0_HI);
+	} while (tmp != hi);
+
+	*value = (((uint64_t)hi) << 32) | lo;
 
 	return 0;
 }

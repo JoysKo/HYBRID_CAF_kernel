@@ -180,21 +180,9 @@ static long mdp4_round_pixclk(struct msm_kms *kms, unsigned long rate,
 	}
 }
 
-static void mdp4_preclose(struct msm_kms *kms, struct drm_file *file)
-{
-	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
-	struct msm_drm_private *priv = mdp4_kms->dev->dev_private;
-	unsigned i;
-	struct msm_gem_address_space *aspace = mdp4_kms->aspace;
-
-	for (i = 0; i < priv->num_crtcs; i++)
-		mdp4_crtc_cancel_pending_flip(priv->crtcs[i], file);
-
-	if (aspace) {
-		aspace->mmu->funcs->detach(aspace->mmu);
-		msm_gem_address_space_destroy(aspace);
-	}
-}
+static const char * const iommu_ports[] = {
+	"mdp_port0_cb0", "mdp_port1_cb0",
+};
 
 static void mdp4_destroy(struct msm_kms *kms)
 {
@@ -202,6 +190,13 @@ static void mdp4_destroy(struct msm_kms *kms)
 	struct msm_gem_address_space *aspace = mdp4_kms->aspace;
 
 	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
+	struct msm_mmu *mmu = mdp4_kms->mmu;
+
+	if (mmu) {
+		mmu->funcs->detach(mmu, iommu_ports, ARRAY_SIZE(iommu_ports));
+		mmu->funcs->destroy(mmu);
+	}
+
 	if (mdp4_kms->blank_cursor_iova)
 		msm_gem_put_iova(mdp4_kms->blank_cursor_bo, mdp4_kms->aspace);
 	if (mdp4_kms->blank_cursor_bo)
@@ -229,7 +224,6 @@ static const struct mdp_kms_funcs kms_funcs = {
 		.wait_for_crtc_commit_done = mdp4_wait_for_crtc_commit_done,
 		.get_format      = mdp_get_format,
 		.round_pixclk    = mdp4_round_pixclk,
-		.preclose        = mdp4_preclose,
 		.destroy         = mdp4_destroy,
 	},
 	.set_irqmask         = mdp4_set_irqmask,
@@ -342,7 +336,7 @@ static int mdp4_modeset_init_intf(struct mdp4_kms *mdp4_kms,
 
 		if (priv->hdmi) {
 			/* Construct bridge/connector for HDMI: */
-			ret = hdmi_modeset_init(priv->hdmi, dev, encoder);
+			ret = msm_hdmi_modeset_init(priv->hdmi, dev, encoder);
 			if (ret) {
 				dev_err(dev->dev, "failed to initialize HDMI: %d\n", ret);
 				return ret;
@@ -583,6 +577,8 @@ struct msm_kms *mdp4_kms_init(struct drm_device *dev)
 		ret = aspace->mmu->funcs->attach(aspace->mmu, NULL, 0);
 		if (ret)
 			goto fail;
+
+		mdp4_kms->mmu = mmu;
 	} else {
 		dev_info(dev->dev, "no iommu, fallback to phys "
 				"contig buffers for scanout\n");
