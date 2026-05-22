@@ -761,7 +761,7 @@ void cmdq_prep_crypto_desc(struct cmdq_host *cq_host, u64 *task_desc,
 static void cmdq_pm_qos_vote(struct sdhci_host *host, struct mmc_request *mrq)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	sdhci_msm_pm_qos_cpu_vote(host,
 		msm_host->pdata->pm_qos_data.cmdq_latency, mrq->req->cpu);
@@ -1294,7 +1294,7 @@ static int cmdq_late_init(struct mmc_host *mmc)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	/*
 	 * TODO: This should basically move to something like "sdhci-cmdq-msm"

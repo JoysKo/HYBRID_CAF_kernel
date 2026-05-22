@@ -195,7 +195,6 @@ struct sdhci_msm_host {
 	struct sdhci_msm_pltfm_data *pdata;
 	struct mmc_host  *mmc;
 	struct sdhci_msm_debug_data cached_data;
-	struct sdhci_pltfm_data sdhci_msm_pdata;
 	u32 curr_pwr_state;
 	u32 curr_io_level;
 	struct completion pwr_irq_completion;

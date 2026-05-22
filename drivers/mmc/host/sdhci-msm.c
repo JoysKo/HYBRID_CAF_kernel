@@ -263,7 +263,7 @@ struct sdhci_msm_offset sdhci_msm_offset_mci_present = {
 u8 sdhci_msm_readb_relaxed(struct sdhci_host *host, u32 offset)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	void __iomem *base_addr;
 
 	if (msm_host->mci_removed)
@@ -277,7 +277,7 @@ u8 sdhci_msm_readb_relaxed(struct sdhci_host *host, u32 offset)
 u32 sdhci_msm_readl_relaxed(struct sdhci_host *host, u32 offset)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	void __iomem *base_addr;
 
 	if (msm_host->mci_removed)
@@ -291,7 +291,7 @@ u32 sdhci_msm_readl_relaxed(struct sdhci_host *host, u32 offset)
 void sdhci_msm_writeb_relaxed(u8 val, struct sdhci_host *host, u32 offset)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	void __iomem *base_addr;
 
 	if (msm_host->mci_removed)
@@ -305,7 +305,7 @@ void sdhci_msm_writeb_relaxed(u8 val, struct sdhci_host *host, u32 offset)
 void sdhci_msm_writel_relaxed(u32 val, struct sdhci_host *host, u32 offset)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	void __iomem *base_addr;
 
 	if (msm_host->mci_removed)
@@ -368,7 +368,7 @@ static inline int msm_dll_poll_ck_out_en(struct sdhci_host *host,
 	u8 ck_out_en = 0;
 	struct mmc_host *mmc = host->mmc;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -401,7 +401,7 @@ static int msm_enable_cdr_cm_sdc4_dll(struct sdhci_host *host)
 	int rc = 0;
 	u32 config;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -435,7 +435,7 @@ static ssize_t store_auto_cmd21(struct device *dev, struct device_attribute
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	u32 tmp;
 	unsigned long flags;
 
@@ -452,7 +452,7 @@ static ssize_t show_auto_cmd21(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", msm_host->en_auto_cmd21);
 }
@@ -464,7 +464,7 @@ static int sdhci_msm_config_auto_tuning_cmd(struct sdhci_host *host,
 {
 	int rc = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u32 val = 0;
@@ -494,7 +494,7 @@ static int msm_config_cm_dll_phase(struct sdhci_host *host, u8 phase)
 {
 	int rc = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u8 grey_coded_phase_table[] = {0x0, 0x1, 0x3, 0x2, 0x6, 0x7, 0x5, 0x4,
@@ -674,7 +674,7 @@ static inline void msm_cm_dll_set_freq(struct sdhci_host *host)
 {
 	u32 mclk_freq = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -706,7 +706,7 @@ static inline void msm_cm_dll_set_freq(struct sdhci_host *host)
 static int msm_init_cm_dll(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	struct mmc_host *mmc = host->mmc;
@@ -851,7 +851,7 @@ static int sdhci_msm_cdclp533_calibration(struct sdhci_host *host)
 	int ret = 0;
 	int cdc_err = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -961,7 +961,7 @@ out:
 static int sdhci_msm_cm_dll_sdc4_calibration(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u32 dll_status, ddr_config;
@@ -1031,7 +1031,7 @@ static int sdhci_msm_enhanced_strobe(struct sdhci_host *host)
 {
 	int ret = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct mmc_host *mmc = host->mmc;
 
 	pr_debug("%s: Enter %s\n", mmc_hostname(host->mmc), __func__);
@@ -1067,7 +1067,7 @@ static int sdhci_msm_hs400_dll_calibration(struct sdhci_host *host)
 {
 	int ret = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -1144,7 +1144,7 @@ int sdhci_msm_execute_tuning(struct sdhci_host *host, u32 opcode)
 	struct mmc_host *mmc = host->mmc;
 	struct mmc_ios	ios = host->mmc->ios;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	u8 drv_type = 0;
 	bool drv_type_changed = false;
 	struct mmc_card *card = host->mmc->card;
@@ -2021,7 +2021,7 @@ static unsigned int sdhci_get_bw_required(struct sdhci_host *host,
 					struct mmc_ios *ios)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	unsigned int bw;
 
@@ -2127,7 +2127,7 @@ static void sdhci_msm_bus_cancel_work_and_set_vote(struct sdhci_host *host,
 	int vote;
 	unsigned long flags;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	cancel_delayed_work_sync(&msm_host->msm_bus_vote.vote_work);
 	spin_lock_irqsave(&host->lock, flags);
@@ -2143,7 +2143,7 @@ static void sdhci_msm_bus_queue_work(struct sdhci_host *host)
 {
 	unsigned long flags;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	spin_lock_irqsave(&host->lock, flags);
 	if (msm_host->msm_bus_vote.min_bw_vote !=
@@ -2219,7 +2219,7 @@ static void sdhci_msm_bus_unregister(struct sdhci_msm_host *host)
 static void sdhci_msm_bus_voting(struct sdhci_host *host, u32 enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct mmc_ios *ios = &host->mmc->ios;
 	unsigned int bw;
 
@@ -2507,7 +2507,7 @@ static void sdhci_msm_cfg_sdiowakeup_gpio_irq(struct sdhci_host *host,
 					      bool enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (enable && !msm_host->is_sdiowakeup_enabled)
 		enable_irq(msm_host->pdata->sdiowakeup_irq);
@@ -2523,7 +2523,7 @@ static irqreturn_t sdhci_msm_sdiowakeup_irq(int irq, void *data)
 {
 	struct sdhci_host *host = (struct sdhci_host *)data;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	unsigned long flags;
 
@@ -2540,7 +2540,7 @@ static irqreturn_t sdhci_msm_sdiowakeup_irq(int irq, void *data)
 void sdhci_msm_dump_pwr_ctrl_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	unsigned int irq_flags = 0;
@@ -2573,7 +2573,7 @@ static irqreturn_t sdhci_msm_pwr_irq(int irq, void *data)
 {
 	struct sdhci_host *host = (struct sdhci_host *)data;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u8 irq_status = 0;
@@ -2759,7 +2759,7 @@ show_sdhci_max_bus_bw(struct device *dev, struct device_attribute *attr,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			msm_host->msm_bus_vote.is_max_bw_needed);
@@ -2771,7 +2771,7 @@ store_sdhci_max_bus_bw(struct device *dev, struct device_attribute *attr,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	uint32_t value;
 	unsigned long flags;
 
@@ -2786,7 +2786,7 @@ store_sdhci_max_bus_bw(struct device *dev, struct device_attribute *attr,
 static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	unsigned long flags;
@@ -2854,7 +2854,7 @@ static void sdhci_msm_check_power_status(struct sdhci_host *host, u32 req_type)
 static void sdhci_msm_toggle_cdr(struct sdhci_host *host, bool enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u32 config = readl_relaxed(host->ioaddr +
@@ -2881,7 +2881,7 @@ static unsigned int sdhci_msm_max_segs(void)
 static unsigned int sdhci_msm_get_min_clock(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return msm_host->pdata->sup_clk_table[0];
 }
@@ -2889,7 +2889,7 @@ static unsigned int sdhci_msm_get_min_clock(struct sdhci_host *host)
 static unsigned int sdhci_msm_get_max_clock(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int max_clk_index = msm_host->pdata->sup_clk_cnt;
 
 	return msm_host->pdata->sup_clk_table[max_clk_index - 1];
@@ -2899,7 +2899,7 @@ static unsigned int sdhci_msm_get_sup_clk_rate(struct sdhci_host *host,
 						u32 req_clk)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	unsigned int sel_clk = -1;
 	unsigned char cnt;
 
@@ -2924,7 +2924,7 @@ static unsigned int sdhci_msm_get_sup_clk_rate(struct sdhci_host *host,
 static int sdhci_msm_enable_controller_clock(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int rc = 0;
 
 	if (atomic_read(&msm_host->controller_clock))
@@ -2977,7 +2977,7 @@ out:
 static void sdhci_msm_disable_controller_clock(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (atomic_read(&msm_host->controller_clock)) {
 		if (!IS_ERR(msm_host->clk))
@@ -2996,7 +2996,7 @@ static void sdhci_msm_disable_controller_clock(struct sdhci_host *host)
 static int sdhci_msm_prepare_clocks(struct sdhci_host *host, bool enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int rc = 0;
 
 	if (enable && !atomic_read(&msm_host->clks_on)) {
@@ -3096,7 +3096,7 @@ static void sdhci_msm_set_clock(struct sdhci_host *host, unsigned int clock)
 {
 	int rc;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	struct mmc_card *card = host->mmc->card;
@@ -3272,7 +3272,7 @@ static void sdhci_msm_set_uhs_signaling(struct sdhci_host *host,
 					unsigned int uhs)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	u16 ctrl_2;
@@ -3341,7 +3341,7 @@ static void sdhci_msm_cmdq_dump_debug_ram(struct sdhci_host *host)
 {
 	int i = 0;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	struct cmdq_host *cq_host = host->cq_host;
@@ -3370,7 +3370,7 @@ static void sdhci_msm_cmdq_dump_debug_ram(struct sdhci_host *host)
 static void sdhci_msm_cache_debug_data(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_debug_data *cached_data = &msm_host->cached_data;
 
 	memcpy(&cached_data->copy_mmc, msm_host->mmc,
@@ -3385,7 +3385,7 @@ static void sdhci_msm_cache_debug_data(struct sdhci_host *host)
 void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 	int tbsel, tbsel2;
@@ -3465,7 +3465,7 @@ void sdhci_msm_dump_vendor_regs(struct sdhci_host *host)
 void sdhci_msm_reset(struct sdhci_host *host, u8 mask)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	/* Set ICE core to be reset in sync with SDHC core */
 	if (msm_host->ice.pdev) {
@@ -3490,7 +3490,7 @@ void sdhci_msm_reset(struct sdhci_host *host, u8 mask)
 static void sdhci_msm_enhanced_strobe_mask(struct sdhci_host *host, bool set)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -3517,7 +3517,7 @@ static void sdhci_msm_enhanced_strobe_mask(struct sdhci_host *host, bool set)
 static void sdhci_msm_clear_set_dumpregs(struct sdhci_host *host, bool set)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -3537,7 +3537,7 @@ static void sdhci_msm_clear_set_dumpregs(struct sdhci_host *host, bool set)
 int sdhci_msm_notify_load(struct sdhci_host *host, enum mmc_load state)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int ret = 0;
 	u32 clk_rate = 0;
 
@@ -3673,7 +3673,7 @@ static int sdhci_msm_tsens_pltfm_init(struct sdhci_msm_host *msm_host)
 static int sdhci_msm_dereg_temp_callback(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (msm_host->temp_control_scaling)
 		sensor_mgr_remove_threshold(
@@ -3684,7 +3684,7 @@ static int sdhci_msm_dereg_temp_callback(struct sdhci_host *host)
 static int sdhci_msm_reg_temp_callback(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int ret = 0;
 
 	if (msm_host->temp_control_scaling) {
@@ -3699,7 +3699,7 @@ static int sdhci_msm_reg_temp_callback(struct sdhci_host *host)
 static int sdhci_msm_check_temp(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return atomic_read(&msm_host->clk_scaling_disable);
 }
@@ -3710,7 +3710,7 @@ void sdhci_msm_reset_workaround(struct sdhci_host *host, u32 enable)
 	u32 vendor_func2;
 	unsigned long timeout;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	const struct sdhci_msm_offset *msm_host_offset =
 					msm_host->offset;
 
@@ -3768,7 +3768,7 @@ static void sdhci_msm_pm_qos_irq_unvote_work(struct work_struct *work)
 void sdhci_msm_pm_qos_irq_vote(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_pm_qos_latency *latency =
 		&msm_host->pdata->pm_qos_data.irq_latency;
 	int counter;
@@ -3791,7 +3791,7 @@ void sdhci_msm_pm_qos_irq_vote(struct sdhci_host *host)
 void sdhci_msm_pm_qos_irq_unvote(struct sdhci_host *host, bool async)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int counter;
 
 	if (!msm_host->pm_qos_irq.enabled)
@@ -3824,7 +3824,7 @@ sdhci_msm_pm_qos_irq_show(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_pm_qos_irq *irq = &msm_host->pm_qos_irq;
 
 	return snprintf(buf, PAGE_SIZE,
@@ -3838,7 +3838,7 @@ sdhci_msm_pm_qos_irq_enable_show(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return snprintf(buf, PAGE_SIZE, "%u\n", msm_host->pm_qos_irq.enabled);
 }
@@ -3849,7 +3849,7 @@ sdhci_msm_pm_qos_irq_enable_store(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	uint32_t value;
 	bool enable;
 	int ret;
@@ -3889,7 +3889,7 @@ static inline void set_affine_irq(struct sdhci_msm_host *msm_host,
 void sdhci_msm_pm_qos_irq_init(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_pm_qos_latency *irq_latency;
 	int ret;
 
@@ -3951,7 +3951,7 @@ static ssize_t sdhci_msm_pm_qos_group_show(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_pm_qos_group *group;
 	int i;
 	int nr_groups = msm_host->pdata->pm_qos_data.cpu_group_map.nr_groups;
@@ -3975,7 +3975,7 @@ static ssize_t sdhci_msm_pm_qos_group_enable_show(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	return snprintf(buf, PAGE_SIZE, "%s\n",
 		msm_host->pm_qos_group_enable ? "enabled" : "disabled");
@@ -3986,7 +3986,7 @@ static ssize_t sdhci_msm_pm_qos_group_enable_store(struct device *dev,
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int nr_groups = msm_host->pdata->pm_qos_data.cpu_group_map.nr_groups;
 	uint32_t value;
 	bool enable;
@@ -4038,7 +4038,7 @@ void sdhci_msm_pm_qos_cpu_vote(struct sdhci_host *host,
 		struct sdhci_msm_pm_qos_latency *latency, int cpu)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int group = sdhci_msm_get_cpu_group(msm_host, cpu);
 	struct sdhci_msm_pm_qos_group *pm_qos_group;
 	int counter;
@@ -4076,7 +4076,7 @@ static void sdhci_msm_pm_qos_cpu_unvote_work(struct work_struct *work)
 bool sdhci_msm_pm_qos_cpu_unvote(struct sdhci_host *host, int cpu, bool async)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int group = sdhci_msm_get_cpu_group(msm_host, cpu);
 
 	if (!msm_host->pm_qos_group_enable || group < 0 ||
@@ -4099,7 +4099,7 @@ void sdhci_msm_pm_qos_cpu_init(struct sdhci_host *host,
 		struct sdhci_msm_pm_qos_latency *latency)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int nr_groups = msm_host->pdata->pm_qos_data.cpu_group_map.nr_groups;
 	struct sdhci_msm_pm_qos_group *group;
 	int i;
@@ -4166,7 +4166,7 @@ static void sdhci_msm_pre_req(struct sdhci_host *host,
 	int cpu;
 	int group;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int prev_group = sdhci_msm_get_cpu_group(msm_host,
 			msm_host->pm_qos_prev_cpu);
 
@@ -4195,7 +4195,7 @@ static void sdhci_msm_post_req(struct sdhci_host *host,
 				struct mmc_request *mmc_req)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	sdhci_msm_pm_qos_irq_unvote(host, false);
 
@@ -4206,7 +4206,7 @@ static void sdhci_msm_post_req(struct sdhci_host *host,
 static void sdhci_msm_init(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	sdhci_msm_pm_qos_irq_init(host);
 
@@ -4218,7 +4218,7 @@ static void sdhci_msm_init(struct sdhci_host *host)
 static unsigned int sdhci_msm_get_current_limit(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_slot_reg_data *curr_slot = msm_host->pdata->vreg_data;
 	u32 max_curr = 0;
 
@@ -4228,7 +4228,7 @@ static unsigned int sdhci_msm_get_current_limit(struct sdhci_host *host)
 	return max_curr;
 }
 
-static struct sdhci_ops sdhci_msm_ops = {
+static const struct sdhci_ops sdhci_msm_ops = {
 	.crypto_engine_cfg = sdhci_msm_ice_cfg,
 	.crypto_engine_cmdq_cfg = sdhci_msm_ice_cmdq_cfg,
 	.crypto_engine_cfg_end = sdhci_msm_ice_cfg_end,
@@ -4259,6 +4259,12 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.pre_req = sdhci_msm_pre_req,
 	.post_req = sdhci_msm_post_req,
 	.get_current_limit = sdhci_msm_get_current_limit,
+};
+
+static const struct sdhci_pltfm_data sdhci_msm_pdata = {
+	.quirks = SDHCI_QUIRK_BROKEN_CARD_DETECTION |
+		  SDHCI_QUIRK_SINGLE_POWER_WRITE,
+	.ops = &sdhci_msm_ops,
 };
 
 static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
@@ -4372,7 +4378,7 @@ static void sdhci_msm_cmdq_init(struct sdhci_host *host,
 				struct platform_device *pdev)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (nocmdq) {
 		dev_dbg(&pdev->dev, "CMDQ disabled via cmdline\n");
@@ -4420,51 +4426,46 @@ static bool sdhci_msm_is_bootdevice(struct device *dev)
 
 static int sdhci_msm_probe(struct platform_device *pdev)
 {
-	const struct sdhci_msm_offset *msm_host_offset;
-	struct sdhci_host *host;
-	struct sdhci_pltfm_host *pltfm_host;
-	struct sdhci_msm_host *msm_host;
-	struct resource *core_memres = NULL;
-	int ret = 0, dead = 0;
-	u16 host_version;
-	u32 irq_status, irq_ctl;
-	struct resource *tlmm_memres = NULL;
-	void __iomem *tlmm_mem;
-	unsigned long flags;
-	bool force_probe;
-	char boot_marker[40];
+    const struct sdhci_msm_offset *msm_host_offset;
+    struct sdhci_host *host;
+    struct sdhci_pltfm_host *pltfm_host;
+    struct sdhci_msm_host *msm_host;
+    struct resource *core_memres = NULL;
+    int ret = 0, dead = 0;
+    u16 host_version;
+    u32 irq_status, irq_ctl;
+    struct resource *tlmm_memres = NULL;
+    void __iomem *tlmm_mem;
+    unsigned long flags;
+    bool force_probe;
+    char boot_marker[40];
 
-	pr_debug("%s: Enter %s\n", dev_name(&pdev->dev), __func__);
-	msm_host = devm_kzalloc(&pdev->dev, sizeof(struct sdhci_msm_host),
-				GFP_KERNEL);
-	if (!msm_host) {
-		ret = -ENOMEM;
-		goto out;
-	}
+    pr_debug("%s: Enter %s\n", dev_name(&pdev->dev), __func__);
 
-	if (of_find_compatible_node(NULL, NULL, "qcom,sdhci-msm-v5")) {
-		msm_host->mci_removed = true;
-		msm_host->offset = &sdhci_msm_offset_mci_removed;
-	} else {
-		msm_host->mci_removed = false;
-		msm_host->offset = &sdhci_msm_offset_mci_present;
-	}
-	msm_host_offset = msm_host->offset;
-	msm_host->sdhci_msm_pdata.ops = &sdhci_msm_ops;
-	host = sdhci_pltfm_init(pdev, &msm_host->sdhci_msm_pdata, 0);
-	if (IS_ERR(host)) {
-		ret = PTR_ERR(host);
-		goto out_host_free;
-	}
+    // Сначала создаём host
+    host = sdhci_pltfm_init(pdev, &sdhci_msm_pdata, sizeof(*msm_host));
+    if (IS_ERR(host)) {
+        ret = PTR_ERR(host);
+        goto out;
+    }
 
-	snprintf(boot_marker, sizeof(boot_marker),
-			"M - DRIVER %s Init", mmc_hostname(host->mmc));
-	place_marker(boot_marker);
+    // Получаем указатели
+    pltfm_host = sdhci_priv(host);
+    msm_host = sdhci_pltfm_priv(pltfm_host);
 
-	pltfm_host = sdhci_priv(host);
-	pltfm_host->priv = msm_host;
-	msm_host->mmc = host->mmc;
-	msm_host->pdev = pdev;
+    // Инициализируем базовые поля
+    msm_host->mmc = host->mmc;
+    msm_host->pdev = pdev;
+
+    // Теперь определяем offset
+    if (of_find_compatible_node(NULL, NULL, "qcom,sdhci-msm-v5")) {
+        msm_host->mci_removed = true;
+        msm_host->offset = &sdhci_msm_offset_mci_removed;
+    } else {
+        msm_host->mci_removed = false;
+        msm_host->offset = &sdhci_msm_offset_mci_present;
+    }
+    msm_host_offset = msm_host->offset;
 
 	/* get the ice device vops if present */
 	ret = sdhci_msm_ice_get_dev(host);
@@ -4728,8 +4729,6 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	 * 1. Card detection is handled using separate GPIO.
 	 * 2. Bus power control is handled by interacting with PMIC.
 	 */
-	host->quirks |= SDHCI_QUIRK_BROKEN_CARD_DETECTION;
-	host->quirks |= SDHCI_QUIRK_SINGLE_POWER_WRITE;
 	host->quirks |= SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN;
 	host->quirks |= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC;
 	host->quirks2 |= SDHCI_QUIRK2_ALWAYS_USE_BASE_CLOCK;
@@ -4970,19 +4969,17 @@ bus_clk_disable:
 	if (!IS_ERR_OR_NULL(msm_host->bus_clk))
 		clk_disable_unprepare(msm_host->bus_clk);
 pltfm_free:
-	sdhci_pltfm_free(pdev);
-out_host_free:
-	devm_kfree(&pdev->dev, msm_host);
+    sdhci_pltfm_free(pdev);
 out:
-	pr_debug("%s: Exit %s\n", dev_name(&pdev->dev), __func__);
-	return ret;
+    pr_debug("%s: Exit %s\n", dev_name(&pdev->dev), __func__);
+    return ret;
 }
 
 static int sdhci_msm_remove(struct platform_device *pdev)
 {
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct sdhci_msm_pltfm_data *pdata = msm_host->pdata;
 	int dead = (readl_relaxed(host->ioaddr + SDHCI_INT_STATUS) ==
 			0xffffffff);
@@ -4993,7 +4990,6 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 	device_remove_file(&pdev->dev, &msm_host->msm_bus_vote.max_bus_bw);
 	pm_runtime_disable(&pdev->dev);
 	sdhci_remove_host(host, dead);
-	sdhci_pltfm_free(pdev);
 
 	sdhci_msm_vreg_init(&pdev->dev, msm_host->pdata, false);
 
@@ -5004,6 +5000,7 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 		sdhci_msm_bus_cancel_work_and_set_vote(host, 0);
 		sdhci_msm_bus_unregister(msm_host);
 	}
+	sdhci_pltfm_free(pdev);
 	return 0;
 }
 
@@ -5011,7 +5008,7 @@ static int sdhci_msm_remove(struct platform_device *pdev)
 static int sdhci_msm_cfg_sdio_wakeup(struct sdhci_host *host, bool enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	unsigned long flags;
 	int ret = 0;
 
@@ -5060,7 +5057,7 @@ static int sdhci_msm_runtime_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 //	ktime_t start = ktime_get();
 	int ret;
 
@@ -5097,7 +5094,7 @@ static int sdhci_msm_runtime_resume(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 //	ktime_t start = ktime_get();
 	int ret;
 
@@ -5131,7 +5128,7 @@ static int sdhci_msm_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	struct mmc_host *mmc = host->mmc;
 	int ret = 0;
 	int sdio_cfg = 0;
@@ -5166,7 +5163,7 @@ static int sdhci_msm_resume(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int ret = 0;
 	int sdio_cfg = 0;
 //	ktime_t start = ktime_get();
@@ -5198,7 +5195,7 @@ static int sdhci_msm_suspend_noirq(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int ret = 0;
 
 	/*

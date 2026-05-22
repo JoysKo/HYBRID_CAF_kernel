@@ -62,7 +62,7 @@ static
 void sdhci_msm_enable_ice_hci(struct sdhci_host *host, bool enable)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	u32 config = 0;
 	u32 ice_cap = 0;
 
@@ -108,7 +108,7 @@ int sdhci_msm_ice_get_dev(struct sdhci_host *host)
 {
 	struct device *sdhc_dev;
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (!msm_host || !msm_host->pdev) {
 		pr_err("%s: invalid msm_host %p or msm_host->pdev\n",
@@ -176,7 +176,7 @@ out:
 int sdhci_msm_ice_init(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 
 	if (msm_host->ice.vops->init) {
@@ -299,7 +299,7 @@ void sdhci_msm_ice_hci_update_noncq_cfg(struct sdhci_host *host,
 		u64 dun, unsigned int bypass, short key_index)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	unsigned int crypto_params = 0;
 	unsigned int crypto_enable = !bypass;
 	/*
@@ -333,7 +333,7 @@ int sdhci_msm_ice_cfg(struct sdhci_host *host, struct mmc_request *mrq,
 			u32 slot)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 	short key_index = 0;
 	sector_t lba = 0;
@@ -376,7 +376,7 @@ int sdhci_msm_ice_cmdq_cfg(struct sdhci_host *host,
 			struct mmc_request *mrq, u32 slot, u64 *ice_ctx)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 	short key_index = 0;
 	sector_t lba = 0;
@@ -418,7 +418,7 @@ int sdhci_msm_ice_cmdq_cfg(struct sdhci_host *host,
 int sdhci_msm_ice_cfg_end(struct sdhci_host *host, struct mmc_request *mrq)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 	struct request *req;
 
@@ -449,7 +449,7 @@ int sdhci_msm_ice_cfg_end(struct sdhci_host *host, struct mmc_request *mrq)
 int sdhci_msm_ice_reset(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 
 	if (msm_host->ice.state != SDHCI_MSM_ICE_STATE_ACTIVE) {
@@ -483,7 +483,7 @@ int sdhci_msm_ice_reset(struct sdhci_host *host)
 int sdhci_msm_ice_resume(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 
 	if (msm_host->ice.state !=
@@ -509,7 +509,7 @@ int sdhci_msm_ice_resume(struct sdhci_host *host)
 int sdhci_msm_ice_suspend(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int err = 0;
 
 	if (msm_host->ice.state !=
@@ -534,7 +534,7 @@ int sdhci_msm_ice_suspend(struct sdhci_host *host)
 int sdhci_msm_ice_get_status(struct sdhci_host *host, int *ice_status)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 	int stat = -EINVAL;
 
 	if (msm_host->ice.state != SDHCI_MSM_ICE_STATE_ACTIVE) {
@@ -559,7 +559,7 @@ int sdhci_msm_ice_get_status(struct sdhci_host *host, int *ice_status)
 void sdhci_msm_ice_print_regs(struct sdhci_host *host)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
-	struct sdhci_msm_host *msm_host = pltfm_host->priv;
+	struct sdhci_msm_host *msm_host = sdhci_pltfm_priv(pltfm_host);
 
 	if (msm_host->ice.vops->debug)
 		msm_host->ice.vops->debug(msm_host->ice.pdev);
