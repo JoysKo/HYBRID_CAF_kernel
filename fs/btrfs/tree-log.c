@@ -26,7 +26,7 @@
 #include "print-tree.h"
 #include "backref.h"
 #include "hash.h"
-#include "inode-map.h"
+#include "compression.h"
 
 /* magic values for the inode_only field in btrfs_log_inode:
  *
@@ -1046,7 +1046,7 @@ again:
 
 		/*
 		 * NOTE: we have searched root tree and checked the
-		 * coresponding ref, it does not need to check again.
+		 * corresponding ref, it does not need to check again.
 		 */
 		*search_done = 1;
 	}
@@ -4669,18 +4669,6 @@ static int btrfs_log_inode(struct btrfs_trans_handle *trans,
 		btrfs_get_logged_extents(inode, &logged_list, start, end);
 
 	/*
-	 * For symlinks, we must always log their content, which is stored in an
-	 * inline extent, otherwise we could end up with an empty symlink after
-	 * log replay, which is invalid on linux (symlink(2) returns -ENOENT if
-	 * one attempts to create an empty symlink).
-	 * We don't need to worry about flushing delalloc, because when we create
-	 * the inline extent when the symlink is created (we never have delalloc
-	 * for symlinks).
-	 */
-	if (S_ISLNK(inode->i_mode))
-		inode_only = LOG_INODE_ALL;
-
-	/*
 	 * a brute force approach to making sure we get the most uptodate
 	 * copies of everything.
 	 */
@@ -5356,9 +5344,6 @@ static int btrfs_log_all_parents(struct btrfs_trans_handle *trans,
 			if (!ret &&
 			    btrfs_must_commit_transaction(trans, dir_inode))
 				ret = 1;
-			if (!ret && ctx && ctx->log_new_dentries)
-				ret = log_new_dir_dentries(trans, root,
-							   dir_inode, ctx);
 			iput(dir_inode);
 			if (ret)
 				goto out;
@@ -5745,9 +5730,11 @@ void btrfs_record_unlink_dir(struct btrfs_trans_handle *trans,
 	 * into the file.  When the file is logged we check it and
 	 * don't log the parents if the file is fully on disk.
 	 */
-	mutex_lock(&BTRFS_I(inode)->log_mutex);
-	BTRFS_I(inode)->last_unlink_trans = trans->transid;
-	mutex_unlock(&BTRFS_I(inode)->log_mutex);
+	if (S_ISREG(inode->i_mode)) {
+		mutex_lock(&BTRFS_I(inode)->log_mutex);
+		BTRFS_I(inode)->last_unlink_trans = trans->transid;
+		mutex_unlock(&BTRFS_I(inode)->log_mutex);
+	}
 
 	/*
 	 * if this directory was already logged any new
@@ -5801,21 +5788,6 @@ void btrfs_record_snapshot_destroy(struct btrfs_trans_handle *trans,
 	mutex_lock(&BTRFS_I(dir)->log_mutex);
 	BTRFS_I(dir)->last_unlink_trans = trans->transid;
 	mutex_unlock(&BTRFS_I(dir)->log_mutex);
-}
-
-/*
- * Make sure that if someone attempts to fsync the parent directory of a deleted
- * snapshot, it ends up triggering a transaction commit. This is to guarantee
- * that after replaying the log tree of the parent directory's root we will not
- * see the snapshot anymore and at log replay time we will not see any log tree
- * corresponding to the deleted snapshot's root, which could lead to replaying
- * it after replaying the log tree of the parent directory (which would replay
- * the snapshot delete operation).
- */
-void btrfs_record_snapshot_destroy(struct btrfs_trans_handle *trans,
-				   struct inode *dir)
-{
-	BTRFS_I(dir)->last_unlink_trans = trans->transid;
 }
 
 /*
