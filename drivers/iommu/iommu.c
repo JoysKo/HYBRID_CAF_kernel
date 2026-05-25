@@ -1410,6 +1410,7 @@ int iommu_map(struct iommu_domain *domain, unsigned long iova,
 	unsigned long orig_iova = iova, pgsize_bitmap;
 	unsigned int min_pagesz;
 	size_t orig_size = size;
+	phys_addr_t orig_paddr = paddr;
 	int ret = 0;
 
 //	trace_map_start(iova, paddr, size);
