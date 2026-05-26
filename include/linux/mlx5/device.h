@@ -1218,6 +1218,10 @@ enum mlx5_cap_type {
 	MLX5_CAP_IPOIB_OFFLOADS,
 	MLX5_CAP_EOIB_OFFLOADS,
 	MLX5_CAP_FLOW_TABLE,
+	MLX5_CAP_ESWITCH_FLOW_TABLE,
+	MLX5_CAP_ESWITCH,
+	MLX5_CAP_RESERVED,
+	MLX5_CAP_VECTOR_CALC,
 	/* NUM OF CAP Types */
 	MLX5_CAP_NUM
 };
@@ -1257,6 +1261,10 @@ enum mlx5_cap_type {
 
 #define MLX5_CAP_ODP(mdev, cap)\
 	MLX5_GET(odp_cap, mdev->hca_caps_cur[MLX5_CAP_ODP], cap)
+
+#define MLX5_CAP_VECTOR_CALC(mdev, cap) \
+	MLX5_GET(vector_calc_cap, \
+		 mdev->hca_caps_cur[MLX5_CAP_VECTOR_CALC], cap)
 
 enum {
 	MLX5_CMD_STAT_OK			= 0x0,
