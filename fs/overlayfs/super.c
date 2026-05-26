@@ -1028,7 +1028,8 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 
 	err = -EINVAL;
 	if (!ufs->config.lowerdir) {
-		pr_err("overlayfs: missing 'lowerdir'\n");
+		if (!silent)
+			pr_err("overlayfs: missing 'lowerdir'\n");
 		goto out_free_config;
 	}
 
@@ -1132,13 +1133,11 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 			if (err < 0)
 				goto out_put_workdir;
 
-			/*
-			 * We allowed this configuration and don't want to
-			 * break users over kernel upgrade. So warn instead
-			 * of erroring out.
-			 */
-			if (!err)
-				pr_warn("overlayfs: upper fs needs to support d_type.\n");
+			if (!err) {
+				pr_err("overlayfs: upper fs needs to support d_type.\n");
+				err = -EINVAL;
+				goto out_put_workdir;
+			}
 		}
 	}
 
