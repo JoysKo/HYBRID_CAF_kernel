@@ -428,4 +428,4 @@ static int __init kcov_init(void)
 	return 0;
 }
 
-device_initcall(kcov_init);
+device_initcall(kcov_init); 
