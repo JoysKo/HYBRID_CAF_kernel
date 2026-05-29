@@ -144,6 +144,22 @@ enum hnae_led_state {
 #define HNS_RXD_ASID_S 24
 #define HNS_RXD_ASID_M (0xff << HNS_RXD_ASID_S)
 
+#define HNSV2_TXD_BUFNUM_S 0
+#define HNSV2_TXD_BUFNUM_M (0x7 << HNSV2_TXD_BUFNUM_S)
+#define HNSV2_TXD_PORTID_S	4
+#define HNSV2_TXD_PORTID_M	(0X7 << HNSV2_TXD_PORTID_S)
+#define HNSV2_TXD_RI_B   1
+#define HNSV2_TXD_L4CS_B   2
+#define HNSV2_TXD_L3CS_B   3
+#define HNSV2_TXD_FE_B   4
+#define HNSV2_TXD_VLD_B  5
+
+#define HNSV2_TXD_TSE_B   0
+#define HNSV2_TXD_VLAN_EN_B   1
+#define HNSV2_TXD_SNAP_B   2
+#define HNSV2_TXD_IPV6_B   3
+#define HNSV2_TXD_SCTP_B   4
+
 /* hardware spec ring buffer format */
 struct __packed hnae_desc {
 	__le64 addr;
@@ -469,6 +485,7 @@ struct hnae_handle {
 	int q_num;
 	int vf_id;
 	u32 eport_id;
+	u32 dport_id;	/* v2 tx bd should fill the dport_id */
 	enum hnae_port_type port_type;
 	struct list_head node;    /* list to hnae_ae_dev->handle_list */
 	struct hnae_buf_ops *bops; /* operation for the buffer */

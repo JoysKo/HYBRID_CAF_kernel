@@ -1579,39 +1579,41 @@ static int vsock_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 	while (total_written < len) {
 		ssize_t written;
 
-		add_wait_queue(sk_sleep(sk), &wait);
+		prepare_to_wait(sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
 		while (vsock_stream_has_space(vsk) == 0 &&
 		       sk->sk_err == 0 &&
 		       !(sk->sk_shutdown & SEND_SHUTDOWN) &&
 		       !(vsk->peer_shutdown & RCV_SHUTDOWN)) {
 
-			/* Don't wait for non-blocking sockets. */
 			if (timeout == 0) {
 				err = -EAGAIN;
-				remove_wait_queue(sk_sleep(sk), &wait);
+				finish_wait(sk_sleep(sk), &wait);
 				goto out_err;
 			}
 
 			err = transport->notify_send_pre_block(vsk, &send_data);
 			if (err < 0) {
-				remove_wait_queue(sk_sleep(sk), &wait);
+				finish_wait(sk_sleep(sk), &wait);
 				goto out_err;
 			}
 
 			release_sock(sk);
-			timeout = wait_woken(&wait, TASK_INTERRUPTIBLE, timeout);
+			timeout = schedule_timeout(timeout);
 			lock_sock(sk);
 			if (signal_pending(current)) {
 				err = sock_intr_errno(timeout);
-				remove_wait_queue(sk_sleep(sk), &wait);
+				finish_wait(sk_sleep(sk), &wait);
 				goto out_err;
 			} else if (timeout == 0) {
 				err = -EAGAIN;
-				remove_wait_queue(sk_sleep(sk), &wait);
+				finish_wait(sk_sleep(sk), &wait);
 				goto out_err;
 			}
+
+			prepare_to_wait(sk_sleep(sk), &wait,
+					TASK_INTERRUPTIBLE);
 		}
-		remove_wait_queue(sk_sleep(sk), &wait);
+		finish_wait(sk_sleep(sk), &wait);
 
 		/* These checks occur both as part of and after the loop
 		 * conditional since we need to check before and after
@@ -1630,12 +1632,6 @@ static int vsock_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 		if (err < 0)
 			goto out_err;
 
-		/* Note that enqueue will only write as many bytes as are free
-		 * in the produce queue, so we don't need to ensure len is
-		 * smaller than the queue size.  It is the caller's
-		 * responsibility to check how many bytes we were able to send.
-		 */
-
 		written = transport->stream_enqueue(
 				vsk, msg,
 				len - total_written);
@@ -1650,7 +1646,6 @@ static int vsock_stream_sendmsg(struct socket *sock, struct msghdr *msg,
 				vsk, written, &send_data);
 		if (err < 0)
 			goto out_err;
-
 	}
 
 out_err:
@@ -1660,7 +1655,6 @@ out:
 	release_sock(sk);
 	return err;
 }
-
 
 static int
 vsock_stream_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
@@ -1735,7 +1729,6 @@ vsock_stream_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 	err = transport->notify_recv_init(vsk, target, &recv_data);
 	if (err < 0)
 		goto out;
-
 
 	while (1) {
 		s64 ready;

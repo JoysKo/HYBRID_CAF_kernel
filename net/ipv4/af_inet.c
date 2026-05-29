@@ -1433,6 +1433,19 @@ out:
 	return pp;
 }
 
+static struct sk_buff **ipip_gro_receive(struct sk_buff **head,
+					 struct sk_buff *skb)
+{
+	if (NAPI_GRO_CB(skb)->encap_mark) {
+		NAPI_GRO_CB(skb)->flush = 1;
+		return NULL;
+	}
+
+	NAPI_GRO_CB(skb)->encap_mark = 1;
+
+	return inet_gro_receive(head, skb);
+}
+
 #define SECONDS_PER_DAY	86400
 
 /* inet_current_timestamp - Return IP network timestamp
@@ -1455,22 +1468,9 @@ __be32 inet_current_timestamp(void)
 	msecs += (u32)ts.tv_nsec / NSEC_PER_MSEC;
 
 	/* Convert to network byte order. */
-	return htons(msecs);
+	return htonl(msecs);
 }
 EXPORT_SYMBOL(inet_current_timestamp);
-
-static struct sk_buff **ipip_gro_receive(struct sk_buff **head,
-					 struct sk_buff *skb)
-{
-	if (NAPI_GRO_CB(skb)->encap_mark) {
-		NAPI_GRO_CB(skb)->flush = 1;
-		return NULL;
-	}
-
-	NAPI_GRO_CB(skb)->encap_mark = 1;
-
-	return inet_gro_receive(head, skb);
-}
 
 int inet_recv_error(struct sock *sk, struct msghdr *msg, int len, int *addr_len)
 {

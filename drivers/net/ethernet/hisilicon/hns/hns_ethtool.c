@@ -1197,6 +1197,100 @@ static int hns_nic_nway_reset(struct net_device *netdev)
 	return ret;
 }
 
+static u32
+hns_get_rss_key_size(struct net_device *netdev)
+{
+	struct hns_nic_priv *priv = netdev_priv(netdev);
+	struct hnae_ae_ops *ops;
+
+	if (AE_IS_VER1(priv->enet_ver)) {
+		netdev_err(netdev,
+			   "RSS feature is not supported on this hardware\n");
+		return 0;
+	}
+
+	ops = priv->ae_handle->dev->ops;
+	return ops->get_rss_key_size(priv->ae_handle);
+}
+
+static u32
+hns_get_rss_indir_size(struct net_device *netdev)
+{
+	struct hns_nic_priv *priv = netdev_priv(netdev);
+	struct hnae_ae_ops *ops;
+
+	if (AE_IS_VER1(priv->enet_ver)) {
+		netdev_err(netdev,
+			   "RSS feature is not supported on this hardware\n");
+		return 0;
+	}
+
+	ops = priv->ae_handle->dev->ops;
+	return ops->get_rss_indir_size(priv->ae_handle);
+}
+
+static int
+hns_get_rss(struct net_device *netdev, u32 *indir, u8 *key, u8 *hfunc)
+{
+	struct hns_nic_priv *priv = netdev_priv(netdev);
+	struct hnae_ae_ops *ops;
+
+	if (AE_IS_VER1(priv->enet_ver)) {
+		netdev_err(netdev,
+			   "RSS feature is not supported on this hardware\n");
+		return -EOPNOTSUPP;
+	}
+
+	ops = priv->ae_handle->dev->ops;
+
+	if (!indir)
+		return 0;
+
+	return ops->get_rss(priv->ae_handle, indir, key, hfunc);
+}
+
+static int
+hns_set_rss(struct net_device *netdev, const u32 *indir, const u8 *key,
+	    const u8 hfunc)
+{
+	struct hns_nic_priv *priv = netdev_priv(netdev);
+	struct hnae_ae_ops *ops;
+
+	if (AE_IS_VER1(priv->enet_ver)) {
+		netdev_err(netdev,
+			   "RSS feature is not supported on this hardware\n");
+		return -EOPNOTSUPP;
+	}
+
+	ops = priv->ae_handle->dev->ops;
+
+	/* currently hfunc can only be Toeplitz hash */
+	if (key ||
+	    (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP))
+		return -EOPNOTSUPP;
+	if (!indir)
+		return 0;
+
+	return ops->set_rss(priv->ae_handle, indir, key, hfunc);
+}
+
+static int hns_get_rxnfc(struct net_device *netdev,
+			 struct ethtool_rxnfc *cmd,
+			 u32 *rule_locs)
+{
+	struct hns_nic_priv *priv = netdev_priv(netdev);
+
+	switch (cmd->cmd) {
+	case ETHTOOL_GRXRINGS:
+		cmd->data = priv->ae_handle->q_num;
+		break;
+	default:
+		return -EOPNOTSUPP;
+	}
+
+	return 0;
+}
+
 static struct ethtool_ops hns_ethtool_ops = {
 	.get_drvinfo = hns_nic_get_drvinfo,
 	.get_link  = hns_nic_get_link,
@@ -1216,6 +1310,11 @@ static struct ethtool_ops hns_ethtool_ops = {
 	.get_regs_len = hns_get_regs_len,
 	.get_regs = hns_get_regs,
 	.nway_reset = hns_nic_nway_reset,
+	.get_rxfh_key_size = hns_get_rss_key_size,
+	.get_rxfh_indir_size = hns_get_rss_indir_size,
+	.get_rxfh = hns_get_rss,
+	.set_rxfh = hns_set_rss,
+	.get_rxnfc = hns_get_rxnfc,
 };
 
 void hns_ethtool_set_ops(struct net_device *ndev)
