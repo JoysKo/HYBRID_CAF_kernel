@@ -1262,8 +1262,11 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 	if (this_cpu->c_identify)
 		this_cpu->c_identify(c);
 
- 	/* Clear/Set all flags overridden by options, after probe */
-	apply_forced_caps(c);
+	/* Clear/Set all flags overridden by options, after probe */
+	for (i = 0; i < NCAPINTS; i++) {
+		c->x86_capability[i] &= ~cpu_caps_cleared[i];
+		c->x86_capability[i] |= cpu_caps_set[i];
+	}
 
 #ifdef CONFIG_X86_64
 	c->apicid = apic->phys_pkg_id(c->initial_apicid, 0);
@@ -1322,7 +1325,7 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 	setup_pku(c);
 
 	/*
-	 * Clear/Set all flags overriden by options, need do it
+	 * Clear/Set all flags overridden by options, need do it
 	 * before following smp all cpus cap AND.
 	 */
 	apply_forced_caps(c);
