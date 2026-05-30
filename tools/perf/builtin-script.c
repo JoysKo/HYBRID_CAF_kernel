@@ -388,9 +388,7 @@ out:
 	return 0;
 }
 
-static void print_sample_iregs(union perf_event *event __maybe_unused,
-			  struct perf_sample *sample,
-			  struct thread *thread __maybe_unused,
+static void print_sample_iregs(struct perf_sample *sample,
 			  struct perf_event_attr *attr)
 {
 	struct regs_dump *regs = &sample->intr_regs;
@@ -459,10 +457,7 @@ mispred_str(struct branch_entry *br)
 	return br->flags.predicted ? 'P' : 'M';
 }
 
-static void print_sample_brstack(union perf_event *event __maybe_unused,
-			  struct perf_sample *sample,
-			  struct thread *thread __maybe_unused,
-			  struct perf_event_attr *attr __maybe_unused)
+static void print_sample_brstack(struct perf_sample *sample)
 {
 	struct branch_stack *br = sample->branch_stack;
 	u64 i;
@@ -481,14 +476,11 @@ static void print_sample_brstack(union perf_event *event __maybe_unused,
 	}
 }
 
-static void print_sample_brstacksym(union perf_event *event __maybe_unused,
-			  struct perf_sample *sample,
-			  struct thread *thread __maybe_unused,
-			  struct perf_event_attr *attr __maybe_unused)
+static void print_sample_brstacksym(struct perf_sample *sample,
+				    struct thread *thread)
 {
 	struct branch_stack *br = sample->branch_stack;
 	struct addr_location alf, alt;
-	u8 cpumode = event->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
 	u64 i, from, to;
 
 	if (!(br && br->nr))
@@ -501,11 +493,11 @@ static void print_sample_brstacksym(union perf_event *event __maybe_unused,
 		from = br->entries[i].from;
 		to   = br->entries[i].to;
 
-		thread__find_addr_map(thread, cpumode, MAP__FUNCTION, from, &alf);
+		thread__find_addr_map(thread, sample->cpumode, MAP__FUNCTION, from, &alf);
 		if (alf.map)
 			alf.sym = map__find_symbol(alf.map, alf.addr, NULL);
 
-		thread__find_addr_map(thread, cpumode, MAP__FUNCTION, to, &alt);
+		thread__find_addr_map(thread, sample->cpumode, MAP__FUNCTION, to, &alt);
 		if (alt.map)
 			alt.sym = map__find_symbol(alt.map, alt.addr, NULL);
 
@@ -521,8 +513,7 @@ static void print_sample_brstacksym(union perf_event *event __maybe_unused,
 }
 
 
-static void print_sample_addr(union perf_event *event,
-			  struct perf_sample *sample,
+static void print_sample_addr(struct perf_sample *sample,
 			  struct thread *thread,
 			  struct perf_event_attr *attr)
 {
@@ -533,7 +524,7 @@ static void print_sample_addr(union perf_event *event,
 	if (!sample_addr_correlates_sym(attr))
 		return;
 
-	perf_event__preprocess_sample_addr(event, sample, thread, &al);
+	thread__resolve(thread, &al, sample);
 
 	if (PRINT_FIELD(SYM)) {
 		printf(" ");
@@ -550,8 +541,7 @@ static void print_sample_addr(union perf_event *event,
 	}
 }
 
-static void print_sample_bts(union perf_event *event,
-			     struct perf_sample *sample,
+static void print_sample_bts(struct perf_sample *sample,
 			     struct perf_evsel *evsel,
 			     struct thread *thread,
 			     struct addr_location *al)
@@ -581,7 +571,7 @@ static void print_sample_bts(union perf_event *event,
 	    ((evsel->attr.sample_type & PERF_SAMPLE_ADDR) &&
 	     !output[attr->type].user_set)) {
 		printf(" => ");
-		print_sample_addr(event, sample, thread, attr);
+		print_sample_addr(sample, thread, attr);
 	}
 
 	if (print_srcline_last)
@@ -635,7 +625,7 @@ static int perf_evlist__max_name_len(struct perf_evlist *evlist)
 	return max;
 }
 
-static void process_event(struct perf_script *script, union perf_event *event,
+static void process_event(struct perf_script *script,
 			  struct perf_sample *sample, struct perf_evsel *evsel,
 			  struct addr_location *al)
 {
@@ -664,7 +654,7 @@ static void process_event(struct perf_script *script, union perf_event *event,
 		print_sample_flags(sample->flags);
 
 	if (is_bts_event(attr)) {
-		print_sample_bts(event, sample, evsel, thread, al);
+		print_sample_bts(sample, evsel, thread, al);
 		return;
 	}
 
@@ -672,7 +662,7 @@ static void process_event(struct perf_script *script, union perf_event *event,
 		event_format__print(evsel->tp_format, sample->cpu,
 				    sample->raw_data, sample->raw_size);
 	if (PRINT_FIELD(ADDR))
-		print_sample_addr(event, sample, thread, attr);
+		print_sample_addr(sample, thread, attr);
 
 	if (PRINT_FIELD(IP)) {
 		if (!symbol_conf.use_callchain)
@@ -686,12 +676,12 @@ static void process_event(struct perf_script *script, union perf_event *event,
 	}
 
 	if (PRINT_FIELD(IREGS))
-		print_sample_iregs(event, sample, thread, attr);
+		print_sample_iregs(sample, attr);
 
 	if (PRINT_FIELD(BRSTACK))
-		print_sample_brstack(event, sample, thread, attr);
+		print_sample_brstack(sample);
 	else if (PRINT_FIELD(BRSTACKSYM))
-		print_sample_brstacksym(event, sample, thread, attr);
+		print_sample_brstacksym(sample, thread);
 
 	printf("\n");
 }
@@ -784,7 +774,7 @@ static int process_sample_event(struct perf_tool *tool,
 		return 0;
 	}
 
-	if (perf_event__preprocess_sample(event, machine, &al, sample) < 0) {
+	if (machine__resolve(machine, &al, sample) < 0) {
 		pr_err("problem processing %d event, skipping it.\n",
 		       event->header.type);
 		return -1;
@@ -799,7 +789,7 @@ static int process_sample_event(struct perf_tool *tool,
 	if (scripting_ops)
 		scripting_ops->process_event(event, sample, evsel, &al);
 	else
-		process_event(scr, event, sample, evsel, &al);
+		process_event(scr, sample, evsel, &al);
 
 out_put:
 	addr_location__put(&al);

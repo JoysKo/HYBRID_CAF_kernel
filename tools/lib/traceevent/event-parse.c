@@ -5376,11 +5376,8 @@ void pevent_print_event(struct pevent *pevent, struct trace_seq *s,
 	comm = find_cmdline(pevent, pid);
 
 	if (pevent->latency_format) {
-		trace_seq_printf(s, "%8.8s-%-5d %3d",
-		       comm, pid, record->cpu);
 		pevent_data_lat_fmt(pevent, s, record);
-	} else
-		trace_seq_printf(s, "%16s-%-5d [%03d]", comm, pid, record->cpu);
+	}
 
 	if (use_usec_format) {
 		if (pevent->flags & PEVENT_NSEC_OUTPUT) {

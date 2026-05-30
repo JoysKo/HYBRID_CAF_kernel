@@ -321,7 +321,6 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 		u32 eax, ebx, ecx, edx;
 
 		cpuid(0x8000001e, &eax, &ebx, &ecx, &edx);
-		nodes_per_socket = ((ecx >> 8) & 7) + 1;
 		node_id = ecx & 7;
 
 		/* get compute unit information */
@@ -332,7 +331,6 @@ static void amd_get_topology(struct cpuinfo_x86 *c)
 		u64 value;
 
 		rdmsrl(MSR_FAM10H_NODE_ID, value);
-		nodes_per_socket = ((value >> 3) & 7) + 1;
 		node_id = value & 7;
 	} else
 		return;
@@ -532,24 +530,16 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 	if (cpu_has(c, X86_FEATURE_MWAITX))
 		use_mwaitx_delay();
 
-	if (c->x86 >= 0x15 && c->x86 <= 0x17) {
-		unsigned int bit;
+	if (boot_cpu_has(X86_FEATURE_TOPOEXT)) {
+		u32 ecx;
 
-		switch (c->x86) {
-		case 0x15: bit = 54; break;
-		case 0x16: bit = 33; break;
-		case 0x17: bit = 10; break;
-		default: return;
-		}
-		/*
-		 * Try to cache the base value so further operations can
-		 * avoid RMW. If that faults, do not enable SSBD.
-		 */
-		if (!rdmsrl_safe(MSR_AMD64_LS_CFG, &x86_amd_ls_cfg_base)) {
-			setup_force_cpu_cap(X86_FEATURE_LS_CFG_SSBD);
-			setup_force_cpu_cap(X86_FEATURE_SSBD);
-			x86_amd_ls_cfg_ssbd_mask = 1ULL << bit;
-		}
+		ecx = cpuid_ecx(0x8000001e);
+		nodes_per_socket = ((ecx >> 8) & 7) + 1;
+	} else if (boot_cpu_has(X86_FEATURE_NODEID_MSR)) {
+		u64 value;
+
+		rdmsrl(MSR_FAM10H_NODE_ID, value);
+		nodes_per_socket = ((value >> 3) & 7) + 1;
 	}
 }
 
@@ -567,6 +557,10 @@ static void early_init_amd(struct cpuinfo_x86 *c)
 		if (!check_tsc_unstable())
 			set_sched_clock_stable();
 	}
+
+	/* Bit 12 of 8000_0007 edx is accumulated power mechanism. */
+	if (c->x86_power & BIT(12))
+		set_cpu_cap(c, X86_FEATURE_ACC_POWER);
 
 #ifdef CONFIG_X86_64
 	set_cpu_cap(c, X86_FEATURE_SYSCALL32);

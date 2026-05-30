@@ -75,6 +75,13 @@ void strbuf_remove(struct strbuf *sb, size_t pos, size_t len)
 	strbuf_splice(sb, pos, len, NULL, 0);
 }
 
+void strbuf_addch(struct strbuf *sb, int c)
+{
+	strbuf_grow(sb, 1);
+	sb->buf[sb->len++] = c;
+	sb->buf[sb->len] = '\0';
+}
+
 void strbuf_add(struct strbuf *sb, const void *data, size_t len)
 {
 	strbuf_grow(sb, len);
@@ -82,7 +89,7 @@ void strbuf_add(struct strbuf *sb, const void *data, size_t len)
 	strbuf_setlen(sb, sb->len + len);
 }
 
-void strbuf_addv(struct strbuf *sb, const char *fmt, va_list ap)
+static void strbuf_addv(struct strbuf *sb, const char *fmt, va_list ap)
 {
 	int len;
 	va_list ap_saved;

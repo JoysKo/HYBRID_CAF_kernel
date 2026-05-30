@@ -138,8 +138,7 @@ static const char *get_ratio_color(enum grc_type type, double ratio)
 }
 
 static void print_stalled_cycles_frontend(FILE *out, int cpu,
-					  struct perf_evsel *evsel
-					  __maybe_unused, double avg)
+					  struct perf_evsel *evsel, double avg)
 {
 	double total, ratio = 0.0;
 	const char *color;
@@ -158,8 +157,7 @@ static void print_stalled_cycles_frontend(FILE *out, int cpu,
 }
 
 static void print_stalled_cycles_backend(FILE *out, int cpu,
-					 struct perf_evsel *evsel
-					 __maybe_unused, double avg)
+					 struct perf_evsel *evsel, double avg)
 {
 	double total, ratio = 0.0;
 	const char *color;
@@ -178,7 +176,7 @@ static void print_stalled_cycles_backend(FILE *out, int cpu,
 }
 
 static void print_branch_misses(FILE *out, int cpu,
-				struct perf_evsel *evsel __maybe_unused,
+				struct perf_evsel *evsel,
 				double avg)
 {
 	double total, ratio = 0.0;
@@ -198,7 +196,7 @@ static void print_branch_misses(FILE *out, int cpu,
 }
 
 static void print_l1_dcache_misses(FILE *out, int cpu,
-				   struct perf_evsel *evsel __maybe_unused,
+				   struct perf_evsel *evsel,
 				   double avg)
 {
 	double total, ratio = 0.0;
@@ -218,7 +216,7 @@ static void print_l1_dcache_misses(FILE *out, int cpu,
 }
 
 static void print_l1_icache_misses(FILE *out, int cpu,
-				   struct perf_evsel *evsel __maybe_unused,
+				   struct perf_evsel *evsel,
 				   double avg)
 {
 	double total, ratio = 0.0;
@@ -238,7 +236,7 @@ static void print_l1_icache_misses(FILE *out, int cpu,
 }
 
 static void print_dtlb_cache_misses(FILE *out, int cpu,
-				    struct perf_evsel *evsel __maybe_unused,
+				    struct perf_evsel *evsel,
 				    double avg)
 {
 	double total, ratio = 0.0;
@@ -258,7 +256,7 @@ static void print_dtlb_cache_misses(FILE *out, int cpu,
 }
 
 static void print_itlb_cache_misses(FILE *out, int cpu,
-				    struct perf_evsel *evsel __maybe_unused,
+				    struct perf_evsel *evsel,
 				    double avg)
 {
 	double total, ratio = 0.0;
@@ -278,7 +276,7 @@ static void print_itlb_cache_misses(FILE *out, int cpu,
 }
 
 static void print_ll_cache_misses(FILE *out, int cpu,
-				  struct perf_evsel *evsel __maybe_unused,
+				  struct perf_evsel *evsel,
 				  double avg)
 {
 	double total, ratio = 0.0;
