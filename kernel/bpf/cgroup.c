@@ -450,7 +450,7 @@ int __cgroup_bpf_run_filter_sk(struct sock *sk,
 
 	prog = rcu_dereference(cgrp->bpf.effective[type]->progs[0]);
 	if (prog)
-		ret = BPF_PROG_RUN(prog, sk) == 1 ? 0 : -EPERM;
+		ret = BPF_PROG_RUN(prog, (const struct sk_buff *)sk) == 1 ? 0 : -EPERM;
 
 	rcu_read_unlock();
 

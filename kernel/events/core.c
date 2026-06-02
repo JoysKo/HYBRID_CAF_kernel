@@ -1840,6 +1840,17 @@ __perf_remove_from_context(struct perf_event *event,
 	}
 }
 
+static int
+_perf_remove_from_context(void *info)
+{
+	struct perf_event *event = info;
+	struct perf_event_context *ctx = event->ctx;
+	struct perf_cpu_context *cpuctx = __get_cpu_context(ctx);
+	
+	__perf_remove_from_context(event, cpuctx, ctx, (void *)0);
+	return 0;
+}
+
 #ifdef CONFIG_SMP
 static void perf_retry_remove(struct perf_event *event)
 {
@@ -1851,7 +1862,7 @@ static void perf_retry_remove(struct perf_event *event)
 	up_ret = cpu_up(event->cpu);
 	if (!up_ret)
 		/* Try the remove call once again. */
-		cpu_function_call(event->cpu, __perf_remove_from_context, NULL);
+		cpu_function_call(event->cpu, _perf_remove_from_context, event);
 	else
 		pr_err("Failed to bring up CPU: %d, ret: %d\n",
 		       event->cpu, up_ret);

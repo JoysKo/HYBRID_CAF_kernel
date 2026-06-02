@@ -97,8 +97,13 @@ struct srcu_struct fsnotify_mark_srcu;
 static DEFINE_SPINLOCK(destroy_lock);
 static LIST_HEAD(destroy_list);
 
+static void _fsnotify_mark_destroy(void *ignored);
 static int fsnotify_mark_destroy(void *ignored);
-static DECLARE_DELAYED_WORK(reaper_work, fsnotify_mark_destroy);
+static void fsnotify_mark_destroy_work(struct work_struct *work)
+{
+	_fsnotify_mark_destroy(NULL);
+}
+static DECLARE_DELAYED_WORK(reaper_work, fsnotify_mark_destroy_work);
 static DECLARE_WAIT_QUEUE_HEAD(destroy_waitq);
 
 void fsnotify_get_mark(struct fsnotify_mark *mark)
@@ -502,7 +507,7 @@ void fsnotify_init_mark(struct fsnotify_mark *mark,
 	mark->free_mark = free_mark;
 }
 
-static int fsnotify_mark_destroy(void *ignored)
+static void _fsnotify_mark_destroy(void *ignored)
 {
 	struct fsnotify_mark *mark, *next;
 	struct list_head private_destroy_list;
@@ -522,7 +527,11 @@ static int fsnotify_mark_destroy(void *ignored)
 
 		wait_event_interruptible(destroy_waitq, !list_empty(&destroy_list));
 	}
+}
 
+static int fsnotify_mark_destroy(void *ignored)
+{
+	_fsnotify_mark_destroy(ignored);
 	return 0;
 }
 

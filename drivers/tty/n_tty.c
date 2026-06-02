@@ -186,7 +186,7 @@ static int tty_copy_to_user(struct tty_struct *tty, void __user *to,
 	tty_audit_add_data(tty, from, n);
 	retval = copy_to_user(to, from, n);
 	if (!retval)
-		zero_buffer(tty, from, n);
+		zero_buffer(tty, (u8 *)from, n);
 	return retval;
 }
 

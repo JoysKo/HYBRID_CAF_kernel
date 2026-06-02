@@ -10631,7 +10631,8 @@ static int dbmdx_external_amodel_put(struct snd_kcontrol *kcontrol,
 	struct dbmdx_private *p = dbmdx_data;
 #endif
 #else /* SOC_BYTES_EXT_HAS_KCONTROL_FIELD */
-static int dbmdx_external_amodel_put(const unsigned int __user *bytes,
+static int dbmdx_external_amodel_put(struct snd_kcontrol *kcontrol,
+				 const unsigned int __user *bytes,
 				 unsigned int size)
 {
 	struct dbmdx_private *p = dbmdx_data;

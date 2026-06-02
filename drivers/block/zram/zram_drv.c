@@ -868,13 +868,14 @@ static ssize_t mm_stat_show(struct device *dev,
 {
 	struct zram *zram = dev_to_zram(dev);
 	u64 orig_size, mem_used = 0;
-	long max_used, num_compacted = 0;
+	long max_used;
+	static atomic_long_t num_compacted = ATOMIC_LONG_INIT(0);
 	ssize_t ret;
 
 	down_read(&zram->init_lock);
 	if (init_done(zram)) {
 		mem_used = zpool_get_total_size(zram->mem_pool);
-		num_compacted = zpool_get_num_compacted(zram->mem_pool);
+		atomic_long_set(&num_compacted, zpool_get_num_compacted(zram->mem_pool));
 	}
 
 	orig_size = atomic64_read(&zram->stats.pages_stored);

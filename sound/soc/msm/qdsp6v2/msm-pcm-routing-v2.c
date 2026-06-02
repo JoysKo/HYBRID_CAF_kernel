@@ -22126,8 +22126,9 @@ static int msm_routing_be_dai_name_table_info(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int msm_routing_be_dai_name_table_tlv_get(unsigned int __user *bytes,
-						 unsigned int size)
+static int msm_routing_be_dai_name_table_tlv_get(struct snd_kcontrol *kcontrol,
+				 unsigned int __user *bytes,
+				 unsigned int size)
 {
 	int i;
 	int ret;
@@ -22150,7 +22151,7 @@ static int msm_routing_be_dai_name_table_tlv_get(unsigned int __user *bytes,
 			LPASS_BE_NAME_MAX_LENGTH);
 	}
 
-	ret = copy_to_user(bytes, &be_dai_name_table,
+	ret = copy_to_user(bytes, (void __user *)&be_dai_name_table,
 			   sizeof(be_dai_name_table));
 	if (ret) {
 		pr_err("%s: failed to copy be_dai_name_table\n", __func__);

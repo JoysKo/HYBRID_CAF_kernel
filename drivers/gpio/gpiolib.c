@@ -244,7 +244,7 @@ static int gpiochip_add_to_list(struct gpio_chip *chip)
 		}
 	}
 
-	dev_err(&chip->parent, "GPIO integer space overlap, cannot add chip\n");
+	dev_err(chip->parent, "GPIO integer space overlap, cannot add chip\n");
 	return -EBUSY;
 }
 

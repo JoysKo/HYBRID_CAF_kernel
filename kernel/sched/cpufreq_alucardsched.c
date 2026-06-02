@@ -1057,7 +1057,7 @@ static void store_tunables_data(struct acgov_tunables *tunables,
 	struct acgov_tunables *ptunables;
 	unsigned int cpu = cpumask_first(policy->related_cpus);
 
-	ptunables = &per_cpu(cached_tunables, cpu);
+	ptunables = per_cpu(cached_tunables, cpu);
 	if (!ptunables)
 		return;
 	ptunables->up_rate_limit_us = tunables->up_rate_limit_us;
@@ -1077,7 +1077,7 @@ static void get_tunables_data(struct acgov_tunables *tunables,
 	struct acgov_tunables *ptunables;
 	unsigned int cpu = cpumask_first(policy->related_cpus);
 
-	ptunables = &per_cpu(cached_tunables, cpu);
+	ptunables = per_cpu(cached_tunables, cpu);
 	if (!ptunables)
 		goto initialize;
 

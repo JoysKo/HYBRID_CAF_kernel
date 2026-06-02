@@ -107,8 +107,8 @@ static int msm_cpufreq_target(struct cpufreq_policy *policy,
 		ret = -ENODEV;
 		goto done;
 	}
-	if (cpufreq_frequency_table_target(policy, table, target_freq, relation,
-			&index)) {
+	index = cpufreq_frequency_table_target(policy, target_freq, relation);
+	if (index < 0) {
 		pr_err("cpufreq: invalid target_freq: %d\n", target_freq);
 		ret = -EINVAL;
 		goto done;
@@ -171,14 +171,15 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 
 	cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 
-	if (cpufreq_frequency_table_target(policy, table, cur_freq,
-	    CPUFREQ_RELATION_H, &index) &&
-	    cpufreq_frequency_table_target(policy, table, cur_freq,
-	    CPUFREQ_RELATION_L, &index)) {
+	index = cpufreq_frequency_table_target(policy, cur_freq, CPUFREQ_RELATION_H);
+if (index < 0) {
+	index = cpufreq_frequency_table_target(policy, cur_freq, CPUFREQ_RELATION_L);
+	if (index < 0) {
 		pr_info("cpufreq: cpu%d at invalid freq: %d\n",
-				policy->cpu, cur_freq);
+			policy->cpu, cur_freq);
 		return -EINVAL;
 	}
+}
 	/*
 	 * Call set_cpu_freq unconditionally so that when cpu is set to
 	 * online, frequency limit will always be updated.

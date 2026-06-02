@@ -853,7 +853,8 @@ static ssize_t driver_override_store(struct device *dev,
 				     const char *buf, size_t count)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	char *driver_override, *old, *cp;
+	char *driver_override, *cp;
+	const char  *old;
 
 	/* We need to keep extra room for a newline */
 	if (count >= (PAGE_SIZE - 1))

@@ -524,7 +524,7 @@ static int __ieee80211_data_to_8023(struct sk_buff *skb, struct ethhdr *ehdr,
 int ieee80211_data_to_8023(struct sk_buff *skb, const u8 *addr,
 			   enum nl80211_iftype iftype)
 {
-	return __ieee80211_data_to_8023(skb, addr, iftype, false);
+	return __ieee80211_data_to_8023(skb, NULL, addr, iftype);
 }
 EXPORT_SYMBOL(ieee80211_data_to_8023);
 
