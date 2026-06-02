@@ -136,6 +136,14 @@ echo "cp /boot/System.map-$KERNELRELEASE /boot/.System.map-$KERNELRELEASE-rpm"
 echo "rm -f /boot/vmlinuz-$KERNELRELEASE /boot/System.map-$KERNELRELEASE"
 echo "/sbin/installkernel $KERNELRELEASE /boot/.vmlinuz-$KERNELRELEASE-rpm /boot/.System.map-$KERNELRELEASE-rpm"
 echo "rm -f /boot/.vmlinuz-$KERNELRELEASE-rpm /boot/.System.map-$KERNELRELEASE-rpm"
+<<<<<<< ours
+=======
+echo "fi"
+echo ""
+echo "%preun"
+echo "if [ -x /sbin/new-kernel-pkg ]; then"
+echo "new-kernel-pkg --remove $KERNELRELEASE --rminitrd --initrdfile=/boot/initramfs-$KERNELRELEASE.img"
+>>>>>>> theirs
 echo "fi"
 echo ""
 echo "%files"
