@@ -296,9 +296,9 @@ static int register_device (int minor, struct pp_struct *pp)
 	}
 
 	fl = (pp->flags & PP_EXCL) ? PARPORT_FLAG_EXCL : 0;
-	pdev = parport_register_device (port, name, NULL,
-					NULL, pp_irq, fl, pp);
-	parport_put_port (port);
+	pdev = parport_register_device(port, name, NULL,
+				       NULL, pp_irq, fl, pp);
+	parport_put_port(port);
 
 	if (!pdev) {
 		printk (KERN_WARNING "%s: failed to register device!\n", name);
