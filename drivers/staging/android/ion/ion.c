@@ -345,13 +345,15 @@ static int ion_dma_buf_begin_cpu_access(struct dma_buf *dmabuf,
 	return PTR_RET(__ion_map_kernel(buffer));
 }
 
-static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
+static int ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf,
 					enum dma_data_direction direction)
 {
 	struct ion_buffer *buffer = container_of(dmabuf->priv, typeof(*buffer),
 						 iommu_data);
 
 	__ion_unmap_kernel(buffer);
+	
+	return 0;
 }
 
 static int ion_dma_buf_get_flags(struct dma_buf *dmabuf,
