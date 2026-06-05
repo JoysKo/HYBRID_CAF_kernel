@@ -703,4 +703,11 @@ extern int arch_early_irq_init(void);
 #define __softirq_entry  \
 	__attribute__((__section__(".softirqentry.text")))
 
+/* Limits of hardirq entrypoints */
+extern char __irqentry_text_start[];
+extern char __irqentry_text_end[];
+/* Limits of softirq entrypoints */
+extern char __softirqentry_text_start[];
+extern char __softirqentry_text_end[];
+
 #endif

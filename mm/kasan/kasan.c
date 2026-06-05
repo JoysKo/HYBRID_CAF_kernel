@@ -412,6 +412,15 @@ void kasan_cache_create(struct kmem_cache *cache, size_t *size,
 	int redzone_adjust;
 	int orig_size = *size;
 
+	/* Make sure the adjusted size is still less than
+	 * KMALLOC_MAX_CACHE_SIZE.
+	 * TODO: this check is only useful for SLAB, but not SLUB. We'll need
+	 * to skip it for SLUB when it starts using kasan_cache_create().
+	 */
+	if (*size > KMALLOC_MAX_CACHE_SIZE -
+	    sizeof(struct kasan_alloc_meta) -
+	    sizeof(struct kasan_free_meta))
+		return;
 	/* Add alloc meta. */
 	cache->kasan_info.alloc_meta_offset = *size;
 	*size += sizeof(struct kasan_alloc_meta);
@@ -480,6 +489,13 @@ void kasan_poison_object_data(struct kmem_cache *cache, void *object)
 	kasan_poison_shadow(object,
 			round_up(cache->object_size, KASAN_SHADOW_SCALE_SIZE),
 			KASAN_KMALLOC_REDZONE);
+#ifdef CONFIG_SLAB
+	if (cache->flags & SLAB_KASAN) {
+		struct kasan_alloc_meta *alloc_info =
+			get_alloc_info(cache, object);
+		alloc_info->state = KASAN_STATE_INIT;
+	}
+#endif
 }
 
 static inline int in_irqentry_text(unsigned long ptr)
@@ -568,6 +584,17 @@ static void kasan_poison_slab_free(struct kmem_cache *cache, void *object)
 	if (unlikely(cache->flags & SLAB_DESTROY_BY_RCU))
 		return;
 
+#ifdef CONFIG_SLAB
+	if (cache->flags & SLAB_KASAN) {
+		struct kasan_free_meta *free_info =
+			get_free_info(cache, object);
+		struct kasan_alloc_meta *alloc_info =
+			get_alloc_info(cache, object);
+		alloc_info->state = KASAN_STATE_FREE;
+		set_track(&free_info->track);
+	}
+#endif
+
 	kasan_poison_shadow(object, rounded_up_size, KASAN_KMALLOC_FREE);
 }
 
@@ -617,8 +644,14 @@ void kasan_kmalloc(struct kmem_cache *cache, const void *object, size_t size,
 	kasan_poison_shadow((void *)redzone_start, redzone_end - redzone_start,
 		KASAN_KMALLOC_REDZONE);
 
-	if (cache->flags & SLAB_KASAN)
-		set_track(&get_alloc_info(cache, object)->alloc_track, flags);
+	if (cache->flags & SLAB_KASAN) {
+		struct kasan_alloc_meta *alloc_info =
+			get_alloc_info(cache, object);
+
+		alloc_info->state = KASAN_STATE_ALLOC;
+		alloc_info->alloc_size = size;
+		set_track(&alloc_info->track, flags);
+	}
 }
 EXPORT_SYMBOL(kasan_kmalloc);
 
