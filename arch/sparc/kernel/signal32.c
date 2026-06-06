@@ -155,8 +155,8 @@ void do_sigreturn32(struct pt_regs *regs)
 	struct signal_frame32 __user *sf;
 	compat_uptr_t fpu_save;
 	compat_uptr_t rwin_save;
-	unsigned int psr, ufp;
-	unsigned pc, npc;
+	unsigned int psr;
+	unsigned int pc, npc;
 	sigset_t set;
 	compat_sigset_t seta;
 	int err, i;
