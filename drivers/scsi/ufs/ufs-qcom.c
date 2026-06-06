@@ -79,6 +79,12 @@ static void ufs_qcom_dump_regs_wrapper(struct ufs_hba *hba, int offset, int len,
 	ufs_qcom_dump_regs(hba, offset, len, prefix);
 }
 
+static void ufs_qcom_dump_regs_wrapper(struct ufs_hba *hba, int offset, int len,
+		char *prefix, void *priv)
+{
+	ufs_qcom_dump_regs(hba, offset, len, prefix);
+}
+
 static int ufs_qcom_get_connected_tx_lanes(struct ufs_hba *hba, u32 *tx_lanes)
 {
 	int err = 0;
@@ -2448,7 +2454,7 @@ static int ufs_qcom_probe(struct platform_device *pdev)
  * ufs_qcom_remove - set driver_data of the device to NULL
  * @pdev: pointer to platform device handle
  *
- * Always return 0
+ * Always returns 0
  */
 static int ufs_qcom_remove(struct platform_device *pdev)
 {

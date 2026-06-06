@@ -3802,6 +3802,39 @@ int ufshcd_query_descriptor(struct ufs_hba *hba,
 EXPORT_SYMBOL(ufshcd_query_descriptor);
 
 /**
+ * ufshcd_query_descriptor_retry - API function for sending descriptor
+ * requests
+ * hba: per-adapter instance
+ * opcode: attribute opcode
+ * idn: attribute idn to access
+ * index: index field
+ * selector: selector field
+ * desc_buf: the buffer that contains the descriptor
+ * buf_len: length parameter passed to the device
+ *
+ * Returns 0 for success, non-zero in case of failure.
+ * The buf_len parameter will contain, on return, the length parameter
+ * received on the response.
+ */
+int ufshcd_query_descriptor_retry(struct ufs_hba *hba,
+			enum query_opcode opcode, enum desc_idn idn, u8 index,
+			u8 selector, u8 *desc_buf, int *buf_len)
+{
+	int err;
+	int retries;
+
+	for (retries = QUERY_REQ_RETRIES; retries > 0; retries--) {
+		err = __ufshcd_query_descriptor(hba, opcode, idn, index,
+						selector, desc_buf, buf_len);
+		if (!err || err == -EINVAL)
+			break;
+	}
+
+	return err;
+}
+EXPORT_SYMBOL(ufshcd_query_descriptor_retry);
+
+/**
  * ufshcd_read_desc_param - read the specified descriptor parameter
  * @hba: Pointer to adapter instance
  * @desc_id: descriptor idn value
@@ -3843,9 +3876,9 @@ static int ufshcd_read_desc_param(struct ufs_hba *hba,
 			return -ENOMEM;
 	}
 
-	ret = ufshcd_query_descriptor(hba, UPIU_QUERY_OPCODE_READ_DESC,
-				      desc_id, desc_index, 0, desc_buf,
-				      &buff_len);
+	ret = ufshcd_query_descriptor_retry(hba, UPIU_QUERY_OPCODE_READ_DESC,
+					desc_id, desc_index, 0, desc_buf,
+					&buff_len);
 
 	if (ret) {
 		dev_err(hba->dev, "%s: Failed reading descriptor. desc_id %d, desc_index %d, param_offset %d, ret %d",
@@ -6190,6 +6223,86 @@ out:
 	return err_handling;
 }
 
+/* Complete requests that have door-bell cleared */
+static void ufshcd_complete_requests(struct ufs_hba *hba)
+{
+	ufshcd_transfer_req_compl(hba);
+	ufshcd_tmc_handler(hba);
+}
+
+/**
+ * ufshcd_quirk_dl_nac_errors - This function checks if error handling is
+ *				to recover from the DL NAC errors or not.
+ * @hba: per-adapter instance
+ *
+ * Returns true if error handling is required, false otherwise
+ */
+static bool ufshcd_quirk_dl_nac_errors(struct ufs_hba *hba)
+{
+	unsigned long flags;
+	bool err_handling = true;
+
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	/*
+	 * UFS_DEVICE_QUIRK_RECOVERY_FROM_DL_NAC_ERRORS only workaround the
+	 * device fatal error and/or DL NAC & REPLAY timeout errors.
+	 */
+	if (hba->saved_err & (CONTROLLER_FATAL_ERROR | SYSTEM_BUS_FATAL_ERROR))
+		goto out;
+
+	if ((hba->saved_err & DEVICE_FATAL_ERROR) ||
+	    ((hba->saved_err & UIC_ERROR) &&
+	     (hba->saved_uic_err & UFSHCD_UIC_DL_TCx_REPLAY_ERROR)))
+		goto out;
+
+	if ((hba->saved_err & UIC_ERROR) &&
+	    (hba->saved_uic_err & UFSHCD_UIC_DL_NAC_RECEIVED_ERROR)) {
+		int err;
+		/*
+		 * wait for 50ms to see if we can get any other errors or not.
+		 */
+		spin_unlock_irqrestore(hba->host->host_lock, flags);
+		msleep(50);
+		spin_lock_irqsave(hba->host->host_lock, flags);
+
+		/*
+		 * now check if we have got any other severe errors other than
+		 * DL NAC error?
+		 */
+		if ((hba->saved_err & INT_FATAL_ERRORS) ||
+		    ((hba->saved_err & UIC_ERROR) &&
+		    (hba->saved_uic_err & ~UFSHCD_UIC_DL_NAC_RECEIVED_ERROR)))
+			goto out;
+
+		/*
+		 * As DL NAC is the only error received so far, send out NOP
+		 * command to confirm if link is still active or not.
+		 *   - If we don't get any response then do error recovery.
+		 *   - If we get response then clear the DL NAC error bit.
+		 */
+
+		spin_unlock_irqrestore(hba->host->host_lock, flags);
+		err = ufshcd_verify_dev_init(hba);
+		spin_lock_irqsave(hba->host->host_lock, flags);
+
+		if (err)
+			goto out;
+
+		/* Link seems to be alive hence ignore the DL NAC errors */
+		if (hba->saved_uic_err == UFSHCD_UIC_DL_NAC_RECEIVED_ERROR)
+			hba->saved_err &= ~UIC_ERROR;
+		/* clear NAC error */
+		hba->saved_uic_err &= ~UFSHCD_UIC_DL_NAC_RECEIVED_ERROR;
+		if (!hba->saved_uic_err) {
+			err_handling = false;
+			goto out;
+		}
+	}
+out:
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+	return err_handling;
+}
+
 /**
  * ufshcd_err_handler - handle UFS errors that require s/w attention
  * @work: pointer to work structure
@@ -7384,6 +7497,164 @@ out:
 	return ret;
 }
 
+static int ufs_get_device_info(struct ufs_hba *hba,
+				struct ufs_device_info *card_data)
+{
+	int err;
+	u8 model_index;
+	u8 str_desc_buf[QUERY_DESC_STRING_MAX_SIZE + 1] = {0};
+	u8 desc_buf[QUERY_DESC_DEVICE_MAX_SIZE];
+
+	err = ufshcd_read_device_desc(hba, desc_buf,
+					QUERY_DESC_DEVICE_MAX_SIZE);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed reading Device Desc. err = %d\n",
+			__func__, err);
+		goto out;
+	}
+
+	/*
+	 * getting vendor (manufacturerID) and Bank Index in big endian
+	 * format
+	 */
+	card_data->wmanufacturerid = desc_buf[DEVICE_DESC_PARAM_MANF_ID] << 8 |
+				     desc_buf[DEVICE_DESC_PARAM_MANF_ID + 1];
+
+	model_index = desc_buf[DEVICE_DESC_PARAM_PRDCT_NAME];
+
+	err = ufshcd_read_string_desc(hba, model_index, str_desc_buf,
+					QUERY_DESC_STRING_MAX_SIZE, ASCII_STD);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed reading Product Name. err = %d\n",
+			__func__, err);
+		goto out;
+	}
+
+	str_desc_buf[QUERY_DESC_STRING_MAX_SIZE] = '\0';
+	strlcpy(card_data->model, (str_desc_buf + QUERY_DESC_HDR_SIZE),
+		min_t(u8, str_desc_buf[QUERY_DESC_LENGTH_OFFSET],
+		      MAX_MODEL_LEN));
+
+	/* Null terminate the model string */
+	card_data->model[MAX_MODEL_LEN] = '\0';
+
+out:
+	return err;
+}
+
+void ufs_advertise_fixup_device(struct ufs_hba *hba)
+{
+	int err;
+	struct ufs_dev_fix *f;
+	struct ufs_device_info card_data;
+
+	card_data.wmanufacturerid = 0;
+
+	err = ufs_get_device_info(hba, &card_data);
+	if (err) {
+		dev_err(hba->dev, "%s: Failed getting device info. err = %d\n",
+			__func__, err);
+		return;
+	}
+
+	for (f = ufs_fixups; f->quirk; f++) {
+		if (((f->card.wmanufacturerid == card_data.wmanufacturerid) ||
+		    (f->card.wmanufacturerid == UFS_ANY_VENDOR)) &&
+		    (STR_PRFX_EQUAL(f->card.model, card_data.model) ||
+		     !strcmp(f->card.model, UFS_ANY_MODEL)))
+			hba->dev_quirks |= f->quirk;
+	}
+}
+
+/**
+ * ufshcd_tune_pa_tactivate - Tunes PA_TActivate of local UniPro
+ * @hba: per-adapter instance
+ *
+ * PA_TActivate parameter can be tuned manually if UniPro version is less than
+ * 1.61. PA_TActivate needs to be greater than or equal to peerM-PHY's
+ * RX_MIN_ACTIVATETIME_CAPABILITY attribute. This optimal value can help reduce
+ * the hibern8 exit latency.
+ *
+ * Returns zero on success, non-zero error value on failure.
+ */
+static int ufshcd_tune_pa_tactivate(struct ufs_hba *hba)
+{
+	int ret = 0;
+	u32 peer_rx_min_activatetime = 0, tuned_pa_tactivate;
+
+	ret = ufshcd_dme_peer_get(hba,
+				  UIC_ARG_MIB_SEL(
+					RX_MIN_ACTIVATETIME_CAPABILITY,
+					UIC_ARG_MPHY_RX_GEN_SEL_INDEX(0)),
+				  &peer_rx_min_activatetime);
+	if (ret)
+		goto out;
+
+	/* make sure proper unit conversion is applied */
+	tuned_pa_tactivate =
+		((peer_rx_min_activatetime * RX_MIN_ACTIVATETIME_UNIT_US)
+		 / PA_TACTIVATE_TIME_UNIT_US);
+	ret = ufshcd_dme_set(hba, UIC_ARG_MIB(PA_TACTIVATE),
+			     tuned_pa_tactivate);
+
+out:
+	return ret;
+}
+
+/**
+ * ufshcd_tune_pa_hibern8time - Tunes PA_Hibern8Time of local UniPro
+ * @hba: per-adapter instance
+ *
+ * PA_Hibern8Time parameter can be tuned manually if UniPro version is less than
+ * 1.61. PA_Hibern8Time needs to be maximum of local M-PHY's
+ * TX_HIBERN8TIME_CAPABILITY & peer M-PHY's RX_HIBERN8TIME_CAPABILITY.
+ * This optimal value can help reduce the hibern8 exit latency.
+ *
+ * Returns zero on success, non-zero error value on failure.
+ */
+static int ufshcd_tune_pa_hibern8time(struct ufs_hba *hba)
+{
+	int ret = 0;
+	u32 local_tx_hibern8_time_cap = 0, peer_rx_hibern8_time_cap = 0;
+	u32 max_hibern8_time, tuned_pa_hibern8time;
+
+	ret = ufshcd_dme_get(hba,
+			     UIC_ARG_MIB_SEL(TX_HIBERN8TIME_CAPABILITY,
+					UIC_ARG_MPHY_TX_GEN_SEL_INDEX(0)),
+				  &local_tx_hibern8_time_cap);
+	if (ret)
+		goto out;
+
+	ret = ufshcd_dme_peer_get(hba,
+				  UIC_ARG_MIB_SEL(RX_HIBERN8TIME_CAPABILITY,
+					UIC_ARG_MPHY_RX_GEN_SEL_INDEX(0)),
+				  &peer_rx_hibern8_time_cap);
+	if (ret)
+		goto out;
+
+	max_hibern8_time = max(local_tx_hibern8_time_cap,
+			       peer_rx_hibern8_time_cap);
+	/* make sure proper unit conversion is applied */
+	tuned_pa_hibern8time = ((max_hibern8_time * HIBERN8TIME_UNIT_US)
+				/ PA_HIBERN8_TIME_UNIT_US);
+	ret = ufshcd_dme_set(hba, UIC_ARG_MIB(PA_HIBERN8TIME),
+			     tuned_pa_hibern8time);
+out:
+	return ret;
+}
+
+static void ufshcd_tune_unipro_params(struct ufs_hba *hba)
+{
+	if (ufshcd_is_unipro_pa_params_tuning_req(hba)) {
+		ufshcd_tune_pa_tactivate(hba);
+		ufshcd_tune_pa_hibern8time(hba);
+	}
+
+	if (hba->dev_quirks & UFS_DEVICE_QUIRK_PA_TACTIVATE)
+		/* set 1ms timeout for PA_TACTIVATE */
+		ufshcd_dme_set(hba, UIC_ARG_MIB(PA_TACTIVATE), 10);
+}
+
 /**
  * ufshcd_tune_pa_tactivate - Tunes PA_TActivate of local UniPro
  * @hba: per-adapter instance
@@ -7605,6 +7876,10 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 
 	/* Debug counters initialization */
 	ufshcd_clear_dbg_ufs_stats(hba);
+	/* set the default level for urgent bkops */
+	hba->urgent_bkops_lvl = BKOPS_STATUS_PERF_IMPACT;
+	hba->is_urgent_bkops_lvl_checked = false;
+
 	/* set the default level for urgent bkops */
 	hba->urgent_bkops_lvl = BKOPS_STATUS_PERF_IMPACT;
 	hba->is_urgent_bkops_lvl_checked = false;
@@ -7985,6 +8260,41 @@ static int ufshcd_ioctl(struct scsi_device *dev, int cmd, void __user *buffer)
 	}
 
 	return err;
+}
+
+static enum blk_eh_timer_return ufshcd_eh_timed_out(struct scsi_cmnd *scmd)
+{
+	unsigned long flags;
+	struct Scsi_Host *host;
+	struct ufs_hba *hba;
+	int index;
+	bool found = false;
+
+	if (!scmd || !scmd->device || !scmd->device->host)
+		return BLK_EH_NOT_HANDLED;
+
+	host = scmd->device->host;
+	hba = shost_priv(host);
+	if (!hba)
+		return BLK_EH_NOT_HANDLED;
+
+	spin_lock_irqsave(host->host_lock, flags);
+
+	for_each_set_bit(index, &hba->outstanding_reqs, hba->nutrs) {
+		if (hba->lrb[index].cmd == scmd) {
+			found = true;
+			break;
+		}
+	}
+
+	spin_unlock_irqrestore(host->host_lock, flags);
+
+	/*
+	 * Bypass SCSI error handling and reset the block layer timer if this
+	 * SCSI command was not actually dispatched to UFS driver, otherwise
+	 * let SCSI layer handle the error as usual.
+	 */
+	return found ? BLK_EH_NOT_HANDLED : BLK_EH_RESET_TIMER;
 }
 
 static enum blk_eh_timer_return ufshcd_eh_timed_out(struct scsi_cmnd *scmd)
