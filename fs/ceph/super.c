@@ -439,8 +439,8 @@ static int ceph_show_options(struct seq_file *m, struct dentry *root)
 
 	if (fsopt->flags & CEPH_MOUNT_OPT_DIRSTAT)
 		seq_puts(m, ",dirstat");
-	if ((fsopt->flags & CEPH_MOUNT_OPT_RBYTES) == 0)
-		seq_puts(m, ",norbytes");
+	if ((fsopt->flags & CEPH_MOUNT_OPT_RBYTES))
+		seq_puts(m, ",rbytes");
 	if (fsopt->flags & CEPH_MOUNT_OPT_NOASYNCREADDIR)
 		seq_puts(m, ",noasyncreaddir");
 	if ((fsopt->flags & CEPH_MOUNT_OPT_DCACHE) == 0)
@@ -530,7 +530,7 @@ static struct ceph_fs_client *create_fs_client(struct ceph_mount_options *fsopt,
 		goto fail;
 	}
 	fsc->client->extra_mon_dispatch = extra_mon_dispatch;
-	fsc->client->monc.want_mdsmap = 1;
+	ceph_monc_want_map(&fsc->client->monc, CEPH_SUB_MDSMAP, 0, true);
 
 	fsc->mount_options = fsopt;
 
@@ -800,22 +800,20 @@ static struct dentry *ceph_real_mount(struct ceph_fs_client *fsc,
 	struct dentry *root;
 	int first = 0;   /* first vfsmount for this super_block */
 
-	dout("mount start\n");
+	dout("mount start %p\n", fsc);
 	mutex_lock(&fsc->client->mount_mutex);
 
-	err = __ceph_open_session(fsc->client, started);
-	if (err < 0)
-		goto out;
+	if (!fsc->sb->s_root) {
+		err = __ceph_open_session(fsc->client, started);
+		if (err < 0)
+			goto out;
 
-	dout("mount opening root\n");
-	root = open_root_dentry(fsc, "", started);
-	if (IS_ERR(root)) {
-		err = PTR_ERR(root);
-		goto out;
-	}
-	if (fsc->sb->s_root) {
-		dput(root);
-	} else {
+		dout("mount opening root\n");
+		root = open_root_dentry(fsc, "", started);
+		if (IS_ERR(root)) {
+			err = PTR_ERR(root);
+			goto out;
+		}
 		fsc->sb->s_root = root;
 		first = 1;
 
@@ -825,6 +823,7 @@ static struct dentry *ceph_real_mount(struct ceph_fs_client *fsc,
 	}
 
 	if (path[0] == 0) {
+		root = fsc->sb->s_root;
 		dget(root);
 	} else {
 		dout("mount opening base mountpoint\n");
@@ -840,16 +839,14 @@ static struct dentry *ceph_real_mount(struct ceph_fs_client *fsc,
 	mutex_unlock(&fsc->client->mount_mutex);
 	return root;
 
-out:
-	mutex_unlock(&fsc->client->mount_mutex);
-	return ERR_PTR(err);
-
 fail:
 	if (first) {
 		dput(fsc->sb->s_root);
 		fsc->sb->s_root = NULL;
 	}
-	goto out;
+out:
+	mutex_unlock(&fsc->client->mount_mutex);
+	return ERR_PTR(err);
 }
 
 static int ceph_set_super(struct super_block *s, void *data)
@@ -1049,19 +1046,14 @@ static int __init init_ceph(void)
 
 	ceph_flock_init();
 	ceph_xattr_init();
-	ret = ceph_snap_init();
-	if (ret)
-		goto out_xattr;
 	ret = register_filesystem(&ceph_fs_type);
 	if (ret)
-		goto out_snap;
+		goto out_xattr;
 
 	pr_info("loaded (mds proto %d)\n", CEPH_MDSC_PROTOCOL);
 
 	return 0;
 
-out_snap:
-	ceph_snap_exit();
 out_xattr:
 	ceph_xattr_exit();
 	destroy_caches();
@@ -1073,7 +1065,6 @@ static void __exit exit_ceph(void)
 {
 	dout("exit_ceph\n");
 	unregister_filesystem(&ceph_fs_type);
-	ceph_snap_exit();
 	ceph_xattr_exit();
 	destroy_caches();
 }

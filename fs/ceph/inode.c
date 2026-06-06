@@ -549,6 +549,10 @@ int ceph_fill_file_size(struct inode *inode, int issued,
 	if (ceph_seq_cmp(truncate_seq, ci->i_truncate_seq) > 0 ||
 	    (truncate_seq == ci->i_truncate_seq && size > inode->i_size)) {
 		dout("size %lld -> %llu\n", inode->i_size, size);
+		if (size > 0 && S_ISDIR(inode->i_mode)) {
+			pr_err("fill_file_size non-zero size for directory\n");
+			size = 0;
+		}
 		i_size_write(inode, size);
 		inode->i_blocks = (size + (1<<9) - 1) >> 9;
 		ci->i_reported_size = size;
@@ -1266,6 +1270,7 @@ retry_lookup:
 			dout(" %p links to %p %llx.%llx, not %llx.%llx\n",
 			     dn, d_inode(dn), ceph_vinop(d_inode(dn)),
 			     ceph_vinop(in));
+			d_invalidate(dn);
 			have_lease = false;
 		}
 
@@ -1367,7 +1372,7 @@ static int fill_readdir_cache(struct inode *dir, struct dentry *dn,
 		unlock_page(ctl->page);
 		ctl->dentries = kmap(ctl->page);
 		if (idx == 0)
-			memset(ctl->dentries, 0, PAGE_SIZE);
+			memset(ctl->dentries, 0, PAGE_CACHE_SIZE);
 	}
 
 	if (req->r_dir_release_cnt == atomic64_read(&ci->i_release_count) &&
@@ -1390,7 +1395,7 @@ int ceph_readdir_prepopulate(struct ceph_mds_request *req,
 	struct qstr dname;
 	struct dentry *dn;
 	struct inode *in;
-	int err = 0, ret, i;
+	int err = 0, skipped = 0, ret, i;
 	struct inode *snapdir = NULL;
 	struct ceph_mds_request_head *rhead = req->r_request->front.iov_base;
 	struct ceph_dentry_info *di;
@@ -1502,7 +1507,17 @@ retry_lookup:
 		}
 
 		if (d_really_is_negative(dn)) {
-			struct dentry *realdn = splice_dentry(dn, in);
+			struct dentry *realdn;
+
+			if (ceph_security_xattr_deadlock(in)) {
+				dout(" skip splicing dn %p to inode %p"
+				     " (security xattr deadlock)\n", dn, in);
+				iput(in);
+				skipped++;
+				goto next_item;
+			}
+
+			realdn = splice_dentry(dn, in);
 			if (IS_ERR(realdn)) {
 				err = PTR_ERR(realdn);
 				d_drop(dn);
@@ -1518,7 +1533,7 @@ retry_lookup:
 				    req->r_session,
 				    req->r_request_started);
 
-		if (err == 0 && cache_ctl.index >= 0) {
+		if (err == 0 && skipped == 0 && cache_ctl.index >= 0) {
 			ret = fill_readdir_cache(d_inode(parent), dn,
 						 &cache_ctl, req);
 			if (ret < 0)
@@ -1529,7 +1544,7 @@ next_item:
 			dput(dn);
 	}
 out:
-	if (err == 0) {
+	if (err == 0 && skipped == 0) {
 		req->r_did_prepopulate = true;
 		req->r_readdir_cache_idx = cache_ctl.index;
 	}
@@ -1959,7 +1974,7 @@ int __ceph_setattr(struct dentry *dentry, struct iattr *attr)
 	if (dirtied) {
 		inode_dirty_flags = __ceph_mark_dirty_caps(ci, dirtied,
 							   &prealloc_cf);
-		inode->i_ctime = CURRENT_TIME;
+		inode->i_ctime = current_fs_time(inode->i_sb);
 	}
 
 	release &= issued;
