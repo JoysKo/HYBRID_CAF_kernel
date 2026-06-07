@@ -135,7 +135,7 @@ static inline int pmd_trans_huge_lock(pmd_t *pmd, struct vm_area_struct *vma,
 	if (pmd_trans_huge(*pmd))
 		return __pmd_trans_huge_lock(pmd, vma, ptl);
 	else
-		return 0;
+		return NULL;
 }
 static inline int hpage_nr_pages(struct page *page)
 {
