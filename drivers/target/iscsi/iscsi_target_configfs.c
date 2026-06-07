@@ -789,23 +789,6 @@ static int lio_target_init_nodeacl(struct se_node_acl *se_nacl,
 	return 0;
 }
 
-static void lio_target_cleanup_nodeacl( struct se_node_acl *se_nacl)
-{
-	struct iscsi_node_acl *acl = container_of(se_nacl,
-			struct iscsi_node_acl, se_node_acl);
-	struct config_item *df_item;
-	struct config_group *stats_cg;
-	int i;
-
-	stats_cg = &acl->se_node_acl.acl_fabric_stat_group;
-	for (i = 0; stats_cg->default_groups[i]; i++) {
-		df_item = &stats_cg->default_groups[i]->cg_item;
-		stats_cg->default_groups[i] = NULL;
-		config_item_put(df_item);
-	}
-	kfree(stats_cg->default_groups);
-}
-
 /* End items for lio_target_acl_cit */
 
 /* Start items for lio_target_tpg_attrib_cit */
@@ -1283,12 +1266,16 @@ static struct se_wwn *lio_target_call_coreaddtiqn(
 		return ERR_PTR(-ENOMEM);
 	}
 
-	stats_cg->default_groups[0] = &tiqn->tiqn_stat_grps.iscsi_instance_group;
-	stats_cg->default_groups[1] = &tiqn->tiqn_stat_grps.iscsi_sess_err_group;
-	stats_cg->default_groups[2] = &tiqn->tiqn_stat_grps.iscsi_tgt_attr_group;
-	stats_cg->default_groups[3] = &tiqn->tiqn_stat_grps.iscsi_login_stats_group;
-	stats_cg->default_groups[4] = &tiqn->tiqn_stat_grps.iscsi_logout_stats_group;
-	stats_cg->default_groups[5] = NULL;
+	pr_debug("LIO_Target_ConfigFS: REGISTER -> %s\n", tiqn->tiqn);
+	pr_debug("LIO_Target_ConfigFS: REGISTER -> Allocated Node:"
+			" %s\n", name);
+	return &tiqn->tiqn_wwn;
+}
+
+static void lio_target_add_wwn_groups(struct se_wwn *wwn)
+{
+	struct iscsi_tiqn *tiqn = container_of(wwn, struct iscsi_tiqn, tiqn_wwn);
+
 	config_group_init_type_name(&tiqn->tiqn_stat_grps.iscsi_instance_group,
 			"iscsi_instance", &iscsi_stat_instance_cit);
 	config_group_init_type_name(&tiqn->tiqn_stat_grps.iscsi_sess_err_group,
@@ -1299,28 +1286,14 @@ static struct se_wwn *lio_target_call_coreaddtiqn(
 			"iscsi_login_stats", &iscsi_stat_login_cit);
 	config_group_init_type_name(&tiqn->tiqn_stat_grps.iscsi_logout_stats_group,
 			"iscsi_logout_stats", &iscsi_stat_logout_cit);
-
-	pr_debug("LIO_Target_ConfigFS: REGISTER -> %s\n", tiqn->tiqn);
-	pr_debug("LIO_Target_ConfigFS: REGISTER -> Allocated Node:"
-			" %s\n", name);
-	return &tiqn->tiqn_wwn;
+	configfs_add_default_group(&tiqn->tiqn_stat_grps.iscsi_logout_stats_group,
+			&tiqn->tiqn_wwn.fabric_stat_group);
 }
 
 static void lio_target_call_coredeltiqn(
 	struct se_wwn *wwn)
 {
 	struct iscsi_tiqn *tiqn = container_of(wwn, struct iscsi_tiqn, tiqn_wwn);
-	struct config_item *df_item;
-	struct config_group *stats_cg;
-	int i;
-
-	stats_cg = &tiqn->tiqn_wwn.fabric_stat_group;
-	for (i = 0; stats_cg->default_groups[i]; i++) {
-		df_item = &stats_cg->default_groups[i]->cg_item;
-		stats_cg->default_groups[i] = NULL;
-		config_item_put(df_item);
-	}
-	kfree(stats_cg->default_groups);
 
 	pr_debug("LIO_Target_ConfigFS: DEREGISTER -> %s\n",
 			tiqn->tiqn);
@@ -1697,12 +1670,12 @@ const struct target_core_fabric_ops iscsi_ops = {
 	.aborted_task			= lio_aborted_task,
 	.fabric_make_wwn		= lio_target_call_coreaddtiqn,
 	.fabric_drop_wwn		= lio_target_call_coredeltiqn,
+	.add_wwn_groups			= lio_target_add_wwn_groups,
 	.fabric_make_tpg		= lio_target_tiqn_addtpg,
 	.fabric_drop_tpg		= lio_target_tiqn_deltpg,
 	.fabric_make_np			= lio_target_call_addnptotpg,
 	.fabric_drop_np			= lio_target_call_delnpfromtpg,
 	.fabric_init_nodeacl		= lio_target_init_nodeacl,
-	.fabric_cleanup_nodeacl		= lio_target_cleanup_nodeacl,
 
 	.tfc_discovery_attrs		= lio_target_discovery_auth_attrs,
 	.tfc_wwn_attrs			= lio_target_wwn_attrs,
