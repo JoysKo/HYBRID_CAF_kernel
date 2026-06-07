@@ -721,32 +721,10 @@ static void msm_preclose(struct drm_device *dev, struct drm_file *file)
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_kms *kms = priv->kms;
 
-	if (kms && kms->funcs && kms->funcs->preclose)
-		kms->funcs->preclose(kms, file);
-}
-
-static void msm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_file_private *ctx = file->driver_priv;
-	struct msm_kms *kms = priv->kms;
-
-	if (kms && kms->funcs && kms->funcs->postclose)
-		kms->funcs->postclose(kms, file);
-
-	if (!ctx)
-		return;
-
-	msm_submitqueue_close(ctx);
-
-	if (priv->gpu) {
-		msm_gpu_cleanup_counters(priv->gpu, ctx);
-
-		if (ctx->aspace && ctx->aspace != priv->gpu->aspace) {
-			ctx->aspace->mmu->funcs->detach(ctx->aspace->mmu);
-			msm_gem_address_space_put(ctx->aspace);
-		}
-	}
+	mutex_lock(&dev->struct_mutex);
+	if (ctx == priv->lastctx)
+		priv->lastctx = NULL;
+	mutex_unlock(&dev->struct_mutex);
 
 	kfree(ctx);
 }

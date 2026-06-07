@@ -100,9 +100,6 @@ struct msm_kms_funcs {
 	void (*postopen)(struct msm_kms *kms, struct drm_file *file);
 	bool (*early_display_status)(struct msm_kms *kms);
 	/* cleanup: */
-	void (*preclose)(struct msm_kms *kms, struct drm_file *file);
-	void (*postclose)(struct msm_kms *kms, struct drm_file *file);
-	void (*lastclose)(struct msm_kms *kms);
 	void (*destroy)(struct msm_kms *kms);
 };
 
