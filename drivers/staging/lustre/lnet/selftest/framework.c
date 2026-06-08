@@ -1157,7 +1157,7 @@ sfw_add_test(struct srpc_server_rpc *rpc)
 		int npg = sfw_id_pages(request->tsr_ndest);
 		int len;
 
-		if ((sn->sn_features & LST_FEAT_BULK_LEN) == 0) {
+		if (!(sn->sn_features & LST_FEAT_BULK_LEN)) {
 			len = npg * PAGE_SIZE;
 
 		} else {

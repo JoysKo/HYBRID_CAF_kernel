@@ -86,21 +86,6 @@ static inline void mapping_set_gfp_mask(struct address_space *m, gfp_t mask)
 				(__force unsigned long)mask;
 }
 
-/*
- * The page cache can be done in larger chunks than
- * one page, because it allows for more efficient
- * throughput (it can then be mapped into user
- * space in smaller chunks for same flexibility).
- *
- * Or rather, it _will_ be done in larger chunks.
- */
-#define PAGE_CACHE_SHIFT	PAGE_SHIFT
-#define PAGE_CACHE_SIZE		PAGE_SIZE
-#define PAGE_CACHE_MASK		PAGE_MASK
-#define PAGE_CACHE_ALIGN(addr)	(((addr)+PAGE_CACHE_SIZE-1)&PAGE_CACHE_MASK)
-
-#define page_cache_get(page)		get_page(page)
-#define page_cache_release(page)	put_page(page)
 void release_pages(struct page **pages, int nr, bool cold);
 
 /*
@@ -405,10 +390,21 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
  */
 static inline pgoff_t page_to_pgoff(struct page *page)
 {
+	pgoff_t pgoff;
+
 	if (unlikely(PageHeadHuge(page)))
 		return page->index << compound_order(page);
-	else
+
+	if (likely(!PageTransTail(page)))
 		return page->index;
+
+	/*
+	 *  We don't initialize ->index for tail pages: calculate based on
+	 *  head page
+	 */
+	pgoff = compound_head(page)->index;
+	pgoff += page - compound_head(page);
+	return pgoff;
 }
 
 /*
@@ -433,8 +429,8 @@ static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 	pgoff_t pgoff;
 	if (unlikely(is_vm_hugetlb_page(vma)))
 		return linear_hugepage_index(vma, address);
-	pgoff = (address - READ_ONCE(vma->vm_start)) >> PAGE_SHIFT;
-	pgoff += READ_ONCE(vma->vm_pgoff);
+	pgoff = (address - vma->vm_start) >> PAGE_SHIFT;
+	pgoff += vma->vm_pgoff;
 	return pgoff;
 }
 

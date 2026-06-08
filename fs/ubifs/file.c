@@ -430,7 +430,7 @@ static int ubifs_write_begin(struct file *file, struct address_space *mapping,
 	struct ubifs_info *c = inode->i_sb->s_fs_info;
 	struct ubifs_inode *ui = ubifs_inode(inode);
 	pgoff_t index = pos >> PAGE_SHIFT;
-	int err, appending = !!(pos + len > inode->i_size);
+	int uninitialized_var(err), appending = !!(pos + len > inode->i_size);
 	int skipped_read = 0;
 	struct page *page;
 

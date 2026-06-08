@@ -929,8 +929,8 @@ int osc_shrink_grant_to_target(struct client_obd *cli, __u64 target_bytes)
 	 * We don't want to shrink below a single RPC, as that will negatively
 	 * impact block allocation and long-term performance.
 	 */
-	if (target_bytes < cli->cl_max_pages_per_rpc << PAGE_CACHE_SHIFT)
-		target_bytes = cli->cl_max_pages_per_rpc << PAGE_CACHE_SHIFT;
+	if (target_bytes < cli->cl_max_pages_per_rpc << PAGE_SHIFT)
+		target_bytes = cli->cl_max_pages_per_rpc << PAGE_SHIFT;
 
 	if (target_bytes >= cli->cl_avail_grant) {
 		client_obd_list_unlock(&cli->cl_loi_list_lock);
@@ -978,7 +978,7 @@ static int osc_should_shrink_grant(struct client_obd *client)
 		 * cli_brw_size(obd->u.cli.cl_import->imp_obd->obd_self_export)
 		 * Keep comment here so that it can be found by searching.
 		 */
-		int brw_size = client->cl_max_pages_per_rpc << PAGE_CACHE_SHIFT;
+		int brw_size = client->cl_max_pages_per_rpc << PAGE_SHIFT;
 
 		if (client->cl_import->imp_state == LUSTRE_IMP_FULL &&
 		    client->cl_avail_grant > brw_size)

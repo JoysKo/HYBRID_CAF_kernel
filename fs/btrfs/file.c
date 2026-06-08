@@ -1506,7 +1506,7 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 		return -ENOMEM;
 
 	while (iov_iter_count(i) > 0) {
-		size_t offset = pos & (PAGE_CACHE_SIZE - 1);
+		size_t offset = pos & (PAGE_SIZE - 1);
 		size_t sector_offset;
 		size_t write_bytes = min(iov_iter_count(i),
 					 nrptrs * (size_t)PAGE_SIZE -
@@ -1547,7 +1547,7 @@ static noinline ssize_t __btrfs_buffered_write(struct file *file,
 			 * write_bytes, so scale down.
 			 */
 			num_pages = DIV_ROUND_UP(write_bytes + offset,
-						 PAGE_CACHE_SIZE);
+						 PAGE_SIZE);
 			reserve_bytes = round_up(write_bytes + sector_offset,
 					root->sectorsize);
 			goto reserve_metadata;

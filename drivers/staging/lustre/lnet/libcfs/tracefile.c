@@ -349,7 +349,7 @@ int libcfs_debug_vmsg2(struct libcfs_debug_msg_data *msgdata,
 	for (i = 0; i < 2; i++) {
 		tage = cfs_trace_get_tage(tcd, needed + known_size + 1);
 		if (!tage) {
-			if (needed + known_size > PAGE_CACHE_SIZE)
+			if (needed + known_size > PAGE_SIZE)
 				mask |= D_ERROR;
 
 			cfs_trace_put_tcd(tcd);
@@ -424,7 +424,7 @@ int libcfs_debug_vmsg2(struct libcfs_debug_msg_data *msgdata,
 	__LASSERT(debug_buf == string_buf);
 
 	tage->used += needed;
-	__LASSERT(tage->used <= PAGE_CACHE_SIZE);
+	__LASSERT(tage->used <= PAGE_SIZE);
 
 console:
 	if ((mask & libcfs_printk) == 0) {

@@ -877,7 +877,7 @@ get_more_pages:
 
 				num_ops = 1 + do_sync;
 				strip_unit_end = page->index +
-					((len - 1) >> PAGE_CACHE_SHIFT);
+					((len - 1) >> PAGE_SHIFT);
 
 				BUG_ON(pages);
 				max_pages = calc_pages_for(0, (u64)len);
@@ -891,7 +891,7 @@ get_more_pages:
 
 				len = 0;
 			} else if (page->index !=
-				   (offset + len) >> PAGE_CACHE_SHIFT) {
+				   (offset + len) >> PAGE_SHIFT) {
 				if (num_ops >= (pool ?  CEPH_OSD_SLAB_OPS :
 							CEPH_OSD_MAX_OPS)) {
 					redirty_page_for_writepage(wbc, page);
@@ -919,7 +919,7 @@ get_more_pages:
 
 			pages[locked_pages] = page;
 			locked_pages++;
-			len += PAGE_CACHE_SIZE;
+			len += PAGE_SIZE;
 		}
 
 		/* did we get anything? */
@@ -971,7 +971,7 @@ new_request:
 			BUG_ON(IS_ERR(req));
 		}
 		BUG_ON(len < page_offset(pages[locked_pages - 1]) +
-			     PAGE_CACHE_SIZE - offset);
+			     PAGE_SIZE - offset);
 
 		req->r_callback = writepages_finish;
 		req->r_inode = inode;
@@ -1001,7 +1001,7 @@ new_request:
 			}
 
 			set_page_writeback(pages[i]);
-			len += PAGE_CACHE_SIZE;
+			len += PAGE_SIZE;
 		}
 
 		if (snap_size != -1) {
@@ -1010,7 +1010,7 @@ new_request:
 			/* writepages_finish() clears writeback pages
 			 * according to the data length, so make sure
 			 * data length covers all locked pages */
-			u64 min_len = len + 1 - PAGE_CACHE_SIZE;
+			u64 min_len = len + 1 - PAGE_SIZE;
 			len = min(len, (u64)i_size_read(inode) - offset);
 			len = max(len, min_len);
 		}
@@ -1315,7 +1315,7 @@ static int ceph_filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct ceph_inode_info *ci = ceph_inode(inode);
 	struct ceph_file_info *fi = vma->vm_file->private_data;
 	struct page *pinned_page = NULL;
-	loff_t off = (loff_t)vmf->pgoff << PAGE_SHIFT;
+	loff_t off = vmf->pgoff << PAGE_SHIFT;
 	int want, got, ret;
 
 	dout("filemap_fault %p %llx.%llx %llu~%zd trying to get caps\n",

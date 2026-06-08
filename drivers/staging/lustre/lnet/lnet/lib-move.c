@@ -543,7 +543,7 @@ lnet_extract_kiov(int dst_niov, lnet_kiov_t *dst,
 		if (len <= frag_len) {
 			dst->kiov_len = len;
 			LASSERT(dst->kiov_offset + dst->kiov_len
-					     <= PAGE_SIZE);
+					<= PAGE_SIZE);
 			return niov;
 		}
 

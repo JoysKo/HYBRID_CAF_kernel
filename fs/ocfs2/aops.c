@@ -1060,7 +1060,7 @@ static int ocfs2_grab_pages_for_write(struct address_space *mapping,
 		wc->w_num_pages = 1;
 		start = target_index;
 	}
-	end_index = (user_pos + user_len - 1) >> PAGE_CACHE_SHIFT;
+	end_index = (user_pos + user_len - 1) >> PAGE_SHIFT;
 
 	for(i = 0; i < wc->w_num_pages; i++) {
 		index = start + i;

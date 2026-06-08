@@ -4493,7 +4493,7 @@ static ssize_t fill_read_buf(struct send_ctx *sctx, u64 offset, u32 len)
 
 	while (index <= last_index) {
 		unsigned cur_len = min_t(unsigned, len,
-					 PAGE_CACHE_SIZE - pg_offset);
+					 PAGE_SIZE - pg_offset);
 		page = find_or_create_page(inode->i_mapping, index, GFP_KERNEL);
 		if (!page) {
 			ret = -ENOMEM;

@@ -57,7 +57,7 @@ static void vvp_page_fini_common(struct ccc_page *cp)
 	struct page *vmpage = cp->cpg_page;
 
 	LASSERT(vmpage);
-	page_cache_release(vmpage);
+	put_page(vmpage);
 }
 
 static void vvp_page_fini(const struct lu_env *env,

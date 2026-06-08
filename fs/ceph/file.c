@@ -875,7 +875,7 @@ ceph_direct_read_write(struct kiocb *iocb, struct iov_iter *iter,
 			 * may block.
 			 */
 			truncate_inode_pages_range(inode->i_mapping, pos,
-					(pos+len) | (PAGE_CACHE_SIZE - 1));
+					(pos+len) | (PAGE_SIZE - 1));
 
 			osd_req_op_init(req, 1, CEPH_OSD_OP_STARTSYNC, 0);
 		}

@@ -299,7 +299,7 @@ static int copy_user_bh(struct page *to, struct buffer_head *bh,
 }
 
 #define NO_SECTOR -1
-#define DAX_PMD_INDEX(page_index) (page_index & (PMD_MASK >> PAGE_CACHE_SHIFT))
+#define DAX_PMD_INDEX(page_index) (page_index & (PMD_MASK >> PAGE_SHIFT))
 
 static int dax_radix_entry(struct address_space *mapping, pgoff_t index,
 		sector_t sector, bool pmd_entry, bool dirty)
@@ -454,8 +454,8 @@ int dax_writeback_mapping_range(struct address_space *mapping,
 	if (!mapping->nrexceptional || wbc->sync_mode != WB_SYNC_ALL)
 		return 0;
 
-	start_index = wbc->range_start >> PAGE_CACHE_SHIFT;
-	end_index = wbc->range_end >> PAGE_CACHE_SHIFT;
+	start_index = wbc->range_start >> PAGE_SHIFT;
+	end_index = wbc->range_end >> PAGE_SHIFT;
 	pmd_index = DAX_PMD_INDEX(start_index);
 
 	rcu_read_lock();
@@ -1021,11 +1021,15 @@ int dax_zero_page_range(struct inode *inode, loff_t from, unsigned length,
 	if (err < 0)
 		return err;
 	if (buffer_written(&bh)) {
-		void __pmem *addr;
-		err = dax_get_addr(&bh, &addr, inode->i_blkbits);
-		if (err < 0)
-			return err;
-		clear_pmem(addr + offset, length);
+		struct block_device *bdev = bh.b_bdev;
+		struct blk_dax_ctl dax = {
+			.sector = to_sector(&bh, inode),
+			.size = PAGE_SIZE,
+		};
+
+		if (dax_map_atomic(bdev, &dax) < 0)
+			return PTR_ERR(dax.addr);
+		clear_pmem(dax.addr + offset, length);
 		wmb_pmem();
 	}
 

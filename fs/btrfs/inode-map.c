@@ -284,7 +284,7 @@ void btrfs_unpin_free_ino(struct btrfs_root *root)
 }
 
 #define INIT_THRESHOLD	((SZ_32K / 2) / sizeof(struct btrfs_free_space))
-#define INODES_PER_BITMAP (PAGE_CACHE_SIZE * 8)
+#define INODES_PER_BITMAP (PAGE_SIZE * 8)
 
 /*
  * The goal is to keep the memory used by the free_ino tree won't

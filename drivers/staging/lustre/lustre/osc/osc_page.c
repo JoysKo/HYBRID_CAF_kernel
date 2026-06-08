@@ -487,7 +487,7 @@ static atomic_t osc_lru_waiters = ATOMIC_INIT(0);
 /* LRU pages are freed in batch mode. OSC should at least free this
  * number of pages to avoid running out of LRU budget, and..
  */
-static const int lru_shrink_min = 2 << (20 - PAGE_CACHE_SHIFT);  /* 2M */
+static const int lru_shrink_min = 2 << (20 - PAGE_SHIFT);  /* 2M */
 /* free this number at most otherwise it will take too long time to finish. */
 static const int lru_shrink_max = 32 << (20 - PAGE_SHIFT); /* 32M */
 

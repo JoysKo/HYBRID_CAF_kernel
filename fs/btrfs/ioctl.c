@@ -1282,7 +1282,7 @@ int btrfs_defrag_file(struct inode *inode, struct file *file,
 	int defrag_count = 0;
 	int compress_type = BTRFS_COMPRESS_ZLIB;
 	u32 extent_thresh = range->extent_thresh;
-	unsigned long max_cluster = SZ_256K >> PAGE_CACHE_SHIFT;
+	unsigned long max_cluster = SZ_256K >> PAGE_SHIFT;
 	unsigned long cluster = max_cluster;
 	u64 new_align = ~((u64)SZ_128K - 1);
 	struct page **pages = NULL;
@@ -3945,8 +3945,8 @@ static noinline int btrfs_clone_files(struct file *file, struct file *file_src,
 	 * data immediately and not the previous data.
 	 */
 	truncate_inode_pages_range(&inode->i_data,
-				round_down(destoff, PAGE_CACHE_SIZE),
-				round_up(destoff + len, PAGE_CACHE_SIZE) - 1);
+				round_down(destoff, PAGE_SIZE),
+				round_up(destoff + len, PAGE_SIZE) - 1);
 out_unlock:
 	if (!same_inode)
 		btrfs_double_inode_unlock(src, inode);

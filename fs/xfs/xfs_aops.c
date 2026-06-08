@@ -925,7 +925,7 @@ xfs_do_writepage(
 	 * ---------------------------------^------------------|
 	 */
 	offset = i_size_read(inode);
-	end_index = offset >> PAGE_CACHE_SHIFT;
+	end_index = offset >> PAGE_SHIFT;
 	if (page->index < end_index)
 		end_offset = (xfs_off_t)(page->index + 1) << PAGE_SHIFT;
 	else {

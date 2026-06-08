@@ -370,6 +370,11 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 	struct path path;
 	struct inode *inode;
 	struct vfsmount *mnt;
+#if defined(CONFIG_KSU) && defined(CONFIG_KSU_SUSFS)
+	struct filename* fname;
+	int status;
+	int error;
+#endif
 	int res;
 	unsigned int lookup_flags = LOOKUP_FOLLOW;
 #ifdef CONFIG_KSU
@@ -377,10 +382,6 @@ SYSCALL_DEFINE3(faccessat, int, dfd, const char __user *, filename, int, mode)
 #endif
 
 #if defined(CONFIG_KSU) && defined(CONFIG_KSU_SUSFS)
-	struct filename* fname;
-	int status;
-	int error;
-
 	fname = getname_safe(filename);
 	status = susfs_suspicious_path(fname, &error, SYSCALL_FAMILY_ALL_ENOENT);
 	putname_safe(fname);

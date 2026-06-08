@@ -535,35 +535,16 @@ int ecryptfs_encrypt_page(struct page *page)
 				"encrypted extent\n");
 		goto out;
 	}
-	if (is_hw_crypt) {
-		/* no need for encryption */
-	} else {
-		for (extent_offset = 0;
-			extent_offset <
-			(PAGE_SIZE / crypt_stat->extent_size);
-			extent_offset++) {
 
-			if (is_cipher_supported) {
-				if (!get_events()->encrypt_cb) {
-					rc = -EPERM;
-					goto out;
-				}
-				rc = get_events()->encrypt_cb(page,
-					enc_extent_page,
-					ecryptfs_inode_to_lower(
-						ecryptfs_inode),
-						extent_offset);
-			} else {
-				rc = crypt_extent(crypt_stat,
-					enc_extent_page, page,
-					extent_offset, ENCRYPT);
-			}
-			if (rc) {
-				ecryptfs_printk(KERN_ERR,
-				"%s: Error encrypting; rc = [%d]\n",
-				__func__, rc);
-				goto out;
-			}
+	for (extent_offset = 0;
+	     extent_offset < (PAGE_SIZE / crypt_stat->extent_size);
+	     extent_offset++) {
+		rc = crypt_extent(crypt_stat, enc_extent_page, page,
+				  extent_offset, ENCRYPT);
+		if (rc) {
+			printk(KERN_ERR "%s: Error encrypting extent; "
+			       "rc = [%d]\n", __func__, rc);
+			goto out;
 		}
 	}
 
@@ -575,11 +556,7 @@ int ecryptfs_encrypt_page(struct page *page)
 
 	rc = ecryptfs_write_lower(ecryptfs_inode, enc_extent_virt, lower_offset,
 				  PAGE_SIZE);
-	if (!is_hw_crypt)
-			kunmap(enc_extent_page);
-	else
-			kunmap(page);
-
+	kunmap(enc_extent_page);
 	if (rc < 0) {
 		ecryptfs_printk(KERN_ERR,
 			"Error attempting to write lower page; rc = [%d]\n",

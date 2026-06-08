@@ -527,7 +527,7 @@ static int ll_read_ahead_page(const struct lu_env *env, struct cl_io *io,
  * and max_read_ahead_per_file_mb otherwise the readahead budget can be used
  * up quickly which will affect read performance significantly. See LU-2816
  */
-#define RAS_INCREASE_STEP(inode) (ONE_MB_BRW_SIZE >> PAGE_CACHE_SHIFT)
+#define RAS_INCREASE_STEP(inode) (ONE_MB_BRW_SIZE >> PAGE_SHIFT)
 
 static inline int stride_io_mode(struct ll_readahead_state *ras)
 {

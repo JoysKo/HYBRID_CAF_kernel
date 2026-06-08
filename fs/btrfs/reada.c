@@ -226,7 +226,7 @@ int btree_readahead_hook(struct btrfs_fs_info *fs_info,
 	/* find extent */
 	spin_lock(&fs_info->reada_lock);
 	re = radix_tree_lookup(&fs_info->reada_tree,
-			       start >> PAGE_CACHE_SHIFT);
+			       start >> PAGE_SHIFT);
 	if (re)
 		re->refcnt++;
 	spin_unlock(&fs_info->reada_lock);
@@ -257,7 +257,7 @@ static struct reada_zone *reada_find_zone(struct btrfs_fs_info *fs_info,
 	zone = NULL;
 	spin_lock(&fs_info->reada_lock);
 	ret = radix_tree_gang_lookup(&dev->reada_zones, (void **)&zone,
-				     logical >> PAGE_CACHE_SHIFT, 1);
+				     logical >> PAGE_SHIFT, 1);
 	if (ret == 1 && logical >= zone->start && logical <= zone->end) {
 		kref_get(&zone->refcnt);
 		spin_unlock(&fs_info->reada_lock);
@@ -300,7 +300,7 @@ static struct reada_zone *reada_find_zone(struct btrfs_fs_info *fs_info,
 	if (ret == -EEXIST) {
 		kfree(zone);
 		ret = radix_tree_gang_lookup(&dev->reada_zones, (void **)&zone,
-					     logical >> PAGE_CACHE_SHIFT, 1);
+					     logical >> PAGE_SHIFT, 1);
 		if (ret == 1 && logical >= zone->start && logical <= zone->end)
 			kref_get(&zone->refcnt);
 		else
@@ -326,7 +326,7 @@ static struct reada_extent *reada_find_extent(struct btrfs_root *root,
 	u64 length;
 	int real_stripes;
 	int nzones = 0;
-	unsigned long index = logical >> PAGE_CACHE_SHIFT;
+	unsigned long index = logical >> PAGE_SHIFT;
 	int dev_replace_is_ongoing;
 	int have_zone = 0;
 
@@ -673,7 +673,7 @@ static int reada_start_machine_dev(struct btrfs_fs_info *fs_info,
 	 * plugging to speed things up
 	 */
 	ret = radix_tree_gang_lookup(&dev->reada_extents, (void **)&re,
-				     dev->reada_next >> PAGE_CACHE_SHIFT, 1);
+				     dev->reada_next >> PAGE_SHIFT, 1);
 	if (ret == 0 || re->logical > dev->reada_curr_zone->end) {
 		ret = reada_pick_zone(dev);
 		if (!ret) {
@@ -887,7 +887,7 @@ static void dump_devs(struct btrfs_fs_info *fs_info, int all)
 		if (ret == 0)
 			break;
 		if (!re->scheduled) {
-			index = (re->logical >> PAGE_CACHE_SHIFT) + 1;
+			index = (re->logical >> PAGE_SHIFT) + 1;
 			continue;
 		}
 		printk(KERN_DEBUG

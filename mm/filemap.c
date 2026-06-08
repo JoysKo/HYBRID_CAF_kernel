@@ -1599,7 +1599,7 @@ repeat:
 
 		/* Has the page moved? */
 		if (unlikely(page != *slot)) {
-			page_cache_release(page);
+			put_page(page);
 			goto repeat;
 		}
 export:

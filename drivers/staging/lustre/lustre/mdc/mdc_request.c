@@ -1037,7 +1037,7 @@ restart_bulk:
 	if (req->rq_bulk->bd_nob_transferred & ~LU_PAGE_MASK) {
 		CERROR("Unexpected # bytes transferred: %d (%ld expected)\n",
 		       req->rq_bulk->bd_nob_transferred,
-		       PAGE_CACHE_SIZE * op_data->op_npages);
+		       PAGE_SIZE * op_data->op_npages);
 		ptlrpc_req_finished(req);
 		return -EPROTO;
 	}

@@ -962,7 +962,7 @@ static struct page *page_in_rbio(struct btrfs_raid_bio *rbio,
  */
 static unsigned long rbio_nr_pages(unsigned long stripe_len, int nr_stripes)
 {
-	return DIV_ROUND_UP(stripe_len, PAGE_CACHE_SIZE) * nr_stripes;
+	return DIV_ROUND_UP(stripe_len, PAGE_SIZE) * nr_stripes;
 }
 
 /*

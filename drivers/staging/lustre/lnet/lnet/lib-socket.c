@@ -168,7 +168,7 @@ lnet_ipif_enumerate(char ***namesp)
 	for (;;) {
 		if (nalloc * sizeof(*ifr) > PAGE_SIZE) {
 			toobig = 1;
-			nalloc = PAGE_SIZE/sizeof(*ifr);
+			nalloc = PAGE_SIZE / sizeof(*ifr);
 			CWARN("Too many interfaces: only enumerating first %d\n",
 			      nalloc);
 		}

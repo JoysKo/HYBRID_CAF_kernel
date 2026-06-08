@@ -225,7 +225,7 @@ static int test_find_delalloc(void)
 	 * range we want to find.
 	 */
 	page = find_get_page(inode->i_mapping,
-			     (max_bytes + SZ_1M) >> PAGE_CACHE_SHIFT);
+			     (max_bytes + SZ_1M) >> PAGE_SHIFT);
 	if (!page) {
 		test_msg("Couldn't find our page\n");
 		goto out_bits;
@@ -298,9 +298,9 @@ static int __test_eb_bitmaps(unsigned long *bitmap, struct extent_buffer *eb,
 		return -EINVAL;
 	}
 
-	bitmap_set(bitmap, (PAGE_CACHE_SIZE - sizeof(long) / 2) * BITS_PER_BYTE,
+	bitmap_set(bitmap, (PAGE_SIZE - sizeof(long) / 2) * BITS_PER_BYTE,
 		   sizeof(long) * BITS_PER_BYTE);
-	extent_buffer_bitmap_set(eb, PAGE_CACHE_SIZE - sizeof(long) / 2, 0,
+	extent_buffer_bitmap_set(eb, PAGE_SIZE - sizeof(long) / 2, 0,
 				 sizeof(long) * BITS_PER_BYTE);
 	if (memcmp_extent_buffer(eb, bitmap, 0, len) != 0) {
 		test_msg("Setting straddling pages failed\n");
@@ -309,10 +309,10 @@ static int __test_eb_bitmaps(unsigned long *bitmap, struct extent_buffer *eb,
 
 	bitmap_set(bitmap, 0, len * BITS_PER_BYTE);
 	bitmap_clear(bitmap,
-		     (PAGE_CACHE_SIZE - sizeof(long) / 2) * BITS_PER_BYTE,
+		     (PAGE_SIZE - sizeof(long) / 2) * BITS_PER_BYTE,
 		     sizeof(long) * BITS_PER_BYTE);
 	extent_buffer_bitmap_set(eb, 0, 0, len * BITS_PER_BYTE);
-	extent_buffer_bitmap_clear(eb, PAGE_CACHE_SIZE - sizeof(long) / 2, 0,
+	extent_buffer_bitmap_clear(eb, PAGE_SIZE - sizeof(long) / 2, 0,
 				   sizeof(long) * BITS_PER_BYTE);
 	if (memcmp_extent_buffer(eb, bitmap, 0, len) != 0) {
 		test_msg("Clearing straddling pages failed\n");
@@ -353,7 +353,7 @@ static int __test_eb_bitmaps(unsigned long *bitmap, struct extent_buffer *eb,
 
 static int test_eb_bitmaps(void)
 {
-	unsigned long len = PAGE_CACHE_SIZE * 4;
+	unsigned long len = PAGE_SIZE * 4;
 	unsigned long *bitmap;
 	struct extent_buffer *eb;
 	int ret;
@@ -379,7 +379,7 @@ static int test_eb_bitmaps(void)
 
 	/* Do it over again with an extent buffer which isn't page-aligned. */
 	free_extent_buffer(eb);
-	eb = __alloc_dummy_extent_buffer(NULL, PAGE_CACHE_SIZE / 2, len);
+	eb = __alloc_dummy_extent_buffer(NULL, PAGE_SIZE / 2, len);
 	if (!eb) {
 		test_msg("Couldn't allocate test extent buffer\n");
 		kfree(bitmap);

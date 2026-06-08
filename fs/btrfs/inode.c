@@ -435,8 +435,8 @@ static noinline void compress_file_range(struct inode *inode,
 	actual_end = min_t(u64, isize, end + 1);
 again:
 	will_compress = 0;
-	nr_pages = (end >> PAGE_CACHE_SHIFT) - (start >> PAGE_CACHE_SHIFT) + 1;
-	nr_pages = min_t(unsigned long, nr_pages, SZ_128K / PAGE_CACHE_SIZE);
+	nr_pages = (end >> PAGE_SHIFT) - (start >> PAGE_SHIFT) + 1;
+	nr_pages = min_t(unsigned long, nr_pages, SZ_128K / PAGE_SIZE);
 
 	/*
 	 * we don't want to send crud past the end of i_size through
@@ -2050,7 +2050,7 @@ again:
 		goto out;
 
 	ordered = btrfs_lookup_ordered_range(inode, page_start,
-					PAGE_CACHE_SIZE);
+					PAGE_SIZE);
 	if (ordered) {
 		unlock_extent_cached(&BTRFS_I(inode)->io_tree, page_start,
 				     page_end, &cached_state, GFP_NOFS);
@@ -4698,7 +4698,7 @@ int btrfs_truncate_block(struct inode *inode, loff_t from, loff_t len,
 	struct extent_state *cached_state = NULL;
 	char *kaddr;
 	u32 blocksize = root->sectorsize;
-	pgoff_t index = from >> PAGE_CACHE_SHIFT;
+	pgoff_t index = from >> PAGE_SHIFT;
 	unsigned offset = from & (blocksize - 1);
 	struct page *page;
 	gfp_t mask = btrfs_alloc_write_mask(mapping);
@@ -8849,7 +8849,7 @@ static void btrfs_invalidatepage(struct page *page, unsigned int offset,
 	struct btrfs_ordered_extent *ordered;
 	struct extent_state *cached_state = NULL;
 	u64 page_start = page_offset(page);
-	u64 page_end = page_start + PAGE_CACHE_SIZE - 1;
+	u64 page_end = page_start + PAGE_SIZE - 1;
 	u64 start;
 	u64 end;
 	int inode_evicting = inode->i_state & I_FREEING;
@@ -8936,8 +8936,7 @@ again:
 	 *    in btrfs_check_data_free_space() we let delayed_ref to
 	 *    free the entire extent.
 	 */
-	if (PageDirty(page))
-		btrfs_qgroup_free_data(inode, page_start, PAGE_SIZE);
+	btrfs_qgroup_free_data(inode, page_start, PAGE_SIZE);
 	if (!inode_evicting) {
 		clear_extent_bit(tree, page_start, page_end,
 				 EXTENT_LOCKED | EXTENT_DIRTY |
@@ -8989,11 +8988,11 @@ int btrfs_page_mkwrite(struct vm_area_struct *vma, struct vm_fault *vmf)
 	u64 page_end;
 	u64 end;
 
-	reserved_space = PAGE_CACHE_SIZE;
+	reserved_space = PAGE_SIZE;
 
 	sb_start_pagefault(inode->i_sb);
 	page_start = page_offset(page);
-	page_end = page_start + PAGE_CACHE_SIZE - 1;
+	page_end = page_start + PAGE_SIZE - 1;
 	end = page_end;
 
 	/*
@@ -9049,15 +9048,15 @@ again:
 		goto again;
 	}
 
-	if (page->index == ((size - 1) >> PAGE_CACHE_SHIFT)) {
+	if (page->index == ((size - 1) >> PAGE_SHIFT)) {
 		reserved_space = round_up(size - page_start, root->sectorsize);
-		if (reserved_space < PAGE_CACHE_SIZE) {
+		if (reserved_space < PAGE_SIZE) {
 			end = page_start + reserved_space - 1;
 			spin_lock(&BTRFS_I(inode)->lock);
 			BTRFS_I(inode)->outstanding_extents++;
 			spin_unlock(&BTRFS_I(inode)->lock);
 			btrfs_delalloc_release_space(inode, page_start,
-						PAGE_CACHE_SIZE - reserved_space);
+						PAGE_SIZE - reserved_space);
 		}
 	}
 

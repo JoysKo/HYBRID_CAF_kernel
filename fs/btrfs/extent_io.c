@@ -3173,7 +3173,7 @@ static int __extent_read_full_page(struct extent_io_tree *tree,
 	while (1) {
 		lock_extent(tree, start, end);
 		ordered = btrfs_lookup_ordered_range(inode, start,
-						PAGE_CACHE_SIZE);
+						PAGE_SIZE);
 		if (!ordered)
 			break;
 		unlock_extent(tree, start, end);
@@ -4181,9 +4181,8 @@ int extent_readpages(struct extent_io_tree *tree,
 		prefetchw(&page->flags);
 		list_del(&page->lru);
 		if (add_to_page_cache_lru(page, mapping,
-					page_index(page),
-					readahead_gfp_mask(mapping))) {
-                        put_page(page);
+					page->index, GFP_NOFS)) {
+			put_page(page);
 			continue;
 		}
 
@@ -5551,7 +5550,7 @@ static inline void eb_bitmap_offset(struct extent_buffer *eb,
 				    unsigned long *page_index,
 				    size_t *page_offset)
 {
-	size_t start_offset = eb->start & ((u64)PAGE_CACHE_SIZE - 1);
+	size_t start_offset = eb->start & ((u64)PAGE_SIZE - 1);
 	size_t byte_offset = BIT_BYTE(nr);
 	size_t offset;
 
@@ -5562,8 +5561,8 @@ static inline void eb_bitmap_offset(struct extent_buffer *eb,
 	 */
 	offset = start_offset + start + byte_offset;
 
-	*page_index = offset >> PAGE_CACHE_SHIFT;
-	*page_offset = offset & (PAGE_CACHE_SIZE - 1);
+	*page_index = offset >> PAGE_SHIFT;
+	*page_offset = offset & (PAGE_SIZE - 1);
 }
 
 /**
@@ -5615,7 +5614,7 @@ void extent_buffer_bitmap_set(struct extent_buffer *eb, unsigned long start,
 		len -= bits_to_set;
 		bits_to_set = BITS_PER_BYTE;
 		mask_to_set = ~0U;
-		if (++offset >= PAGE_CACHE_SIZE && len > 0) {
+		if (++offset >= PAGE_SIZE && len > 0) {
 			offset = 0;
 			page = eb->pages[++i];
 			WARN_ON(!PageUptodate(page));
@@ -5657,7 +5656,7 @@ void extent_buffer_bitmap_clear(struct extent_buffer *eb, unsigned long start,
 		len -= bits_to_clear;
 		bits_to_clear = BITS_PER_BYTE;
 		mask_to_clear = ~0U;
-		if (++offset >= PAGE_CACHE_SIZE && len > 0) {
+		if (++offset >= PAGE_SIZE && len > 0) {
 			offset = 0;
 			page = eb->pages[++i];
 			WARN_ON(!PageUptodate(page));

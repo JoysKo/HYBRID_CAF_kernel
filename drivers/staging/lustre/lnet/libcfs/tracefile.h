@@ -257,7 +257,7 @@ do {								    \
 do {								    \
 	__LASSERT(tage);					\
 	__LASSERT(tage->page);				  \
-	__LASSERT(tage->used <= PAGE_CACHE_SIZE);			 \
+	__LASSERT(tage->used <= PAGE_SIZE);			 \
 	__LASSERT(page_count(tage->page) > 0);		      \
 } while (0)
 
