@@ -702,10 +702,6 @@ static int bos_desc(struct usb_composite_dev *cdev)
 	usb_ext->bmAttributes = cpu_to_le32(USB_LPM_SUPPORT | USB_BESL_SUPPORT);
 
 	if (gadget_is_superspeed(cdev->gadget)) {
-		/*
-		 * The Superspeed USB Capability descriptor shall be
-		 * implemented by all SuperSpeed devices.
-		 */
 		ss_cap = cdev->req->buf + le16_to_cpu(bos->wTotalLength);
 		bos->bNumDeviceCaps++;
 		le16_add_cpu(&bos->wTotalLength, USB_DT_USB_SS_CAP_SIZE);
@@ -731,6 +727,32 @@ static int bos_desc(struct usb_composite_dev *cdev)
 		}
 		ss_cap->bU1devExitLat = dcd_config_params.bU1devExitLat;
 		ss_cap->bU2DevExitLat = dcd_config_params.bU2DevExitLat;
+
+		/* The SuperSpeedPlus USB Device Capability descriptor */
+		if (gadget_is_superspeed_plus(cdev->gadget)) {
+			struct usb_ssp_cap_descriptor *ssp_cap;
+
+			ssp_cap = cdev->req->buf + le16_to_cpu(bos->wTotalLength);
+			bos->bNumDeviceCaps++;
+
+			le16_add_cpu(&bos->wTotalLength, USB_DT_USB_SSP_CAP_SIZE(1));
+			ssp_cap->bLength = USB_DT_USB_SSP_CAP_SIZE(1);
+			ssp_cap->bDescriptorType = USB_DT_DEVICE_CAPABILITY;
+			ssp_cap->bDevCapabilityType = USB_SSP_CAP_TYPE;
+
+			/* SSAC = 1 (2 attributes) */
+			ssp_cap->bmAttributes = cpu_to_le32(1);
+
+			/* Min RX/TX Lane Count = 1 */
+			ssp_cap->wFunctionalitySupport =
+				cpu_to_le16((1 << 8) | (1 << 12));
+
+			ssp_cap->bmSublinkSpeedAttr[0] =
+				cpu_to_le32((3 << 4) | (1 << 14) | (0xa << 16));
+			ssp_cap->bmSublinkSpeedAttr[1] =
+				cpu_to_le32((3 << 4) | (1 << 14) |
+					    (0xa << 16) | (1 << 7));
+		}
 	}
 
 	return le16_to_cpu(bos->wTotalLength);

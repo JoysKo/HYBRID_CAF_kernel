@@ -23,6 +23,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/spinlock.h>
 
 #include <sound/core.h>
 #include <sound/initval.h>
@@ -87,6 +88,7 @@ struct f_midi {
 	int index;
 	char *id;
 	unsigned int buflen, qlen;
+	spinlock_t transmit_lock;
 };
 
 static inline struct f_midi *func_to_midi(struct usb_function *f)
@@ -1265,6 +1267,9 @@ static struct usb_function *f_midi_alloc(struct usb_function_instance *fi)
 	midi->index = opts->index;
 	midi->buflen = opts->buflen;
 	midi->qlen = opts->qlen;
+
+	spin_lock_init(&midi->transmit_lock);
+
 	++opts->refcnt;
 	mutex_unlock(&opts->lock);
 

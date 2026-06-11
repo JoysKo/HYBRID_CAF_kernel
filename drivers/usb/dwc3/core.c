@@ -128,10 +128,6 @@ static int dwc3_init_usb_phys(struct dwc3 *dwc)
 
 	ret = usb_phy_init(dwc->usb3_phy);
 	if (ret == -EBUSY) {
-		/*
-		 * Setting Max speed as high when USB3 PHY initialiation
-		 * is failing and USB superspeed can't be supported.
-		 */
 		dwc->maximum_speed = USB_SPEED_HIGH;
 	} else if (ret) {
 		pr_err("%s: usb_phy_init(dwc->usb3_phy) returned %d\n",
@@ -160,7 +156,7 @@ generic_phy_init:
 static int dwc3_core_reset(struct dwc3 *dwc)
 {
 	int		ret;
-	u32	reg;
+	u32		reg;
 
 	/* Reset PHYs */
 	usb_phy_reset(dwc->usb2_phy);
@@ -171,22 +167,19 @@ static int dwc3_core_reset(struct dwc3 *dwc)
 	/* Initialize PHYs */
 	ret = dwc3_init_usb_phys(dwc);
 	if (ret) {
-		pr_err("%s: dwc3_init_phys returned %d\n",
-				__func__, ret);
+		pr_err("%s: dwc3_init_phys returned %d\n", __func__, ret);
 		return ret;
 	}
 
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB3PIPECTL(0));
 	reg &= ~DWC3_GUSB3PIPECTL_DELAYP1TRANS;
 
-	/* core exits U1/U2/U3 only in PHY power state P1/P2/P3 respectively */
 	if (dwc->revision <= DWC3_REVISION_310A)
 		reg |= DWC3_GUSB3PIPECTL_UX_EXIT_IN_PX;
 
 	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
 
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_RESET_EVENT, 0);
-
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_RESET_EVENT, 0);
 
 	return 0;
