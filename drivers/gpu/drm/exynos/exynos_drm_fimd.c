@@ -861,7 +861,8 @@ static void fimd_dp_clock_enable(struct exynos_drm_crtc *crtc, bool enable)
 	 * clock. On these SoCs the bootloader may enable it but any
 	 * power domain off/on will reset it to disable state.
 	 */
-	if (ctx->driver_data != &exynos5_fimd_driver_data)
+	if (ctx->driver_data != &exynos5_fimd_driver_data &&
+	    ctx->driver_data != &exynos5420_fimd_driver_data)
 		return;
 
 	val = enable ? DP_MIE_CLK_DP_ENABLE : DP_MIE_CLK_DISABLE;
