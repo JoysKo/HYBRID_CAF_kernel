@@ -1,4 +1,3 @@
-#define __DISABLE_GUP_DEPRECATED 1
 #include <linux/kernel.h>
 #include <linux/errno.h>
 #include <linux/err.h>
