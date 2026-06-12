@@ -426,8 +426,14 @@ context_derive_keys_rc4(struct krb5_ctx *ctx)
 	sg_init_table(sg, 1);
 	sg_set_buf(sg, sigkeyconstant, slen);
 
-	desc.tfm = hmac;
-	desc.flags = 0;
+	desc = kmalloc(sizeof(*desc) + crypto_shash_descsize(hmac),
+		       GFP_KERNEL);
+	if (!desc) {
+		dprintk("%s: failed to allocate hash descriptor for '%s'\n",
+			__func__, ctx->gk5e->cksum_name);
+		err = -ENOMEM;
+		goto out_err_free_hmac;
+	}
 
 	err = crypto_hash_init(&desc);
 	if (err)

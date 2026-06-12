@@ -77,7 +77,12 @@ krb5_encrypt(
 	memcpy(out, in, length);
 	sg_init_one(sg, out, length);
 
-	ret = crypto_blkcipher_encrypt_iv(&desc, sg, sg, length);
+	skcipher_request_set_tfm(req, tfm);
+	skcipher_request_set_callback(req, 0, NULL, NULL);
+	skcipher_request_set_crypt(req, sg, sg, length, local_iv);
+
+	ret = crypto_skcipher_encrypt(req);
+	skcipher_request_zero(req);
 out:
 	dprintk("RPC:       krb5_encrypt returns %d\n", ret);
 	return ret;
@@ -110,7 +115,12 @@ krb5_decrypt(
 	memcpy(out, in, length);
 	sg_init_one(sg, out, length);
 
-	ret = crypto_blkcipher_decrypt_iv(&desc, sg, sg, length);
+	skcipher_request_set_tfm(req, tfm);
+	skcipher_request_set_callback(req, 0, NULL, NULL);
+	skcipher_request_set_crypt(req, sg, sg, length, local_iv);
+
+	ret = crypto_skcipher_decrypt(req);
+	skcipher_request_zero(req);
 out:
 	dprintk("RPC:       gss_k5decrypt returns %d\n",ret);
 	return ret;
@@ -869,8 +879,14 @@ krb5_rc4_setup_seq_key(struct krb5_ctx *kctx, struct crypto_blkcipher *cipher,
 		return PTR_ERR(hmac);
 	}
 
-	desc.tfm = hmac;
-	desc.flags = 0;
+	desc = kmalloc(sizeof(*desc) + crypto_shash_descsize(hmac),
+		       GFP_KERNEL);
+	if (!desc) {
+		dprintk("%s: failed to allocate shash descriptor for '%s'\n",
+			__func__, kctx->gk5e->cksum_name);
+		crypto_free_shash(hmac);
+		return -ENOMEM;
+	}
 
 	err = crypto_hash_init(&desc);
 	if (err)
@@ -934,8 +950,14 @@ krb5_rc4_setup_enc_key(struct krb5_ctx *kctx, struct crypto_blkcipher *cipher,
 		return PTR_ERR(hmac);
 	}
 
-	desc.tfm = hmac;
-	desc.flags = 0;
+	desc = kmalloc(sizeof(*desc) + crypto_shash_descsize(hmac),
+		       GFP_KERNEL);
+	if (!desc) {
+		dprintk("%s: failed to allocate shash descriptor for '%s'\n",
+			__func__, kctx->gk5e->cksum_name);
+		crypto_free_shash(hmac);
+		return -ENOMEM;
+	}
 
 	err = crypto_hash_init(&desc);
 	if (err)
