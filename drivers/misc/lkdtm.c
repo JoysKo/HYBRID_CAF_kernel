@@ -427,11 +427,73 @@ static void lkdtm_do_action(enum ctype which)
 	}
 	case CT_WRITE_AFTER_FREE: {
 		size_t len = 1024;
-		u32 *data = kmalloc(len, GFP_KERNEL);
+		/*
+		 * The slub allocator uses the first word to store the free
+		 * pointer in some configurations. Use the middle of the
+		 * allocation to avoid running into the freelist
+		 */
+		size_t offset = (len / sizeof(*base)) / 2;
+
+		base = kmalloc(len, GFP_KERNEL);
+		if (!base)
+			break;
+
+		val = kmalloc(len, GFP_KERNEL);
+		if (!val) {
+			kfree(base);
+			break;
+		}
+
+		*val = 0x12345678;
+		base[offset] = *val;
+		pr_info("Value in memory before free: %x\n", base[offset]);
+
+		kfree(base);
+
+		pr_info("Attempting bad read from freed memory\n");
+		saw = base[offset];
+		if (saw != *val) {
+			/* Good! Poisoning happened, so declare a win. */
+			pr_info("Memory correctly poisoned (%x)\n", saw);
+			BUG();
+		}
+		pr_info("Memory was not poisoned\n");
 
 		kfree(data);
 		schedule();
-		memset(data, 0x78, len);
+
+		break;
+	}
+	case CT_READ_BUDDY_AFTER_FREE: {
+		unsigned long p = __get_free_page(GFP_KERNEL);
+		int saw, *val;
+		int *base;
+
+		if (!p)
+			break;
+
+		val = kmalloc(1024, GFP_KERNEL);
+		if (!val) {
+			free_page(p);
+			break;
+		}
+
+		base = (int *)p;
+
+		*val = 0x12345678;
+		base[0] = *val;
+		pr_info("Value in memory before free: %x\n", base[0]);
+		free_page(p);
+		pr_info("Attempting to read from freed memory\n");
+		saw = base[0];
+		if (saw != *val) {
+			/* Good! Poisoning happened, so declare a win. */
+			pr_info("Memory correctly poisoned (%x)\n", saw);
+			BUG();
+		}
+		pr_info("Buddy page was not poisoned\n");
+
+		kfree(val);
 		break;
 	}
 	case CT_SOFTLOCKUP:
