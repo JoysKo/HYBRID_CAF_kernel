@@ -763,18 +763,6 @@ static int ptmx_open(struct inode *inode, struct file *filp)
 	set_bit(TTY_PTY_LOCK, &tty->flags); /* LOCK THE SLAVE */
 	tty->driver_data = fsi;
 
-	/*
-	 * In the case where all references to ptmx inode are dropped and we
-	 * still have /dev/tty opened pointing to the master/slave pair (ptmx
-	 * is closed/released before /dev/tty), we must make sure that the inode
-	 * is still valid when we call the final pty_unix98_shutdown, thus we
-	 * hold an additional reference to the ptmx inode. For the same /dev/tty
-	 * last close case, we also need to make sure the super_block isn't
-	 * destroyed (devpts instance unmounted), before /dev/tty is closed and
-	 * on its release devpts_kill_index is called.
-	 */
-	devpts_add_ref(inode);
-
 	tty_add_file(tty, filp);
 
 	slave_inode = devpts_pty_new(fsi,

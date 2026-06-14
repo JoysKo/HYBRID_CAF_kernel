@@ -574,21 +574,25 @@ void devpts_kill_index(struct pts_fs_info *fsi, int idx)
 /*
  * pty code needs to hold extra references in case of last /dev/tty close
  */
-
-void devpts_add_ref(struct inode *ptmx_inode)
+struct pts_fs_info *devpts_get_ref(struct inode *ptmx_inode, struct file *file)
 {
-	struct super_block *sb = pts_sb_from_inode(ptmx_inode);
+	struct super_block *sb;
+	struct pts_fs_info *fsi;
+
+	sb = pts_sb_from_inode(ptmx_inode);
+	if (!sb)
+		return NULL;
+	fsi = DEVPTS_SB(sb);
+	if (!fsi)
+		return NULL;
 
 	atomic_inc(&sb->s_active);
-	ihold(ptmx_inode);
+	return fsi;
 }
 
-void devpts_del_ref(struct inode *ptmx_inode)
+void devpts_put_ref(struct pts_fs_info *fsi)
 {
-	struct super_block *sb = pts_sb_from_inode(ptmx_inode);
-
-	iput(ptmx_inode);
-	deactivate_super(sb);
+	deactivate_super(fsi->sb);
 }
 
 struct pts_fs_info *devpts_get_ref(struct inode *ptmx_inode, struct file *file)

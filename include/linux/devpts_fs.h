@@ -19,9 +19,6 @@ struct pts_fs_info;
 
 #ifdef CONFIG_UNIX98_PTYS
 
-void devpts_add_ref(struct inode *ptmx_inode);
-void devpts_del_ref(struct inode *ptmx_inode);
-
 /* Look up a pts fs info and get a ref to it */
 struct pts_fs_info *devpts_get_ref(struct inode *, struct file *);
 void devpts_put_ref(struct pts_fs_info *);
@@ -35,11 +32,6 @@ struct inode *devpts_pty_new(struct pts_fs_info *, dev_t, int, void *);
 void *devpts_get_priv(struct inode *pts_inode);
 /* unlink */
 void devpts_pty_kill(struct inode *inode);
-
-#else
-
-static inline void devpts_add_ref(struct inode *ptmx_inode) { }
-static inline void devpts_del_ref(struct inode *ptmx_inode) { }
 
 #endif
 
