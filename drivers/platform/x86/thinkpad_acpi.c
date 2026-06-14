@@ -7975,10 +7975,12 @@ static int fan_get_status_safe(u8 *status)
 		fan_update_desired_level(s);
 	mutex_unlock(&fan_mutex);
 
+	if (rc)
+		return rc;
 	if (status)
 		*status = s;
 
-	return rc;
+	return 0;
 }
 
 static int fan_get_speed(unsigned int *speed)
