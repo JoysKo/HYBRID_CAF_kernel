@@ -4,6 +4,7 @@ ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/a.out.h),)
 no-export-headers += a.out.h
 endif
 
+header-y += devlink.h
 header-y += if_macsec.h
 header-y += rio_mport_cdev.h
 

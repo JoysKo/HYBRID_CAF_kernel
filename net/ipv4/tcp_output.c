@@ -2643,6 +2643,20 @@ u32 __tcp_select_window(struct sock *sk)
 	return window;
 }
 
+void tcp_skb_collapse_tstamp(struct sk_buff *skb,
+			     const struct sk_buff *next_skb)
+{
+	const struct skb_shared_info *next_shinfo = skb_shinfo(next_skb);
+	u8 tsflags = next_shinfo->tx_flags & SKBTX_ANY_TSTAMP;
+
+	if (unlikely(tsflags)) {
+		struct skb_shared_info *shinfo = skb_shinfo(skb);
+
+		shinfo->tx_flags |= tsflags;
+		shinfo->tskey = next_shinfo->tskey;
+	}
+}
+
 /* Collapses two adjacent SKB's during retransmission. */
 static bool tcp_collapse_retrans(struct sock *sk, struct sk_buff *skb)
 {

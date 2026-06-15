@@ -595,27 +595,6 @@ void devpts_put_ref(struct pts_fs_info *fsi)
 	deactivate_super(fsi->sb);
 }
 
-struct pts_fs_info *devpts_get_ref(struct inode *ptmx_inode, struct file *file)
-{
-	struct super_block *sb;
-	struct pts_fs_info *fsi;
-
-	sb = pts_sb_from_inode(ptmx_inode);
-	if (!sb)
-		return NULL;
-	fsi = DEVPTS_SB(sb);
-	if (!fsi)
-		return NULL;
-
-	atomic_inc(&sb->s_active);
-	return fsi;
-}
-
-void devpts_put_ref(struct pts_fs_info *fsi)
-{
-	deactivate_super(fsi->sb);
-}
-
 /**
  * devpts_pty_new -- create a new inode in /dev/pts/
  * @ptmx_inode: inode of the master

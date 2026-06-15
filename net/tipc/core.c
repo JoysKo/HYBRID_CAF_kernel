@@ -70,7 +70,6 @@ static int __net_init tipc_init_net(struct net *net)
 		goto out_nametbl;
 
 	INIT_LIST_HEAD(&tn->dist_queue);
-
 	err = tipc_bcast_init(net);
 	if (err)
 		goto out_bclink;

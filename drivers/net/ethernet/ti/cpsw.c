@@ -371,6 +371,7 @@ struct cpsw_priv {
 	spinlock_t			lock;
 	struct platform_device		*pdev;
 	struct net_device		*ndev;
+	struct device_node		*phy_node;
 	struct napi_struct		napi_rx;
 	struct napi_struct		napi_tx;
 	struct device			*dev;
@@ -1164,8 +1165,8 @@ static void cpsw_slave_open(struct cpsw_slave *slave, struct cpsw_priv *priv)
 		cpsw_ale_add_mcast(priv->ale, priv->ndev->broadcast,
 				   1 << slave_port, 0, 0, ALE_MCAST_FWD_2);
 
-	if (slave->data->phy_node) {
-		slave->phy = of_phy_connect(priv->ndev, slave->data->phy_node,
+	if (priv->phy_node)
+		slave->phy = of_phy_connect(priv->ndev, priv->phy_node,
 				 &cpsw_adjust_link, 0, slave->data->phy_if);
 		if (!slave->phy) {
 			dev_err(priv->dev, "phy \"%s\" not found on slave %d\n",
@@ -1276,11 +1277,11 @@ static int cpsw_ndo_open(struct net_device *ndev)
 	int i, ret;
 	u32 reg;
 
+	pm_runtime_get_sync(&priv->pdev->dev);
+
 	if (!cpsw_common_res_usage_state(priv))
 		cpsw_intr_disable(priv);
 	netif_carrier_off(ndev);
-
-	pm_runtime_get_sync(&priv->pdev->dev);
 
 	reg = priv->version;
 
@@ -2057,8 +2058,7 @@ static int cpsw_probe_dt(struct cpsw_platform_data *data,
 		if (strcmp(slave_node->name, "slave"))
 			continue;
 
-		slave_data->phy_node = of_parse_phandle(slave_node,
-							"phy-handle", 0);
+		priv->phy_node = of_parse_phandle(slave_node, "phy-handle", 0);
 		parp = of_get_property(slave_node, "phy_id", &lenp);
 		if (slave_data->phy_node) {
 			dev_dbg(&pdev->dev,
@@ -2306,7 +2306,7 @@ static int cpsw_probe(struct platform_device *pdev)
 	/* Select default pin state */
 	pinctrl_pm_select_default_state(&pdev->dev);
 
-	if (cpsw_probe_dt(&priv->data, pdev)) {
+	if (cpsw_probe_dt(priv, pdev)) {
 		dev_err(&pdev->dev, "cpsw: platform data missing\n");
 		ret = -ENODEV;
 		goto clean_runtime_disable_ret;
