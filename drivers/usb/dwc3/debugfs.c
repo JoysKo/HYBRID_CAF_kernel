@@ -1287,7 +1287,7 @@ int dwc3_debugfs_init(struct dwc3 *dwc)
 				dwc, &dwc3_mode_fops);
 		if (!file) {
 			ret = -ENOMEM;
-			goto err1;
+			goto err2;
 		}
 	}
 
@@ -1297,14 +1297,14 @@ int dwc3_debugfs_init(struct dwc3 *dwc)
 				dwc, &dwc3_testmode_fops);
 		if (!file) {
 			ret = -ENOMEM;
-			goto err1;
+			goto err2;
 		}
 
 		file = debugfs_create_file("link_state", S_IRUGO | S_IWUSR, root,
 				dwc, &dwc3_link_state_fops);
 		if (!file) {
 			ret = -ENOMEM;
-			goto err1;
+			goto err2;
 		}
 	}
 
@@ -1345,6 +1345,9 @@ int dwc3_debugfs_init(struct dwc3 *dwc)
 
 	return 0;
 
+err2:
+	kfree(dwc->regset);
+
 err1:
 	debugfs_remove_recursive(root);
 
@@ -1355,5 +1358,5 @@ err0:
 void dwc3_debugfs_exit(struct dwc3 *dwc)
 {
 	debugfs_remove_recursive(dwc->root);
-	dwc->root = NULL;
+	kfree(dwc->regset);
 }
