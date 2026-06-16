@@ -40,6 +40,7 @@
  * @target:	The target state
  * @thread:	Pointer to the hotplug thread
  * @should_run:	Thread should execute
+ * @rollback:	Perform a rollback
  * @cb_stat:	The state for a single callback (install/uninstall)
  * @cb:		Single callback function (install/uninstall)
  * @result:	Result of the operation
@@ -51,6 +52,7 @@ struct cpuhp_cpu_state {
 #ifdef CONFIG_SMP
 	struct task_struct	*thread;
 	bool			should_run;
+	bool			rollback;
 	enum cpuhp_state	cb_state;
 	int			(*cb)(unsigned int cpu);
 	int			result;
@@ -328,6 +330,11 @@ static int cpu_notify(unsigned long val, unsigned int cpu)
 	return __cpu_notify(val, cpu, -1, NULL);
 }
 
+static void cpu_notify_nofail(unsigned long val, unsigned int cpu)
+{
+	BUG_ON(cpu_notify(val, cpu));
+}
+
 /* Notifier wrappers for transitioning to state machine */
 static int notify_prepare(unsigned int cpu)
 {
@@ -504,6 +511,16 @@ static void cpuhp_thread_fun(unsigned int cpu)
 		} else {
 			ret = cpuhp_invoke_callback(cpu, st->cb_state, st->cb);
 		}
+	} else if (st->rollback) {
+		BUG_ON(st->state < CPUHP_AP_ONLINE_IDLE);
+
+		undo_cpu_down(cpu, st, cpuhp_ap_states);
+		/*
+		 * This is a momentary workaround to keep the notifier users
+		 * happy. Will go away once we got rid of the notifiers.
+		 */
+		cpu_notify_nofail(CPU_DOWN_FAILED, cpu);
+		st->rollback = false;
 	} else {
 		/* Cannot happen .... */
 		BUG_ON(st->state < CPUHP_AP_ONLINE_IDLE);
@@ -597,11 +614,6 @@ void __unregister_cpu_notifier(struct notifier_block *nb)
 	raw_notifier_chain_unregister(&cpu_chain, nb);
 }
 EXPORT_SYMBOL(__unregister_cpu_notifier);
-
-static void cpu_notify_nofail(unsigned long val, void *v)
-{
-	BUG_ON(cpu_notify(val, v));
-}
 
 /**
  * clear_tasks_mm_cpumask - Safely clear tasks' mm_cpumask for a CPU
@@ -748,9 +760,10 @@ static int takedown_cpu(unsigned int cpu)
 	 */
 	err = stop_machine(take_cpu_down, NULL, cpumask_of(cpu));
 	if (err) {
-		/* CPU didn't die: tell everyone.  Can't complain. */
-		cpu_notify_nofail(CPU_DOWN_FAILED, cpu);
+		/* CPU refused to die */
 		irq_unlock_sparse();
+		/* Unpark the hotplug thread so we can rollback there */
+		kthread_unpark(per_cpu_ptr(&cpuhp_state, cpu)->thread);
 		return err;
 	}
 	BUG_ON(cpu_online(cpu));
@@ -859,6 +872,11 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen,
 	 * to do the further cleanups.
 	 */
 	ret = cpuhp_down_callbacks(cpu, st, cpuhp_bp_states, target);
+	if (ret && st->state > CPUHP_TEARDOWN_CPU && st->state < prev_state) {
+		st->target = prev_state;
+		st->rollback = true;
+		cpuhp_kick_ap_work(cpu);
+	}
 
 	hasdied = prev_state != st->state && st->state == CPUHP_OFFLINE;
 out:
@@ -1336,6 +1354,7 @@ static struct cpuhp_step cpuhp_ap_states[] = {
 		.name			= "notify:online",
 		.startup		= notify_online,
 		.teardown		= notify_down_prepare,
+		.skip_onerr		= true,
 	},
 #endif
 	/*
