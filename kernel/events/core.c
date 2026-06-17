@@ -420,7 +420,8 @@ int perf_cpu_time_max_percent_handler(struct ctl_table *table, int write,
 	if (ret || !write)
 		return ret;
 
-	if (sysctl_perf_cpu_time_max_percent == 100) {
+	if (sysctl_perf_cpu_time_max_percent == 100 ||
+	    sysctl_perf_cpu_time_max_percent == 0) {
 		printk(KERN_WARNING
 		       "perf: Dynamic interrupt throttling disabled, can hang your system!\n");
 		WRITE_ONCE(perf_sample_allowed_ns, 0);
@@ -9158,6 +9159,11 @@ not_move_group:
 	mutex_unlock(&ctx->mutex);
 	if (group_leader)
 		mutex_unlock(&group_leader->group_leader_mutex);
+
+	if (task) {
+		mutex_unlock(&task->signal->cred_guard_mutex);
+		put_task_struct(task);
+	}
 
 	if (task) {
 		mutex_unlock(&task->signal->cred_guard_mutex);
