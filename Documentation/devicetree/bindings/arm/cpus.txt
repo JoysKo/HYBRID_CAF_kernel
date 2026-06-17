@@ -1,6 +1,4 @@
-=================
 ARM CPUs bindings
-=================
 
 The device tree allows to describe the layout of CPUs in a system through
 the "cpus" node, which in turn contains a number of subnodes (ie "cpu")
@@ -12,9 +10,7 @@ https://www.power.org/documentation/epapr-version-1-1/
 
 with updates for 32-bit and 64-bit ARM systems provided in this document.
 
-================================
 Convention used in this document
-================================
 
 This document follows the conventions described in the ePAPR v1.1, with
 the addition:
@@ -22,9 +18,7 @@ the addition:
 - square brackets define bitfields, eg reg[7:0] value of the bitfield in
   the reg property contained in bits 7 down to 0
 
-=====================================
 cpus and cpu node bindings definition
-=====================================
 
 The ARM architecture, in accordance with the ePAPR, requires the cpus and cpu
 nodes to be present and contain the properties described below.
@@ -192,10 +186,8 @@ nodes to be present and contain the properties described below.
 			  can be one of:
 			    "allwinner,sun6i-a31"
 			    "allwinner,sun8i-a23"
-			    "arm,psci"
-				"arm,realview-smp"
-				"brcm,bcm-nsp-smp"
-			    "psci"
+			    "arm,realview-smp"
+			    "brcm,bcm-nsp-smp"
 			    "brcm,brahma-b15"
 			    "marvell,armada-375-smp"
 			    "marvell,armada-380-smp"
