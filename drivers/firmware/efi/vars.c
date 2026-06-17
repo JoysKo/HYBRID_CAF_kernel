@@ -219,9 +219,6 @@ variable_matches(const char *var_name, size_t len, const char *match_name,
 {
 	for (*match = 0; ; (*match)++) {
 		char c = match_name[*match];
-		
-		if (!c)
-			return true;
 
 		switch (c) {
 		case '*':
