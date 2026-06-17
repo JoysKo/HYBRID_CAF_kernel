@@ -301,7 +301,7 @@ static struct list_head classhash_table[CLASSHASH_SIZE];
 #define __chainhashfn(chain)	hash_long(chain, CHAINHASH_BITS)
 #define chainhashentry(chain)	(chainhash_table + __chainhashfn((chain)))
 
-static struct list_head chainhash_table[CHAINHASH_SIZE];
+static struct hlist_head chainhash_table[CHAINHASH_SIZE];
 
 /*
  * The hash key of the lock dependency chains is a hash itself too:
@@ -2120,7 +2120,7 @@ static inline int lookup_chain_cache(struct task_struct *curr,
 				     u64 chain_key)
 {
 	struct lock_class *class = hlock_class(hlock);
-	struct list_head *hash_head = chainhashentry(chain_key);
+	struct hlist_head *hash_head = chainhashentry(chain_key);
 	struct lock_chain *chain;
 	int i, j;
 
@@ -2135,7 +2135,7 @@ static inline int lookup_chain_cache(struct task_struct *curr,
 	 * We can walk it lock-free, because entries only get added
 	 * to the hash:
 	 */
-	list_for_each_entry_rcu(chain, hash_head, entry) {
+	hlist_for_each_entry_rcu(chain, hash_head, entry) {
 		if (chain->chain_key == chain_key) {
 cache_hit:
 			debug_atomic_inc(chain_lookup_hits);
@@ -2162,7 +2162,7 @@ cache_hit:
 	/*
 	 * We have to walk the chain again locked - to avoid duplicates:
 	 */
-	list_for_each_entry(chain, hash_head, entry) {
+	hlist_for_each_entry(chain, hash_head, entry) {
 		if (chain->chain_key == chain_key) {
 			graph_unlock();
 			goto cache_hit;
@@ -2181,16 +2181,20 @@ cache_hit:
 	chain->irq_context = hlock->irq_context;
 	i = get_first_held_lock(curr, hlock);
 	chain->depth = curr->lockdep_depth + 1 - i;
+
+	BUILD_BUG_ON((1UL << 24) <= ARRAY_SIZE(chain_hlocks));
+	BUILD_BUG_ON((1UL << 6)  <= ARRAY_SIZE(curr->held_locks));
+	BUILD_BUG_ON((1UL << 8*sizeof(chain_hlocks[0])) <= ARRAY_SIZE(lock_classes));
+
 	if (likely(nr_chain_hlocks + chain->depth <= MAX_LOCKDEP_CHAIN_HLOCKS)) {
 		chain->base = nr_chain_hlocks;
-		nr_chain_hlocks += chain->depth;
 		for (j = 0; j < chain->depth - 1; j++, i++) {
 			int lock_id = curr->held_locks[i].class_idx - 1;
 			chain_hlocks[chain->base + j] = lock_id;
 		}
 		chain_hlocks[chain->base + j] = class - lock_classes;
 	}
-	list_add_tail_rcu(&chain->entry, hash_head);
+	hlist_add_head_rcu(&chain->entry, hash_head);
 	debug_atomic_inc(chain_lookup_misses);
 	inc_chains();
 
@@ -2937,6 +2941,11 @@ static int mark_irqflags(struct task_struct *curr, struct held_lock *hlock)
 	return 1;
 }
 
+static inline unsigned int task_irq_context(struct task_struct *task)
+{
+	return 2 * !!task->hardirq_context + !!task->softirq_context;
+}
+
 static int separate_irq_context(struct task_struct *curr,
 		struct held_lock *hlock)
 {
@@ -2945,8 +2954,6 @@ static int separate_irq_context(struct task_struct *curr,
 	/*
 	 * Keep track of points where we cross into an interrupt context:
 	 */
-	hlock->irq_context = 2*(curr->hardirq_context ? 1 : 0) +
-				curr->softirq_context;
 	if (depth) {
 		struct held_lock *prev_hlock;
 
@@ -2976,6 +2983,11 @@ static inline int mark_irqflags(struct task_struct *curr,
 		struct held_lock *hlock)
 {
 	return 1;
+}
+
+static inline unsigned int task_irq_context(struct task_struct *task)
+{
+	return 0;
 }
 
 static inline int separate_irq_context(struct task_struct *curr,
@@ -3253,6 +3265,7 @@ static int __lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 	hlock->acquire_ip = ip;
 	hlock->instance = lock;
 	hlock->nest_lock = nest_lock;
+	hlock->irq_context = task_irq_context(curr);
 	hlock->trylock = trylock;
 	hlock->read = read;
 	hlock->check = check;
@@ -4137,7 +4150,7 @@ void __init lockdep_info(void)
 		sizeof(struct list_head) * CLASSHASH_SIZE +
 		sizeof(struct lock_list) * MAX_LOCKDEP_ENTRIES +
 		sizeof(struct lock_chain) * MAX_LOCKDEP_CHAINS +
-		sizeof(struct list_head) * CHAINHASH_SIZE
+		sizeof(struct hlist_head) * CHAINHASH_SIZE
 #ifdef CONFIG_PROVE_LOCKING
 		+ sizeof(struct circular_queue)
 #endif
