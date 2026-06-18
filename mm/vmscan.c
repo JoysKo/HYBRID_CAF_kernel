@@ -3590,7 +3590,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order,
 		 * allocation of the requested order possible.
 		 */
 		wakeup_kcompactd(pgdat, order, classzone_idx);
-		
+
 		remaining = schedule_timeout(HZ/10);
 		finish_wait(&pgdat->kswapd_wait, &wait);
 		prepare_to_wait(&pgdat->kswapd_wait, &wait, TASK_INTERRUPTIBLE);

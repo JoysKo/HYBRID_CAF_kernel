@@ -937,6 +937,11 @@ void release_pages(struct page **pages, int nr, bool cold)
 			zone = NULL;
 		}
 
+		if (is_huge_zero_page(page)) {
+			put_huge_zero_page();
+			continue;
+		}
+
 		if (!put_page_testzero(page))
 			continue;
 
