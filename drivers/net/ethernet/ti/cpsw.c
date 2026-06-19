@@ -371,7 +371,6 @@ struct cpsw_priv {
 	spinlock_t			lock;
 	struct platform_device		*pdev;
 	struct net_device		*ndev;
-	struct device_node		*phy_node;
 	struct napi_struct		napi_rx;
 	struct napi_struct		napi_tx;
 	struct device			*dev;
@@ -1165,8 +1164,8 @@ static void cpsw_slave_open(struct cpsw_slave *slave, struct cpsw_priv *priv)
 		cpsw_ale_add_mcast(priv->ale, priv->ndev->broadcast,
 				   1 << slave_port, 0, 0, ALE_MCAST_FWD_2);
 
-	if (priv->phy_node)
-		slave->phy = of_phy_connect(priv->ndev, priv->phy_node,
+	if (slave->data->phy_node) {
+		slave->phy = of_phy_connect(priv->ndev, slave->data->phy_node,
 				 &cpsw_adjust_link, 0, slave->data->phy_if);
 		if (!slave->phy) {
 			dev_err(priv->dev, "phy \"%s\" not found on slave %d\n",
@@ -1187,7 +1186,7 @@ static void cpsw_slave_open(struct cpsw_slave *slave, struct cpsw_priv *priv)
 		}
 	}
 
-	dev_info(priv->dev, "phy found : id is : 0x%x\n", slave->phy->phy_id);
+	phy_attached_info(slave->phy);
 
 	phy_start(slave->phy);
 
@@ -2058,28 +2057,21 @@ static int cpsw_probe_dt(struct cpsw_platform_data *data,
 		if (strcmp(slave_node->name, "slave"))
 			continue;
 
-		priv->phy_node = of_parse_phandle(slave_node, "phy-handle", 0);
+		slave_data->phy_node = of_parse_phandle(slave_node,
+							"phy-handle", 0);
 		parp = of_get_property(slave_node, "phy_id", &lenp);
 		if (slave_data->phy_node) {
 			dev_dbg(&pdev->dev,
 				"slave[%d] using phy-handle=\"%s\"\n",
 				i, slave_data->phy_node->full_name);
 		} else if (of_phy_is_fixed_link(slave_node)) {
-			struct device_node *phy_node;
-			struct phy_device *phy_dev;
-
 			/* In the case of a fixed PHY, the DT node associated
 			 * to the PHY is the Ethernet MAC DT node.
 			 */
 			ret = of_phy_register_fixed_link(slave_node);
 			if (ret)
 				return ret;
-			phy_node = of_node_get(slave_node);
-			phy_dev = of_phy_find_device(phy_node);
-			if (!phy_dev)
-				return -ENODEV;
-			snprintf(slave_data->phy_id, sizeof(slave_data->phy_id),
-				 PHY_ID_FMT, phy_dev->bus->id, phy_dev->addr);
+			slave_data->phy_node = of_node_get(slave_node);
 		} else if (parp) {
 			u32 phyid;
 			struct device_node *mdio_node;
@@ -2306,7 +2298,7 @@ static int cpsw_probe(struct platform_device *pdev)
 	/* Select default pin state */
 	pinctrl_pm_select_default_state(&pdev->dev);
 
-	if (cpsw_probe_dt(priv, pdev)) {
+	if (cpsw_probe_dt(&priv->data, pdev)) {
 		dev_err(&pdev->dev, "cpsw: platform data missing\n");
 		ret = -ENODEV;
 		goto clean_runtime_disable_ret;
