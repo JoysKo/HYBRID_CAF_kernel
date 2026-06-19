@@ -432,7 +432,8 @@ struct batadv_hardif_neigh_node {
  * @ifinfo_lock: lock protecting private ifinfo members and list
  * @if_incoming: pointer to incoming hard-interface
  * @last_seen: when last packet via this neighbor was received
- * @last_ttl: last received ttl from this neigh node
+ * @hardif_neigh: hardif_neigh of this neighbor
+ * @refcount: number of contexts the object is used
  * @rcu: struct used for freeing in an RCU-safe manner
  * @bat_iv: B.A.T.M.A.N. IV private structure
  */
@@ -444,6 +445,7 @@ struct batadv_neigh_node {
 	spinlock_t ifinfo_lock;	/* protects ifinfo_list and its members */
 	struct batadv_hard_iface *if_incoming;
 	unsigned long last_seen;
+	struct batadv_hardif_neigh_node *hardif_neigh;
 	struct kref refcount;
 	struct rcu_head rcu;
 };
@@ -1252,6 +1254,8 @@ struct batadv_forw_packet {
  * struct batadv_algo_ops - mesh algorithm callbacks
  * @list: list node for the batadv_algo_list
  * @name: name of the algorithm
+ * @bat_iface_activate: start routing mechanisms when hard-interface is brought
+ *  up
  * @bat_iface_enable: init routing info when hard-interface is enabled
  * @bat_iface_disable: de-init routing info when hard-interface is disabled
  * @bat_iface_update_mac: (re-)init mac addresses of the protocol information
@@ -1275,6 +1279,7 @@ struct batadv_forw_packet {
 struct batadv_algo_ops {
 	struct hlist_node list;
 	char *name;
+	void (*bat_iface_activate)(struct batadv_hard_iface *hard_iface);
 	int (*bat_iface_enable)(struct batadv_hard_iface *hard_iface);
 	void (*bat_iface_disable)(struct batadv_hard_iface *hard_iface);
 	void (*bat_iface_update_mac)(struct batadv_hard_iface *hard_iface);

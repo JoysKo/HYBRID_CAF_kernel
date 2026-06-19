@@ -3212,6 +3212,12 @@ static int mvneta_percpu_notifier(struct notifier_block *nfb,
 		mvreg_write(pp, MVNETA_INTR_MISC_MASK, 0);
 		napi_enable(&port->napi);
 
+
+		/* Enable per-CPU interrupts on the CPU that is
+		 * brought up.
+		 */
+		mvneta_percpu_enable(pp);
+
 		/* Enable per-CPU interrupt on the one CPU we care
 		 * about.
 		 */
@@ -3241,8 +3247,7 @@ static int mvneta_percpu_notifier(struct notifier_block *nfb,
 		/* Disable per-CPU interrupts on the CPU that is
 		 * brought down.
 		 */
-		smp_call_function_single(cpu, mvneta_percpu_disable,
-					 pp, true);
+		mvneta_percpu_disable(pp);
 
 		break;
 	case CPU_DEAD:

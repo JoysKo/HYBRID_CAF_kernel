@@ -2712,10 +2712,10 @@ static netdev_features_t harmonize_features(struct sk_buff *skb,
 
 	if (skb->ip_summed != CHECKSUM_NONE &&
 	    !can_checksum_protocol(features, type)) {
-		features &= ~NETIF_F_ALL_CSUM;
-	}
-	if (illegal_highdma(skb->dev, skb))
+		features &= ~(NETIF_F_CSUM_MASK | NETIF_F_GSO_MASK);
+	} else if (illegal_highdma(skb->dev, skb)) {
 		features &= ~NETIF_F_SG;
+	}
 
 	return features;
 }
