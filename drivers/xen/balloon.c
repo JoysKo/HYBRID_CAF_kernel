@@ -299,6 +299,14 @@ static struct resource *additional_memory_resource(phys_addr_t size)
 	return res;
 }
 
+static void release_memory_resource(struct resource *resource)
+{
+	if (!resource)
+		return;
+
+	return res;
+}
+
 static enum bp_state reserve_additional_memory(void)
 {
 	long credit;
