@@ -29,6 +29,8 @@
 #include <linux/media.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/pci.h>
+#include <linux/usb.h>
 
 #include <media/media-device.h>
 #include <media/media-devnode.h>
@@ -504,3 +506,107 @@ void media_device_unregister_entity(struct media_entity *entity)
 	entity->parent = NULL;
 }
 EXPORT_SYMBOL_GPL(media_device_unregister_entity);
+
+/**
+ * media_device_init() - initialize a media device
+ * @mdev:	The media device
+ *
+ * The caller is responsible for initializing the media device before
+ * registration. The following fields must be set:
+ *
+ * - dev must point to the parent device
+ * - model must be filled with the device model name
+ */
+void media_device_init(struct media_device *mdev)
+{
+	INIT_LIST_HEAD(&mdev->entities);
+	INIT_LIST_HEAD(&mdev->interfaces);
+	INIT_LIST_HEAD(&mdev->pads);
+	INIT_LIST_HEAD(&mdev->links);
+	INIT_LIST_HEAD(&mdev->entity_notify);
+	spin_lock_init(&mdev->lock);
+	mutex_init(&mdev->graph_mutex);
+	ida_init(&mdev->entity_internal_idx);
+
+	dev_dbg(mdev->dev, "Media device initialized\n");
+}
+EXPORT_SYMBOL_GPL(media_device_init);
+
+static void media_device_release_devres(struct device *dev, void *res)
+{
+}
+
+struct media_device *media_device_get_devres(struct device *dev)
+{
+	struct media_device *mdev;
+
+	mdev = devres_find(dev, media_device_release_devres, NULL, NULL);
+	if (mdev)
+		return mdev;
+
+	mdev = devres_alloc(media_device_release_devres,
+				sizeof(struct media_device), GFP_KERNEL);
+	if (!mdev)
+		return NULL;
+	return devres_get(dev, mdev, NULL, NULL);
+}
+EXPORT_SYMBOL_GPL(media_device_get_devres);
+
+struct media_device *media_device_find_devres(struct device *dev)
+{
+	return devres_find(dev, media_device_release_devres, NULL, NULL);
+}
+EXPORT_SYMBOL_GPL(media_device_find_devres);
+
+#if IS_ENABLED(CONFIG_PCI)
+void media_device_pci_init(struct media_device *mdev,
+			   struct pci_dev *pci_dev,
+			   const char *name)
+{
+	mdev->dev = &pci_dev->dev;
+
+	if (name)
+		strlcpy(mdev->model, name, sizeof(mdev->model));
+	else
+		strlcpy(mdev->model, pci_name(pci_dev), sizeof(mdev->model));
+
+	sprintf(mdev->bus_info, "PCI:%s", pci_name(pci_dev));
+
+	mdev->hw_revision = (pci_dev->subsystem_vendor << 16)
+			    | pci_dev->subsystem_device;
+
+	mdev->driver_version = LINUX_VERSION_CODE;
+
+	media_device_init(mdev);
+}
+EXPORT_SYMBOL_GPL(media_device_pci_init);
+#endif
+
+#if IS_ENABLED(CONFIG_USB)
+void __media_device_usb_init(struct media_device *mdev,
+			     struct usb_device *udev,
+			     const char *board_name,
+			     const char *driver_name)
+{
+	mdev->dev = &udev->dev;
+
+	if (driver_name)
+		strlcpy(mdev->driver_name, driver_name,
+			sizeof(mdev->driver_name));
+
+	if (board_name)
+		strlcpy(mdev->model, board_name, sizeof(mdev->model));
+	else if (udev->product)
+		strlcpy(mdev->model, udev->product, sizeof(mdev->model));
+	else
+		strlcpy(mdev->model, "unknown model", sizeof(mdev->model));
+	if (udev->serial)
+		strlcpy(mdev->serial, udev->serial, sizeof(mdev->serial));
+	usb_make_path(udev, mdev->bus_info, sizeof(mdev->bus_info));
+	mdev->hw_revision = le16_to_cpu(udev->descriptor.bcdDevice);
+	mdev->driver_version = LINUX_VERSION_CODE;
+
+	media_device_init(mdev);
+}
+EXPORT_SYMBOL_GPL(__media_device_usb_init);
+#endif

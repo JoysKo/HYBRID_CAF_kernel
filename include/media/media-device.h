@@ -63,13 +63,22 @@ struct media_device {
 	struct media_devnode *devnode;
 
 	char model[32];
+	char driver_name[32];
 	char serial[40];
 	char bus_info[32];
 	u32 hw_revision;
 	u32 driver_version;
 
 	u32 entity_id;
+	struct ida entity_internal_idx;
+	
 	struct list_head entities;
+	struct list_head interfaces;
+	struct list_head pads;
+	struct list_head links;
+	
+	/* notify callback list invoked when a new entity is registered */
+	struct list_head entity_notify;
 
 	/* Protects the entities list */
 	spinlock_t lock;
