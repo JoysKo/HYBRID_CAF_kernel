@@ -3202,3 +3202,154 @@ int page_trans_huge_mapcount(struct page *page, int *total_mapcount)
 		*total_mapcount = _total_mapcount;
 	return ret;
 }
+
+void free_transhuge_page(struct page *page)
+{
+	struct pglist_data *pgdata = NODE_DATA(page_to_nid(page));
+	unsigned long flags;
+
+	spin_lock_irqsave(&pgdata->split_queue_lock, flags);
+	if (!list_empty(page_deferred_list(page))) {
+		pgdata->split_queue_len--;
+		list_del(page_deferred_list(page));
+	}
+	spin_unlock_irqrestore(&pgdata->split_queue_lock, flags);
+	free_compound_page(page);
+}
+
+void deferred_split_huge_page(struct page *page)
+{
+	struct pglist_data *pgdata = NODE_DATA(page_to_nid(page));
+	unsigned long flags;
+
+	VM_BUG_ON_PAGE(!PageTransHuge(page), page);
+
+	spin_lock_irqsave(&pgdata->split_queue_lock, flags);
+	if (list_empty(page_deferred_list(page))) {
+		count_vm_event(THP_DEFERRED_SPLIT_PAGE);
+		list_add_tail(page_deferred_list(page), &pgdata->split_queue);
+		pgdata->split_queue_len++;
+	}
+	spin_unlock_irqrestore(&pgdata->split_queue_lock, flags);
+}
+
+static unsigned long deferred_split_count(struct shrinker *shrink,
+		struct shrink_control *sc)
+{
+	struct pglist_data *pgdata = NODE_DATA(sc->nid);
+	return ACCESS_ONCE(pgdata->split_queue_len);
+}
+
+static unsigned long deferred_split_scan(struct shrinker *shrink,
+		struct shrink_control *sc)
+{
+	struct pglist_data *pgdata = NODE_DATA(sc->nid);
+	unsigned long flags;
+	LIST_HEAD(list), *pos, *next;
+	struct page *page;
+	int split = 0;
+
+	spin_lock_irqsave(&pgdata->split_queue_lock, flags);
+	/* Take pin on all head pages to avoid freeing them under us */
+	list_for_each_safe(pos, next, &pgdata->split_queue) {
+		page = list_entry((void *)pos, struct page, mapping);
+		page = compound_head(page);
+		if (get_page_unless_zero(page)) {
+			list_move(page_deferred_list(page), &list);
+		} else {
+			/* We lost race with put_compound_page() */
+			list_del_init(page_deferred_list(page));
+			pgdata->split_queue_len--;
+		}
+		if (!--sc->nr_to_scan)
+			break;
+	}
+	spin_unlock_irqrestore(&pgdata->split_queue_lock, flags);
+
+	list_for_each_safe(pos, next, &list) {
+		page = list_entry((void *)pos, struct page, mapping);
+		lock_page(page);
+		/* split_huge_page() removes page from list on success */
+		if (!split_huge_page(page))
+			split++;
+		unlock_page(page);
+		put_page(page);
+	}
+
+	spin_lock_irqsave(&pgdata->split_queue_lock, flags);
+	list_splice_tail(&list, &pgdata->split_queue);
+	spin_unlock_irqrestore(&pgdata->split_queue_lock, flags);
+
+	/*
+	 * Stop shrinker if we didn't split any page, but the queue is empty.
+	 * This can happen if pages were freed under us.
+	 */
+	if (!split && list_empty(&pgdata->split_queue))
+		return SHRINK_STOP;
+	return split;
+}
+
+static struct shrinker deferred_split_shrinker = {
+	.count_objects = deferred_split_count,
+	.scan_objects = deferred_split_scan,
+	.seeks = DEFAULT_SEEKS,
+	.flags = SHRINKER_NUMA_AWARE,
+};
+
+#ifdef CONFIG_DEBUG_FS
+static int split_huge_pages_set(void *data, u64 val)
+{
+	struct zone *zone;
+	struct page *page;
+	unsigned long pfn, max_zone_pfn;
+	unsigned long total = 0, split = 0;
+
+	if (val != 1)
+		return -EINVAL;
+
+	for_each_populated_zone(zone) {
+		max_zone_pfn = zone_end_pfn(zone);
+		for (pfn = zone->zone_start_pfn; pfn < max_zone_pfn; pfn++) {
+			if (!pfn_valid(pfn))
+				continue;
+
+			page = pfn_to_page(pfn);
+			if (!get_page_unless_zero(page))
+				continue;
+
+			if (zone != page_zone(page))
+				goto next;
+
+			if (!PageHead(page) || !PageAnon(page) ||
+					PageHuge(page))
+				goto next;
+
+			total++;
+			lock_page(page);
+			if (!split_huge_page(page))
+				split++;
+			unlock_page(page);
+next:
+			put_page(page);
+		}
+	}
+
+	pr_info("%lu of %lu THP split\n", split, total);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(split_huge_pages_fops, NULL, split_huge_pages_set,
+		"%llu\n");
+
+static int __init split_huge_pages_debugfs(void)
+{
+	void *ret;
+
+	ret = debugfs_create_file("split_huge_pages", 0200, NULL, NULL,
+			&split_huge_pages_fops);
+	if (!ret)
+		pr_warn("Failed to create split_huge_pages in debugfs");
+	return 0;
+}
+late_initcall(split_huge_pages_debugfs);
+#endif

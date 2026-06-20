@@ -293,7 +293,7 @@ unsigned long move_page_tables(struct vm_area_struct *vma,
 			if (err > 0) {
 				continue;
 			} else if (!err) {
-				split_huge_page_pmd(vma, old_addr, old_pmd);
+				split_huge_pmd(vma, old_addr, old_pmd);
 			}
 			VM_BUG_ON(pmd_trans_huge(*old_pmd));
 		} else if (extent == PMD_SIZE) {
