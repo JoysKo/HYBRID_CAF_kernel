@@ -32,6 +32,15 @@
 #define __iowmb()		do { } while (0)
 #endif
 
+#ifdef CONFIG_ISA_ARCV2
+#include <asm/barrier.h>
+#define __iormb()		rmb()
+#define __iowmb()		wmb()
+#else
+#define __iormb()		do { } while (0)
+#define __iowmb()		do { } while (0)
+#endif
+
 extern void __iomem *ioremap(phys_addr_t paddr, unsigned long size);
 extern void __iomem *ioremap_prot(phys_addr_t paddr, unsigned long size,
 				  unsigned long flags);
