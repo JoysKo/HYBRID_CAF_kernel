@@ -4,7 +4,6 @@ Documentation for /proc/sys/kernel/*	kernel version 2.2.10
 
 For general info and legal blurb, please look in README.
 
-==============================================================
 
 This file contains documentation for the sysctl files in
 /proc/sys/kernel/ and is valid for Linux kernel version 2.2.
@@ -96,7 +95,6 @@ show up in /proc/sys/kernel:
 - watchdog_thresh
 - version
 
-==============================================================
 
 acct:
 
@@ -113,7 +111,6 @@ That is, suspend accounting if there left <= 2% free; resume it
 if we got >=4%; consider information about amount of free space
 valid for 30 seconds.
 
-==============================================================
 
 acpi_video_flags:
 
@@ -122,7 +119,6 @@ flags
 See Doc*/kernel/power/video.txt, it allows mode of video boot to be
 set during run time.
 
-==============================================================
 
 auto_msgmni:
 
@@ -134,7 +130,6 @@ Echoing "1" into this file enabled msgmni automatic recomputing.
 Echoing "0" turned it off. auto_msgmni default value was 1.
 
 
-==============================================================
 
 bootloader_type:
 
@@ -151,7 +146,6 @@ the value 340 = 0x154.
 See the type_of_loader and ext_loader_type fields in
 Documentation/x86/boot.txt for additional information.
 
-==============================================================
 
 bootloader_version:
 
@@ -163,7 +157,6 @@ file will contain the value 564 = 0x234.
 See the type_of_loader and ext_loader_ver fields in
 Documentation/x86/boot.txt for additional information.
 
-==============================================================
 
 boot_reason:
 
@@ -176,7 +169,6 @@ feature is not supported on the ARM device being booted.
 See the power-on-status field definitions in
 Documentation/arm/msm/boot.txt for Qualcomm's family of devices.
 
-==============================================================
 
 callhome:
 
@@ -191,14 +183,12 @@ the complete kernel oops message is send to the IBM customer service
 organization in case the mainframe the Linux operating system is running
 on has a service contract with IBM.
 
-==============================================================
 
 cap_last_cap
 
 Highest valid capability of the running kernel.  Exports
 CAP_LAST_CAP from the kernel.
 
-===============================================================
 
 cold_boot
 
@@ -208,7 +198,6 @@ A single bit will be set in the unsigned integer value to identify
 whether the device was booted from a cold or warm state. Zero
 indicating a warm boot and one indicating a cold boot.
 
-==============================================================
 
 core_pattern:
 
@@ -242,7 +231,6 @@ core_pattern is used to specify a core dumpfile pattern name.
   the rest of the pattern as a command to run.  The core dump will be
   written to the standard input of that program instead of to a file.
 
-==============================================================
 
 core_pipe_limit:
 
@@ -265,7 +253,6 @@ parallel, but that no waiting will take place (i.e. the collecting
 process is not guaranteed access to /proc/<crashing pid>/).  This
 value defaults to 0.
 
-==============================================================
 
 core_uses_pid:
 
@@ -275,7 +262,6 @@ If core_pattern does not include "%p" (default does not)
 and core_uses_pid is set, then .PID will be appended to
 the filename.
 
-==============================================================
 
 ctrl-alt-del:
 
@@ -290,7 +276,6 @@ mode, the ctrl-alt-del is intercepted by the program before it
 ever reaches the kernel tty layer, and it's up to the program
 to decide what to do with it.
 
-==============================================================
 
 dmesg_restrict:
 
@@ -303,7 +288,6 @@ dmesg(8).
 The kernel config option CONFIG_SECURITY_DMESG_RESTRICT sets the
 default value of dmesg_restrict.
 
-==============================================================
 
 domainname & hostname:
 
@@ -323,7 +307,6 @@ Information Service) or YP (Yellow Pages) domainname. These two
 domain names are in general different. For a detailed discussion
 see the hostname(1) man page.
 
-==============================================================
 hardlockup_all_cpu_backtrace:
 
 This value controls the hard lockup detector behavior when a hard
@@ -334,14 +317,12 @@ will be initiated.
 0: do nothing. This is the default behavior.
 
 1: on detection capture more debug information.
-==============================================================
 
 hotplug:
 
 Path for the hotplug policy agent.
 Default value is "/sbin/hotplug".
 
-==============================================================
 
 hung_task_panic:
 
@@ -352,14 +333,12 @@ This file shows up if CONFIG_DETECT_HUNG_TASK is enabled.
 
 1: panic immediately.
 
-==============================================================
 
 hung_task_check_count:
 
 The upper bound on the number of tasks that are checked.
 This file shows up if CONFIG_DETECT_HUNG_TASK is enabled.
 
-==============================================================
 
 hung_task_timeout_secs:
 
@@ -370,7 +349,6 @@ This file shows up if CONFIG_DETECT_HUNG_TASK is enabled.
 0: means infinite timeout - no checking done.
 Possible values to set are in range {0..LONG_MAX/HZ}.
 
-==============================================================
 
 hung_task_warnings:
 
@@ -381,7 +359,6 @@ This file shows up if CONFIG_DETECT_HUNG_TASK is enabled.
 
 -1: report an infinite number of warnings.
 
-==============================================================
 
 kexec_load_disabled:
 
@@ -393,7 +370,6 @@ loaded before disabling the syscall, allowing a system to set up (and
 later use) an image without it being altered. Generally used together
 with the "modules_disabled" sysctl.
 
-==============================================================
 
 kptr_restrict:
 
@@ -417,21 +393,18 @@ values to unprivileged users is a concern.
 When kptr_restrict is set to (2), kernel pointers printed using
 %pK will be replaced with 0's regardless of privileges.
 
-==============================================================
 
 kstack_depth_to_print: (X86 only)
 
 Controls the number of words to print when dumping the raw
 kernel stack.
 
-==============================================================
 
 l2cr: (PPC only)
 
 This flag controls the L2 cache of G3 processor boards. If
 0, the cache is disabled. Enabled if nonzero.
 
-==============================================================
 
 modules_disabled:
 
@@ -441,7 +414,6 @@ in an otherwise modular kernel.  This toggle defaults to off
 neither loaded nor unloaded, and the toggle cannot be set back
 to false.  Generally used with the "kexec_load_disabled" toggle.
 
-==============================================================
 
 msg_next_id, sem_next_id, and shm_next_id:
 
@@ -457,7 +429,6 @@ it's up to userspace, how to handle an object with "wrong" id.
 2) Toggle with non-default value will be set back to -1 by kernel after
 successful IPC object allocation.
 
-==============================================================
 
 nmi_watchdog:
 
@@ -479,7 +450,6 @@ in a KVM virtual machine. This default can be overridden by adding
 
 to the guest kernel command line (see Documentation/kernel-parameters.txt).
 
-==============================================================
 
 numa_balancing
 
@@ -503,7 +473,6 @@ faults may be controlled by the numa_balancing_scan_period_min_ms,
 numa_balancing_scan_delay_ms, numa_balancing_scan_period_max_ms,
 numa_balancing_scan_size_mb, and numa_balancing_settle_count sysctls.
 
-==============================================================
 
 numa_balancing_scan_period_min_ms, numa_balancing_scan_delay_ms,
 numa_balancing_scan_period_max_ms, numa_balancing_scan_size_mb
@@ -542,7 +511,6 @@ rate for each task.
 numa_balancing_scan_size_mb is how many megabytes worth of pages are
 scanned for a given scan.
 
-==============================================================
 
 osrelease, ostype & version:
 
@@ -559,7 +527,6 @@ this is the fifth kernel built from this source base and the
 date behind it indicates the time the kernel was built.
 The only way to tune these values is to rebuild the kernel :-)
 
-==============================================================
 
 overflowgid & overflowuid:
 
@@ -571,7 +538,6 @@ actual UID or GID would exceed 65535.
 These sysctls allow you to change the value of the fixed UID and GID.
 The default is 65534.
 
-==============================================================
 
 panic:
 
@@ -579,7 +545,6 @@ The value in this file represents the number of seconds the kernel
 waits before rebooting on a panic. When you use the software watchdog,
 the recommended setting is 60.
 
-==============================================================
 
 panic_on_io_nmi:
 
@@ -594,7 +559,6 @@ an IO error.
    servers issue this sort of NMI when the dump button is pushed,
    and you can use this option to take a crash dump.
 
-==============================================================
 
 panic_on_oops:
 
@@ -605,7 +569,6 @@ Controls the kernel's behaviour when an oops or BUG is encountered.
 1: panic immediately.  If the `panic' sysctl is also non-zero then the
    machine will be rebooted.
 
-==============================================================
 
 panic_on_stackoverflow:
 
@@ -617,7 +580,6 @@ This file shows up if CONFIG_DEBUG_STACKOVERFLOW is enabled.
 
 1: panic immediately.
 
-==============================================================
 
 panic_on_warn:
 
@@ -628,7 +590,6 @@ a kernel rebuild when attempting to kdump at the location of a WARN().
 
 1: call panic() after printing out WARN() location.
 
-==============================================================
 
 panic_on_rcu_stall:
 
@@ -639,7 +600,6 @@ is useful to define the root cause of RCU stalls using a vmcore.
 
 1: panic() after printing RCU stall messages.
 
-==============================================================
 
 perf_cpu_time_max_percent:
 
@@ -665,7 +625,6 @@ allowed to execute.
    length is exceeded.  Set to 0 if you truly do not care
    how much CPU is consumed.
 
-==============================================================
 
 panic_on_unrecovered_nmi:
 
@@ -678,13 +637,11 @@ A small number of systems do generate NMI's for bizarre random reasons
 such as power management so the default is off. That sysctl works like
 the existing panic controls already in that directory.
 
-==============================================================
 
 perf_event_paranoid:
 
 Controls use of the performance events system by unprivileged
-users (without CAP_SYS_ADMIN).  The default value is 3 if
-CONFIG_SECURITY_PERF_EVENTS_RESTRICT is set, or 1 otherwise.
+users (without CAP_SYS_ADMIN).  The default value is 2.
 
  -1: Allow use of (almost) all events by all users
 >=0: Disallow raw tracepoint access by users without CAP_IOC_LOCK
@@ -692,7 +649,6 @@ CONFIG_SECURITY_PERF_EVENTS_RESTRICT is set, or 1 otherwise.
 >=2: Disallow kernel profiling by users without CAP_SYS_ADMIN
 >=3: Disallow all event access by users without CAP_SYS_ADMIN
 
-==============================================================
 
 perf_event_max_stack:
 
@@ -705,7 +661,6 @@ enabled, otherwise writing to this file will return -EBUSY.
 
 The default value is 127.
 
-==============================================================
 
 pid_max:
 
@@ -713,7 +668,6 @@ PID allocation wrap value.  When the kernel's next PID value
 reaches this value, it wraps back to a minimum PID value.
 PIDs of value pid_max or larger are not allocated.
 
-==============================================================
 
 ns_last_pid:
 
@@ -721,14 +675,12 @@ The last pid allocated in the current (the one task using this sysctl
 lives in) pid namespace. When selecting a pid for a next task on fork
 kernel tries to allocate a number starting from this one.
 
-==============================================================
 
 powersave-nap: (PPC only)
 
 If set, Linux-PPC will use the 'nap' mode of powersaving,
 otherwise the 'doze' mode will be used.
 
-==============================================================
 
 printk:
 
@@ -748,7 +700,6 @@ the different loglevels.
   console_loglevel can be set
 - default_console_loglevel: default value for console_loglevel
 
-==============================================================
 
 printk_delay:
 
@@ -756,7 +707,6 @@ Delay each printk message in printk_delay milliseconds
 
 Value from 0 - 10000 is allowed.
 
-==============================================================
 
 printk_ratelimit:
 
@@ -766,7 +716,6 @@ default we allow one every 5 seconds.
 
 A value of 0 will disable rate limiting.
 
-==============================================================
 
 printk_ratelimit_burst:
 
@@ -808,7 +757,6 @@ This is a directory, with the following entries:
 
 
 randomize_va_space
-==================
 
 This option can be used to select the type of process address
 space randomization that is used in the system, for architectures
@@ -838,7 +786,6 @@ that support this feature.
     with CONFIG_COMPAT_BRK enabled, which excludes the heap from process
     address space randomization.
 
-==============================================================
 
 reboot-cmd: (Sparc only)
 
@@ -846,7 +793,6 @@ reboot-cmd: (Sparc only)
 ROM/Flash boot loader. Maybe to tell it what to do after
 rebooting. ???
 
-==============================================================
 
 rtsig-max & rtsig-nr:
 
@@ -856,7 +802,6 @@ in the system.
 
 rtsig-nr shows the number of RT signals currently queued.
 
-==============================================================
 
 sched_schedstats:
 
@@ -864,7 +809,6 @@ Enables/disables scheduler statistics. Enabling this feature
 incurs a small amount of overhead in the scheduler but is
 useful for debugging and performance tuning.
 
-==============================================================
 
 sg-big-buff:
 
@@ -877,7 +821,6 @@ There shouldn't be any reason to change this value. If
 you can come up with one, you probably know what you
 are doing anyway :)
 
-==============================================================
 
 shmall:
 
@@ -890,7 +833,6 @@ system, you can run the following command:
 
 # getconf PAGE_SIZE
 
-==============================================================
 
 shmmax:
 
@@ -899,7 +841,6 @@ on the maximum shared memory segment size that can be created.
 Shared memory segments up to 1Gb are now supported in the
 kernel.  This value defaults to SHMMAX.
 
-==============================================================
 
 shm_rmid_forced:
 
@@ -920,7 +861,6 @@ need this.
 Note that if you change this from 0 to 1, already created segments
 without users and with a dead originative process will be destroyed.
 
-==============================================================
 
 sysctl_writes_strict:
 
@@ -939,7 +879,6 @@ via the /proc/sys interface:
        sysctl entries must always be at file position 0 and the value must
        be fully contained in the buffer sent in the write syscall.
 
-==============================================================
 
 softlockup_all_cpu_backtrace:
 
@@ -955,7 +894,6 @@ NMI.
 
 1: on detection capture more debug information.
 
-==============================================================
 
 soft_watchdog
 
@@ -971,7 +909,6 @@ interrupts which are needed for the 'watchdog/N' threads to be woken up by
 the watchdog timer function, otherwise the NMI watchdog - if enabled - can
 detect a hard lockup condition.
 
-==============================================================
 
 tainted:
 
@@ -1002,7 +939,6 @@ can be ORed together:
 16384 - A soft lockup has previously occurred on the system.
 32768 - The kernel has been live patched.
 
-==============================================================
 
 threads-max
 
@@ -1023,7 +959,6 @@ The value written is checked against the available RAM pages. If the
 thread structures would occupy too much (more than 1/8th) of the
 available RAM pages threads-max is reduced accordingly.
 
-==============================================================
 
 unknown_nmi_panic:
 
@@ -1034,7 +969,6 @@ that time, kernel debugging information is displayed on console.
 NMI switch that most IA32 servers have fires unknown NMI up, for
 example.  If a system hangs up, try pressing the NMI switch.
 
-==============================================================
 
 watchdog:
 
@@ -1053,7 +987,6 @@ If the watchdog parameter is read, for example by executing
 the output of this command (0 or 1) shows the logical OR of soft_watchdog
 and nmi_watchdog.
 
-==============================================================
 
 watchdog_cpumask:
 
@@ -1074,7 +1007,6 @@ might say:
 
   echo 0,2-4 > /proc/sys/kernel/watchdog_cpumask
 
-==============================================================
 
 watchdog_thresh:
 
@@ -1085,4 +1017,3 @@ is 10 seconds.
 The softlockup threshold is (2 * watchdog_thresh). Setting this
 tunable to zero will disable lockup detection altogether.
 
-==============================================================

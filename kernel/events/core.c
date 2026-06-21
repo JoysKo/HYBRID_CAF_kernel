@@ -358,7 +358,7 @@ int sysctl_perf_event_paranoid __read_mostly = -1;
 #elif defined CONFIG_SECURITY_PERF_EVENTS_RESTRICT
 int sysctl_perf_event_paranoid __read_mostly = 3;
 #else
-int sysctl_perf_event_paranoid __read_mostly = 1;
+int sysctl_perf_event_paranoid __read_mostly = 2;
 #endif
 
 /* Minimum for 512 kiB + 1 user control page */
