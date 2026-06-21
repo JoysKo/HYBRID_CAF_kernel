@@ -198,6 +198,7 @@ static netdev_tx_t vti_xmit(struct sk_buff *skb, struct net_device *dev,
 	struct net_device *tdev;	/* Device to other host */
 	int pkt_len = skb->len;
 	int err;
+	int mtu;
 
 	if (!dst) {
 		switch (skb->protocol) {
@@ -263,6 +264,23 @@ static netdev_tx_t vti_xmit(struct sk_buff *skb, struct net_device *dev,
 			dst_link_failure(skb);
 		} else
 			tunnel->err_count = 0;
+	}
+
+	mtu = dst_mtu(dst);
+	if (skb->len > mtu) {
+		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, mtu);
+		if (skb->protocol == htons(ETH_P_IP)) {
+			icmp_send(skb, ICMP_DEST_UNREACH, ICMP_FRAG_NEEDED,
+				  htonl(mtu));
+		} else {
+			if (mtu < IPV6_MIN_MTU)
+				mtu = IPV6_MIN_MTU;
+
+			icmpv6_send(skb, ICMPV6_PKT_TOOBIG, 0, mtu);
+		}
+
+		dst_release(dst);
+		goto tx_error;
 	}
 
 	skb_scrub_packet(skb, !net_eq(tunnel->net, dev_net(dev)));
