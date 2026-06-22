@@ -89,7 +89,7 @@ sint _r8712_init_xmit_priv(struct xmit_priv *pxmitpriv,
 	*/
 	pxmitpriv->pallocated_frame_buf = kmalloc(NR_XMITFRAME * sizeof(struct xmit_frame) + 4,
 						  GFP_ATOMIC);
-	if (pxmitpriv->pallocated_frame_buf == NULL) {
+	if (!pxmitpriv->pallocated_frame_buf) {
 		pxmitpriv->pxmit_frame_buf = NULL;
 		return _FAIL;
 	}
@@ -128,7 +128,7 @@ sint _r8712_init_xmit_priv(struct xmit_priv *pxmitpriv,
 	_init_queue(&pxmitpriv->pending_xmitbuf_queue);
 	pxmitpriv->pallocated_xmitbuf = kmalloc(NR_XMITBUFF * sizeof(struct xmit_buf) + 4,
 						GFP_ATOMIC);
-	if (pxmitpriv->pallocated_xmitbuf  == NULL)
+	if (!pxmitpriv->pallocated_xmitbuf)
 		return _FAIL;
 	pxmitpriv->pxmitbuf = pxmitpriv->pallocated_xmitbuf + 4 -
 			      ((addr_t)(pxmitpriv->pallocated_xmitbuf) & 3);
@@ -137,7 +137,7 @@ sint _r8712_init_xmit_priv(struct xmit_priv *pxmitpriv,
 		INIT_LIST_HEAD(&pxmitbuf->list);
 		pxmitbuf->pallocated_buf = kmalloc(MAX_XMITBUF_SZ + XMITBUF_ALIGN_SZ,
 						   GFP_ATOMIC);
-		if (pxmitbuf->pallocated_buf == NULL)
+		if (!pxmitbuf->pallocated_buf)
 			return _FAIL;
 		pxmitbuf->pbuf = pxmitbuf->pallocated_buf + XMITBUF_ALIGN_SZ -
 				 ((addr_t) (pxmitbuf->pallocated_buf) &
@@ -241,7 +241,7 @@ sint r8712_update_attrib(struct _adapter *padapter, _pkt *pkt,
 	}
 	/* r8712_xmitframe_coalesce() overwrite this!*/
 	pattrib->pktlen = pktfile.pkt_len;
-	if (ETH_P_IP == pattrib->ether_type) {
+	if (pattrib->ether_type == ETH_P_IP) {
 		/* The following is for DHCP and ARP packet, we use cck1M to
 		 * tx these packets and let LPS awake some time
 		 * to prevent DHCP protocol fail */
@@ -250,7 +250,7 @@ sint r8712_update_attrib(struct _adapter *padapter, _pkt *pkt,
 		_r8712_pktfile_read(&pktfile, &tmp[0], 24);
 		pattrib->dhcp_pkt = 0;
 		if (pktfile.pkt_len > 282) {/*MINIMUM_DHCP_PACKET_SIZE)*/
-			if (ETH_P_IP == pattrib->ether_type) {/* IP header*/
+			if (pattrib->ether_type == ETH_P_IP) {/* IP header*/
 				if (((tmp[21] == 68) && (tmp[23] == 67)) ||
 					((tmp[21] == 67) && (tmp[23] == 68))) {
 					/* 68 : UDP BOOTP client
@@ -955,7 +955,7 @@ static void alloc_hwxmits(struct _adapter *padapter)
 	pxmitpriv->hwxmit_entry = HWXMIT_ENTRY;
 	pxmitpriv->hwxmits = kmalloc_array(pxmitpriv->hwxmit_entry,
 				sizeof(struct hw_xmit), GFP_ATOMIC);
-	if (pxmitpriv->hwxmits == NULL)
+	if (!pxmitpriv->hwxmits)
 		return;
 	hwxmits = pxmitpriv->hwxmits;
 	if (pxmitpriv->hwxmit_entry == 5) {

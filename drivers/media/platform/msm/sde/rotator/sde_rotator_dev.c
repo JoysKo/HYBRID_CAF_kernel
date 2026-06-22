@@ -42,7 +42,7 @@
 /* Timeout (msec) waiting for stream to turn off. */
 #define SDE_ROTATOR_STREAM_OFF_TIMEOUT	500
 
-/* acquire fence time out, following other driver fence time out practice */
+/* acquire sync_file time out, following other driver sync_file time out practice */
 #define SDE_ROTATOR_FENCE_TIMEOUT	MSEC_PER_SEC
 
 /* Rotator default fps */
@@ -169,7 +169,7 @@ static void sde_rotator_get_item_from_ctx(struct sde_rotator_ctx *ctx,
 	item->input.planes[0].offset = 0;
 	item->input.planes[0].stride = ctx->format_out.fmt.pix.bytesperline;
 	item->input.plane_count = 1;
-	item->input.fence = NULL;
+	item->input.sync_file = NULL;
 	item->input.comp_ratio.numer = 1;
 	item->input.comp_ratio.denom = 1;
 
@@ -184,7 +184,7 @@ static void sde_rotator_get_item_from_ctx(struct sde_rotator_ctx *ctx,
 	item->output.planes[0].offset = 0;
 	item->output.planes[0].stride = ctx->format_cap.fmt.pix.bytesperline;
 	item->output.plane_count = 1;
-	item->output.fence = NULL;
+	item->output.sync_file = NULL;
 	item->output.comp_ratio.numer = 1;
 	item->output.comp_ratio.denom = 1;
 }
@@ -473,21 +473,21 @@ static void sde_rotator_stop_streaming(struct vb2_queue *q)
 
 	sde_rotator_return_all_buffers(q, VB2_BUF_STATE_ERROR);
 
-	/* clear fence for buffer */
+	/* clear sync_file for buffer */
 	sde_rotator_resync_timeline(ctx->work_queue.timeline);
 	if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		for (i = 0; i < ctx->nbuf_cap; i++) {
 			struct sde_rotator_vbinfo *vbinfo =
 					&ctx->vbinfo_cap[i];
 
-			if (vbinfo->fence) {
-				/* fence is not used */
+			if (vbinfo->sync_file) {
+				/* sync_file is not used */
 				SDEDEV_DBG(rot_dev->dev,
-						"put fence s:%d t:%d i:%d\n",
+						"put sync_file s:%d t:%d i:%d\n",
 						ctx->session_id, q->type, i);
-				sde_rotator_put_sync_fence(vbinfo->fence);
+				sde_rotator_put_sync_file(vbinfo->sync_file);
 			}
-			vbinfo->fence = NULL;
+			vbinfo->sync_file = NULL;
 			vbinfo->fd = -1;
 		}
 	} else if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
@@ -495,13 +495,13 @@ static void sde_rotator_stop_streaming(struct vb2_queue *q)
 			struct sde_rotator_vbinfo *vbinfo =
 					&ctx->vbinfo_out[i];
 
-			if (vbinfo->fence) {
+			if (vbinfo->sync_file) {
 				SDEDEV_DBG(rot_dev->dev,
-						"put fence s:%d t:%d i:%d\n",
+						"put sync_file s:%d t:%d i:%d\n",
 						ctx->session_id, q->type, i);
-				sde_rotator_put_sync_fence(vbinfo->fence);
+				sde_rotator_put_sync_file(vbinfo->sync_file);
 			}
-			vbinfo->fence = NULL;
+			vbinfo->sync_file = NULL;
 			vbinfo->fd = -1;
 		}
 	}
@@ -950,7 +950,7 @@ static int sde_rotator_open(struct file *file)
 		goto error_create_sysfs;
 	}
 
-	snprintf(name, sizeof(name), "rot_fenceq_%d_%d", rot_dev->dev->id,
+	snprintf(name, sizeof(name), "rot_sync_fileq_%d_%d", rot_dev->dev->id,
 			ctx->session_id);
 	kthread_init_worker(&ctx->work_queue.rot_kw);
 	ctx->work_queue.rot_thread = kthread_run(kthread_worker_fn,
@@ -1398,23 +1398,23 @@ static int sde_rotator_qbuf(struct file *file, void *fh,
 	struct sde_rotator_ctx *ctx = sde_rotator_ctx_from_fh(fh);
 	int ret;
 
-	/* create fence for capture buffer */
+	/* create sync_file for capture buffer */
 	if ((buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
 			&& (buf->index < ctx->nbuf_cap)) {
 		int idx = buf->index;
 
 		ctx->vbinfo_cap[idx].fd = -1;
-		ctx->vbinfo_cap[idx].fence = sde_rotator_get_sync_fence(
+		ctx->vbinfo_cap[idx].sync_file = sde_rotator_get_sync_file(
 				ctx->work_queue.timeline, NULL,
-				&ctx->vbinfo_cap[idx].fence_ts);
+				&ctx->vbinfo_cap[idx].sync_file_ts);
 		ctx->vbinfo_cap[idx].qbuf_ts = ktime_get();
 		ctx->vbinfo_cap[idx].dqbuf_ts = NULL;
 		SDEDEV_DBG(ctx->rot_dev->dev,
-				"create buffer fence s:%d.%u i:%d f:%p\n",
+				"create buffer sync_file s:%d.%u i:%d f:%p\n",
 				ctx->session_id,
-				ctx->vbinfo_cap[idx].fence_ts,
+				ctx->vbinfo_cap[idx].sync_file_ts,
 				idx,
-				ctx->vbinfo_cap[idx].fence);
+				ctx->vbinfo_cap[idx].sync_file);
 	} else if ((buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT)
 			&& (buf->index < ctx->nbuf_out)) {
 		int idx = buf->index;
@@ -1452,18 +1452,18 @@ static int sde_rotator_dqbuf(struct file *file,
 		return ret;
 	}
 
-	/* clear fence for buffer */
+	/* clear sync_file for buffer */
 	if ((buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
 			&& (buf->index < ctx->nbuf_cap)) {
 		int idx = buf->index;
 
-		if (ctx->vbinfo_cap[idx].fence) {
-			/* fence is not used */
-			SDEDEV_DBG(ctx->rot_dev->dev, "put fence s:%d i:%d\n",
+		if (ctx->vbinfo_cap[idx].sync_file) {
+			/* sync_file is not used */
+			SDEDEV_DBG(ctx->rot_dev->dev, "put sync_file s:%d i:%d\n",
 					ctx->session_id, idx);
-			sde_rotator_put_sync_fence(ctx->vbinfo_cap[idx].fence);
+			sde_rotator_put_sync_file(ctx->vbinfo_cap[idx].sync_file);
 		}
-		ctx->vbinfo_cap[idx].fence = NULL;
+		ctx->vbinfo_cap[idx].sync_file = NULL;
 		ctx->vbinfo_cap[idx].fd = -1;
 		if (ctx->vbinfo_cap[idx].dqbuf_ts)
 			*(ctx->vbinfo_cap[idx].dqbuf_ts) = ktime_get();
@@ -1471,7 +1471,7 @@ static int sde_rotator_dqbuf(struct file *file,
 			&& (buf->index < ctx->nbuf_out)) {
 		int idx = buf->index;
 
-		ctx->vbinfo_out[idx].fence = NULL;
+		ctx->vbinfo_out[idx].sync_file = NULL;
 		ctx->vbinfo_out[idx].fd = -1;
 		if (ctx->vbinfo_out[idx].dqbuf_ts)
 			*(ctx->vbinfo_out[idx].dqbuf_ts) = ktime_get();
@@ -1782,107 +1782,107 @@ static long sde_rotator_private_ioctl(struct file *file, void *fh,
 	struct sde_rotator_ctx *ctx =
 			sde_rotator_ctx_from_fh(file->private_data);
 	struct sde_rotator_device *rot_dev = ctx->rot_dev;
-	struct msm_sde_rotator_fence *fence = arg;
+	struct msm_sde_rotator_sync_file *sync_file = arg;
 	struct msm_sde_rotator_comp_ratio *comp_ratio = arg;
 	struct sde_rotator_vbinfo *vbinfo;
 	int ret;
 
 	switch (cmd) {
 	case VIDIOC_S_SDE_ROTATOR_FENCE:
-		if (!fence)
+		if (!sync_file)
 			return -EINVAL;
 
-		if (fence->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
+		if (sync_file->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
 			return -EINVAL;
 
-		if (fence->index >= ctx->nbuf_out)
+		if (sync_file->index >= ctx->nbuf_out)
 			return -EINVAL;
 
 		SDEDEV_DBG(rot_dev->dev,
 				"VIDIOC_S_SDE_ROTATOR_FENCE s:%d i:%d fd:%d\n",
-				ctx->session_id, fence->index,
-				fence->fd);
+				ctx->session_id, sync_file->index,
+				sync_file->fd);
 
-		vbinfo = &ctx->vbinfo_out[fence->index];
+		vbinfo = &ctx->vbinfo_out[sync_file->index];
 
 		if (vbinfo->fd >= 0) {
-			if (vbinfo->fence) {
+			if (vbinfo->sync_file) {
 				SDEDEV_DBG(rot_dev->dev,
-						"put fence s:%d t:%d i:%d\n",
+						"put sync_file s:%d t:%d i:%d\n",
 						ctx->session_id,
-						fence->type, fence->index);
-				sde_rotator_put_sync_fence(vbinfo->fence);
+						sync_file->type, sync_file->index);
+				sde_rotator_put_sync_file(vbinfo->sync_file);
 			}
-			vbinfo->fence = NULL;
+			vbinfo->sync_file = NULL;
 			vbinfo->fd = -1;
 		}
 
-		vbinfo->fd = fence->fd;
+		vbinfo->fd = sync_file->fd;
 		if (vbinfo->fd >= 0) {
-			vbinfo->fence =
-				sde_rotator_get_fd_sync_fence(vbinfo->fd);
-			if (!vbinfo->fence) {
+			vbinfo->sync_file =
+				sde_rotator_get_fd_sync_file(vbinfo->fd);
+			if (!vbinfo->sync_file) {
 				SDEDEV_WARN(rot_dev->dev,
-					"invalid input fence fd s:%d fd:%d\n",
+					"invalid input sync_file fd s:%d fd:%d\n",
 					ctx->session_id, vbinfo->fd);
 				vbinfo->fd = -1;
 				return -EINVAL;
 			}
 		} else {
-			vbinfo->fence = NULL;
+			vbinfo->sync_file = NULL;
 		}
 		break;
 	case VIDIOC_G_SDE_ROTATOR_FENCE:
-		if (!fence)
+		if (!sync_file)
 			return -EINVAL;
 
-		if (fence->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		if (sync_file->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 			return -EINVAL;
 
-		if (fence->index >= ctx->nbuf_cap)
+		if (sync_file->index >= ctx->nbuf_cap)
 			return -EINVAL;
 
-		vbinfo = &ctx->vbinfo_cap[fence->index];
+		vbinfo = &ctx->vbinfo_cap[sync_file->index];
 
 		if (!vbinfo)
 			return -EINVAL;
 
-		if (vbinfo->fence) {
-			ret = sde_rotator_get_sync_fence_fd(vbinfo->fence);
+		if (vbinfo->sync_file) {
+			ret = sde_rotator_get_sync_file_fd(vbinfo->sync_file);
 			if (ret < 0) {
 				SDEDEV_ERR(rot_dev->dev,
-					"fail get fence fd s:%d\n",
+					"fail get sync_file fd s:%d\n",
 					ctx->session_id);
 				return ret;
 			}
 
 			/*
-			 * Loose any reference to sync fence once we pass
+			 * Loose any reference to sync sync_file once we pass
 			 * it to user. Driver does not clean up user
-			 * unclosed fence descriptors.
+			 * unclosed sync_file descriptors.
 			 */
-			vbinfo->fence = NULL;
+			vbinfo->sync_file = NULL;
 
 			/*
-			 * Cache fence descriptor in case user calls this
+			 * Cache sync_file descriptor in case user calls this
 			 * ioctl multiple times. Cached value would be stale
 			 * if user duplicated and closed old descriptor.
 			 */
 			vbinfo->fd = ret;
-		} else if (!sde_rotator_get_fd_sync_fence(vbinfo->fd)) {
+		} else if (!sde_rotator_get_fd_sync_file(vbinfo->fd)) {
 			/*
-			 * User has closed cached fence descriptor.
+			 * User has closed cached sync_file descriptor.
 			 * Invalidate descriptor cache.
 			 */
 			vbinfo->fd = -1;
 		}
 
-		fence->fd = vbinfo->fd;
+		sync_file->fd = vbinfo->fd;
 
 		SDEDEV_DBG(rot_dev->dev,
 				"VIDIOC_G_SDE_ROTATOR_FENCE s:%d i:%d fd:%d\n",
-				ctx->session_id, fence->index,
-				fence->fd);
+				ctx->session_id, sync_file->index,
+				sync_file->fd);
 		break;
 	case VIDIOC_S_SDE_ROTATOR_COMP_RATIO:
 		if (!comp_ratio)
@@ -1959,17 +1959,17 @@ static long sde_rotator_compat_ioctl32(struct file *file,
 	case VIDIOC_S_SDE_ROTATOR_FENCE:
 	case VIDIOC_G_SDE_ROTATOR_FENCE:
 	{
-		struct msm_sde_rotator_fence fence;
+		struct msm_sde_rotator_sync_file sync_file;
 
-		if (copy_from_user(&fence, (void __user *)arg,
-				sizeof(struct msm_sde_rotator_fence)))
+		if (copy_from_user(&sync_file, (void __user *)arg,
+				sizeof(struct msm_sde_rotator_sync_file)))
 			goto ioctl32_error;
 
 		ret = sde_rotator_private_ioctl(file, file->private_data,
-			0, cmd, (void *)&fence);
+			0, cmd, (void *)&sync_file);
 
-		if (copy_to_user((void __user *)arg, &fence,
-				sizeof(struct msm_sde_rotator_fence)))
+		if (copy_to_user((void __user *)arg, &sync_file,
+				sizeof(struct msm_sde_rotator_sync_file)))
 			goto ioctl32_error;
 
 		break;
@@ -2156,7 +2156,7 @@ static int sde_rotator_process_buffers(struct sde_rotator_ctx *ctx,
 
 	SDEDEV_DBG(rot_dev->dev,
 		"process buffer s:%d.%u src:(%u,%u,%u,%u) dst:(%u,%u,%u,%u) rot:%d flip:%d/%d sec:%d src_cr:%u/%u dst_cr:%u/%u\n",
-		ctx->session_id, vbinfo_cap->fence_ts,
+		ctx->session_id, vbinfo_cap->sync_file_ts,
 		ctx->crop_out.left, ctx->crop_out.top,
 		ctx->crop_out.width, ctx->crop_out.height,
 		ctx->crop_cap.left, ctx->crop_cap.top,
@@ -2174,8 +2174,8 @@ static int sde_rotator_process_buffers(struct sde_rotator_ctx *ctx,
 
 	ts[SDE_ROTATOR_TS_FENCE] = ktime_get();
 
-	trace_rot_entry_fence(
-		ctx->session_id, vbinfo_cap->fence_ts,
+	trace_rot_entry_sync_file(
+		ctx->session_id, vbinfo_cap->sync_file_ts,
 		ctx->fh.prio,
 		(ctx->rotate << 0) | (ctx->hflip << 8) |
 			(ctx->hflip << 9) | (ctx->secure << 10),
@@ -2190,27 +2190,27 @@ static int sde_rotator_process_buffers(struct sde_rotator_ctx *ctx,
 		ctx->crop_cap.left, ctx->crop_cap.top,
 		ctx->crop_cap.width, ctx->crop_cap.height);
 
-	if (vbinfo_out->fence) {
+	if (vbinfo_out->sync_file) {
 		sde_rot_mgr_unlock(rot_dev->mgr);
 		mutex_unlock(&rot_dev->lock);
-		SDEDEV_DBG(rot_dev->dev, "fence enter s:%d.%d fd:%d\n",
-			ctx->session_id, vbinfo_cap->fence_ts, vbinfo_out->fd);
-		ret = sde_rotator_wait_sync_fence(vbinfo_out->fence,
-				rot_dev->fence_timeout);
+		SDEDEV_DBG(rot_dev->dev, "sync_file enter s:%d.%d fd:%d\n",
+			ctx->session_id, vbinfo_cap->sync_file_ts, vbinfo_out->fd);
+		ret = sde_rotator_wait_sync_file(vbinfo_out->sync_file,
+				rot_dev->sync_file_timeout);
 		mutex_lock(&rot_dev->lock);
 		sde_rot_mgr_lock(rot_dev->mgr);
-		sde_rotator_put_sync_fence(vbinfo_out->fence);
-		vbinfo_out->fence = NULL;
+		sde_rotator_put_sync_file(vbinfo_out->sync_file);
+		vbinfo_out->sync_file = NULL;
 		if (ret) {
 			SDEDEV_ERR(rot_dev->dev,
-				"error waiting for fence s:%d.%d fd:%d r:%d\n",
+				"error waiting for sync_file s:%d.%d fd:%d r:%d\n",
 				ctx->session_id,
-				vbinfo_cap->fence_ts, vbinfo_out->fd, ret);
-			goto error_fence_wait;
+				vbinfo_cap->sync_file_ts, vbinfo_out->fd, ret);
+			goto error_sync_file_wait;
 		} else {
-			SDEDEV_DBG(rot_dev->dev, "fence exit s:%d.%d fd:%d\n",
+			SDEDEV_DBG(rot_dev->dev, "sync_file exit s:%d.%d fd:%d\n",
 				ctx->session_id,
-				vbinfo_cap->fence_ts, vbinfo_out->fd);
+				vbinfo_cap->sync_file_ts, vbinfo_out->fd);
 		}
 	}
 
@@ -2222,16 +2222,16 @@ static int sde_rotator_process_buffers(struct sde_rotator_ctx *ctx,
 	item.input.planes[0].offset = src_handle->addr;
 	item.input.planes[0].stride = ctx->format_out.fmt.pix.bytesperline;
 	item.input.plane_count = 1;
-	item.input.fence = NULL;
+	item.input.sync_file = NULL;
 	item.input.comp_ratio = vbinfo_out->comp_ratio;
 	item.output.planes[0].buffer = dst_handle->buffer;
 	item.output.planes[0].handle = dst_handle->handle;
 	item.output.planes[0].offset = dst_handle->addr;
 	item.output.planes[0].stride = ctx->format_cap.fmt.pix.bytesperline;
 	item.output.plane_count = 1;
-	item.output.fence = NULL;
+	item.output.sync_file = NULL;
 	item.output.comp_ratio = vbinfo_cap->comp_ratio;
-	item.sequence_id = vbinfo_cap->fence_ts;
+	item.sequence_id = vbinfo_cap->sync_file_ts;
 	item.ts = ts;
 
 	req = sde_rotator_req_init(rot_dev->mgr, ctx->private, &item, 1, 0);
@@ -2258,7 +2258,7 @@ static int sde_rotator_process_buffers(struct sde_rotator_ctx *ctx,
 error_handle_request:
 	devm_kfree(rot_dev->dev, req);
 error_init_request:
-error_fence_wait:
+error_sync_file_wait:
 error_null_buffer:
 	ctx->request = ERR_PTR(ret);
 	return ret;
@@ -2566,7 +2566,7 @@ static int sde_rotator_probe(struct platform_device *pdev)
 
 	mutex_init(&rot_dev->lock);
 	rot_dev->early_submit = SDE_ROTATOR_EARLY_SUBMIT;
-	rot_dev->fence_timeout = SDE_ROTATOR_FENCE_TIMEOUT;
+	rot_dev->sync_file_timeout = SDE_ROTATOR_FENCE_TIMEOUT;
 	rot_dev->streamoff_timeout = SDE_ROTATOR_STREAM_OFF_TIMEOUT;
 	rot_dev->min_rot_clk = 0;
 	rot_dev->min_bw = 0;

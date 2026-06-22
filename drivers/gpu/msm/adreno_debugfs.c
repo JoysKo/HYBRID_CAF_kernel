@@ -143,8 +143,8 @@ static void sync_event_print(struct seq_file *s,
 		spin_lock_irqsave(&sync_event->handle_lock, flags);
 
 		seq_printf(s, "sync: [%pK] %s", sync_event->handle,
-		(sync_event->handle && sync_event->handle->fence)
-				? sync_event->handle->fence->name : "NULL");
+		(sync_event->handle && sync_event->handle->sync_file)
+				? sync_event->handle->sync_file->name : "NULL");
 
 		spin_unlock_irqrestore(&sync_event->handle_lock, flags);
 		break;

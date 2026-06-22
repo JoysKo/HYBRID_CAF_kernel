@@ -54,7 +54,7 @@ struct mdss_rot_timeline {
 	struct mutex lock;
 	struct sw_sync_timeline *timeline;
 	u32 next_value;
-	char fence_name[32];
+	char sync_file_name[32];
 };
 
 struct mdss_rot_hw_resource {
@@ -95,10 +95,10 @@ struct mdss_rot_entry {
 	struct mdss_mdp_data src_buf;
 	struct mdss_mdp_data dst_buf;
 
-	struct sync_fence *input_fence;
+	struct sync_file *input_file;
 
-	int output_fence_fd;
-	struct sync_fence *output_fence;
+	int output_file_fd;
+	struct sync_file *output_file;
 	bool output_signaled;
 
 	u32 dnsc_factor_w;

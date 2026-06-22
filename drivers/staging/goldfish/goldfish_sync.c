@@ -276,8 +276,8 @@ goldfish_sync_fence_create(struct goldfish_sync_timeline_obj *obj,
 
 	int fd;
 	char fence_name[256];
-	struct sync_pt *syncpt = NULL;
-	struct sync_fence *sync_obj = NULL;
+	struct fence *syncpt = NULL;
+	struct sync_file *sync_obj = NULL;
 	struct sw_sync_timeline *tl;
 
 	DTRACE();
@@ -286,7 +286,7 @@ goldfish_sync_fence_create(struct goldfish_sync_timeline_obj *obj,
 
 	tl = obj->sw_sync_tl;
 
-	syncpt = sw_sync_pt_create(tl, val);
+	syncpt = sw_sync_fence_create(tl, val);
 	if (!syncpt) {
 		ERR("could not create sync point! "
 			"sync_timeline=0x%p val=%d",

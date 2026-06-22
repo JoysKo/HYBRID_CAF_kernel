@@ -287,10 +287,10 @@ static int __copy_to_user_atomic_commit(struct mdp_layer_commit  *commit,
 	if (ret)
 		goto end;
 
-	commit32->commit_v1.release_fence =
-		commit->commit_v1.release_fence;
-	commit32->commit_v1.retire_fence =
-		commit->commit_v1.retire_fence;
+	commit32->commit_v1.release_sync_file =
+		commit->commit_v1.release_sync_file;
+	commit32->commit_v1.retire_sync_file =
+		commit->commit_v1.retire_sync_file;
 
 	ret = copy_to_user((void __user *)argp, commit32,
 		sizeof(struct mdp_layer_commit32));
@@ -523,7 +523,7 @@ static int mdss_fb_compat_buf_sync(struct fb_info *info, unsigned int cmd,
 		if (buf_sync->flags & MDP_BUF_SYNC_FLAG_RETIRE_FENCE)
 			return -EFAULT;
 		else
-			pr_debug("%s: no retire fence fd for wb\n",
+			pr_debug("%s: no retire sync_file fd for wb\n",
 				__func__);
 	}
 

@@ -72,12 +72,12 @@
 #define CR_AREF(a)	(((a) >> 24) & 0x03)
 
 #define CR_FLAGS_MASK	0xfc000000
-#define CR_ALT_FILTER	(1 << 26)
+#define CR_ALT_FILTER	0x04000000
 #define CR_DITHER	CR_ALT_FILTER
 #define CR_DEGLITCH	CR_ALT_FILTER
-#define CR_ALT_SOURCE	(1 << 27)
-#define CR_EDGE		(1 << 30)
-#define CR_INVERT	(1 << 31)
+#define CR_ALT_SOURCE	0x08000000
+#define CR_EDGE		0x40000000
+#define CR_INVERT	0x80000000
 
 #define AREF_GROUND	0x00	/* analog ref = analog ground */
 #define AREF_COMMON	0x01	/* analog ref = analog common */
@@ -442,6 +442,28 @@ struct comedi_rangeinfo {
 	void __user *range_ptr;
 };
 
+/**
+ * struct comedi_krange - describes a range in a range table
+ * @min:	Minimum value in millionths (1e-6) of a unit.
+ * @max:	Maximum value in millionths (1e-6) of a unit.
+ * @flags:	Indicates the units (in bits 7:0) OR'ed with optional flags.
+ *
+ * A range table is associated with a single channel, or with all channels in a
+ * subdevice, and a list of one or more ranges.  A %struct comedi_krange
+ * describes the physical range of units for one of those ranges.  Sample
+ * values in COMEDI are unsigned from %0 up to some 'maxdata' value.  The
+ * mapping from sample values to physical units is assumed to be nomimally
+ * linear (for the purpose of describing the range), with sample value %0
+ * mapping to @min, and the 'maxdata' sample value mapping to @max.
+ *
+ * The currently defined units are %UNIT_volt (%0), %UNIT_mA (%1), and
+ * %UNIT_none (%2).  The @min and @max values are the physical range multiplied
+ * by 1e6, so a @max value of %1000000 (with %UNIT_volt) represents a maximal
+ * value of 1 volt.
+ *
+ * The only defined flag value is %RF_EXTERNAL (%0x100), indicating that the
+ * the range needs to be multiplied by an external reference.
+ */
 struct comedi_krange {
 	int min;	/* fixed point, multiply by 1e-6 */
 	int max;	/* fixed point, multiply by 1e-6 */
@@ -510,13 +532,13 @@ struct comedi_bufinfo {
 #define RANGE_LENGTH(b)		((b) & 0xffff)
 
 #define RF_UNIT(flags)		((flags) & 0xff)
-#define RF_EXTERNAL		(1 << 8)
+#define RF_EXTERNAL		0x100
 
 #define UNIT_volt		0
 #define UNIT_mA			1
 #define UNIT_none		2
 
-#define COMEDI_MIN_SPEED	((unsigned int)0xffffffff)
+#define COMEDI_MIN_SPEED	0xffffffffu
 
 /**********************************************************/
 /* everything after this line is ALPHA */

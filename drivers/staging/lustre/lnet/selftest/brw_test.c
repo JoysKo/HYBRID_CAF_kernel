@@ -51,8 +51,8 @@ MODULE_PARM_DESC(brw_inject_errors, "# data errors to inject randomly, zero by d
 static void
 brw_client_fini(sfw_test_instance_t *tsi)
 {
-	srpc_bulk_t     *bulk;
-	sfw_test_unit_t *tsu;
+	srpc_bulk_t *bulk;
+	sfw_test_unit_t	*tsu;
 
 	LASSERT(tsi->tsi_is_client);
 
@@ -69,26 +69,28 @@ brw_client_fini(sfw_test_instance_t *tsi)
 static int
 brw_client_init(sfw_test_instance_t *tsi)
 {
-	sfw_session_t	 *sn = tsi->tsi_batch->bat_session;
-	int		  flags;
-	int		  npg;
-	int		  len;
-	int		  opc;
-	srpc_bulk_t	 *bulk;
-	sfw_test_unit_t	 *tsu;
+	sfw_session_t *sn = tsi->tsi_batch->bat_session;
+	int flags;
+	int npg;
+	int len;
+	int opc;
+	srpc_bulk_t *bulk;
+	sfw_test_unit_t *tsu;
 
 	LASSERT(sn != NULL);
 	LASSERT(tsi->tsi_is_client);
 
-	if ((sn->sn_features & LST_FEAT_BULK_LEN) == 0) {
-		test_bulk_req_t  *breq = &tsi->tsi_u.bulk_v0;
+	if (!(sn->sn_features & LST_FEAT_BULK_LEN)) {
+		test_bulk_req_t *breq = &tsi->tsi_u.bulk_v0;
 
-		opc   = breq->blk_opc;
+		opc = breq->blk_opc;
 		flags = breq->blk_flags;
-		npg   = breq->blk_npg;
-		/* NB: this is not going to work for variable page size,
-		 * but we have to keep it for compatibility */
-		len   = npg * PAGE_SIZE;
+		npg = breq->blk_npg;
+		/*
+		 * NB: this is not going to work for variable page size,
+		 * but we have to keep it for compatibility
+		 */
+		len = npg * PAGE_CACHE_SIZE;
 
 	} else {
 		test_bulk_req_v1_t *breq = &tsi->tsi_u.bulk_v1;
@@ -97,10 +99,10 @@ brw_client_init(sfw_test_instance_t *tsi)
 		 * because make_session will reject unknown feature */
 		LASSERT((sn->sn_features & ~LST_FEATS_MASK) == 0);
 
-		opc   = breq->blk_opc;
+		opc = breq->blk_opc;
 		flags = breq->blk_flags;
-		len   = breq->blk_len;
-		npg   = (len + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		len = breq->blk_len;
+		npg = (len + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	}
 
 	if (npg > LNET_MAX_IOV || npg <= 0)
@@ -127,9 +129,9 @@ brw_client_init(sfw_test_instance_t *tsi)
 	return 0;
 }
 
-#define BRW_POISON      0xbeefbeefbeefbeefULL
-#define BRW_MAGIC       0xeeb0eeb1eeb2eeb3ULL
-#define BRW_MSIZE       sizeof(__u64)
+#define BRW_POISON	0xbeefbeefbeefbeefULL
+#define BRW_MAGIC	0xeeb0eeb1eeb2eeb3ULL
+#define BRW_MSIZE	sizeof(__u64)
 
 static int
 brw_inject_one_error(void)
@@ -151,7 +153,7 @@ static void
 brw_fill_page(struct page *pg, int pattern, __u64 magic)
 {
 	char *addr = page_address(pg);
-	int   i;
+	int i;
 
 	LASSERT(addr != NULL);
 
@@ -180,9 +182,9 @@ brw_fill_page(struct page *pg, int pattern, __u64 magic)
 static int
 brw_check_page(struct page *pg, int pattern, __u64 magic)
 {
-	char  *addr = page_address(pg);
-	__u64  data = 0; /* make compiler happy */
-	int    i;
+	char *addr = page_address(pg);
+	__u64 data = 0; /* make compiler happy */
+	int i;
 
 	LASSERT(addr != NULL);
 
@@ -190,12 +192,12 @@ brw_check_page(struct page *pg, int pattern, __u64 magic)
 		return 0;
 
 	if (pattern == LST_BRW_CHECK_SIMPLE) {
-		data = *((__u64 *) addr);
+		data = *((__u64 *)addr);
 		if (data != magic)
 			goto bad_data;
 
-		addr += PAGE_SIZE - BRW_MSIZE;
-		data = *((__u64 *) addr);
+		addr += PAGE_CACHE_SIZE - BRW_MSIZE;
+		data = *((__u64 *)addr);
 		if (data != magic)
 			goto bad_data;
 
@@ -203,8 +205,8 @@ brw_check_page(struct page *pg, int pattern, __u64 magic)
 	}
 
 	if (pattern == LST_BRW_CHECK_FULL) {
-		for (i = 0; i < PAGE_SIZE / BRW_MSIZE; i++) {
-			data = *(((__u64 *) addr) + i);
+		for (i = 0; i < PAGE_CACHE_SIZE / BRW_MSIZE; i++) {
+			data = *(((__u64 *)addr) + i);
 			if (data != magic)
 				goto bad_data;
 		}
@@ -271,10 +273,10 @@ brw_client_prep_rpc(sfw_test_unit_t *tsu,
 	if ((sn->sn_features & LST_FEAT_BULK_LEN) == 0) {
 		test_bulk_req_t *breq = &tsi->tsi_u.bulk_v0;
 
-		opc   = breq->blk_opc;
+		opc = breq->blk_opc;
 		flags = breq->blk_flags;
-		npg   = breq->blk_npg;
-		len   = npg * PAGE_SIZE;
+		npg = breq->blk_npg;
+		len = npg * PAGE_CACHE_SIZE;
 
 	} else {
 		test_bulk_req_v1_t *breq = &tsi->tsi_u.bulk_v1;
@@ -283,10 +285,10 @@ brw_client_prep_rpc(sfw_test_unit_t *tsu,
 		 * because make_session will reject unknown feature */
 		LASSERT((sn->sn_features & ~LST_FEATS_MASK) == 0);
 
-		opc   = breq->blk_opc;
+		opc = breq->blk_opc;
 		flags = breq->blk_flags;
-		len   = breq->blk_len;
-		npg   = (len + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		len = breq->blk_len;
+		npg = (len + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	}
 
 	rc = sfw_create_test_rpc(tsu, dest, sn->sn_features, npg, len, &rpc);
@@ -301,8 +303,8 @@ brw_client_prep_rpc(sfw_test_unit_t *tsu,
 
 	req = &rpc->crpc_reqstmsg.msg_body.brw_reqst;
 	req->brw_flags = flags;
-	req->brw_rw    = opc;
-	req->brw_len   = len;
+	req->brw_rw = opc;
+	req->brw_len = len;
 
 	*rpcpp = rpc;
 	return 0;
@@ -325,7 +327,7 @@ brw_client_done_rpc(sfw_test_unit_t *tsu, srpc_client_rpc_t *rpc)
 			libcfs_id2str(rpc->crpc_dest), rpc->crpc_status);
 		if (!tsi->tsi_stopping) /* rpc could have been aborted */
 			atomic_inc(&sn->sn_brw_errors);
-		goto out;
+		return;
 	}
 
 	if (msg->msg_magic != SRPC_MSG_MAGIC) {
@@ -340,11 +342,11 @@ brw_client_done_rpc(sfw_test_unit_t *tsu, srpc_client_rpc_t *rpc)
 	if (reply->brw_status != 0) {
 		atomic_inc(&sn->sn_brw_errors);
 		rpc->crpc_status = -(int)reply->brw_status;
-		goto out;
+		return;
 	}
 
 	if (reqst->brw_rw == LST_BRW_WRITE)
-		goto out;
+		return;
 
 	if (brw_check_bulk(&rpc->crpc_bulk, reqst->brw_flags, magic) != 0) {
 		CERROR("Bulk data from %s is corrupted!\n",
@@ -352,9 +354,6 @@ brw_client_done_rpc(sfw_test_unit_t *tsu, srpc_client_rpc_t *rpc)
 		atomic_inc(&sn->sn_brw_errors);
 		rpc->crpc_status = -EBADMSG;
 	}
-
-out:
-	return;
 }
 
 static void
@@ -490,8 +489,8 @@ brw_server_handle(struct srpc_server_rpc *rpc)
 sfw_test_client_ops_t brw_test_client;
 void brw_init_test_client(void)
 {
-	brw_test_client.tso_init     = brw_client_init;
-	brw_test_client.tso_fini     = brw_client_fini;
+	brw_test_client.tso_init = brw_client_init;
+	brw_test_client.tso_fini = brw_client_fini;
 	brw_test_client.tso_prep_rpc = brw_client_prep_rpc;
 	brw_test_client.tso_done_rpc = brw_client_done_rpc;
 };
@@ -499,10 +498,9 @@ void brw_init_test_client(void)
 srpc_service_t brw_test_service;
 void brw_init_test_service(void)
 {
-
-	brw_test_service.sv_id         = SRPC_SERVICE_BRW;
-	brw_test_service.sv_name       = "brw_test";
-	brw_test_service.sv_handler    = brw_server_handle;
+	brw_test_service.sv_id = SRPC_SERVICE_BRW;
+	brw_test_service.sv_name = "brw_test";
+	brw_test_service.sv_handler = brw_server_handle;
 	brw_test_service.sv_bulk_ready = brw_bulk_ready;
-	brw_test_service.sv_wi_total   = brw_srv_workitems;
+	brw_test_service.sv_wi_total = brw_srv_workitems;
 }

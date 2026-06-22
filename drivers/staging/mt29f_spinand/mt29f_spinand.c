@@ -33,7 +33,7 @@ static inline struct spinand_state *mtd_to_state(struct mtd_info *mtd)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct spinand_info *info = nand_get_controller_data(chip);
-	struct spinand_state *state = (struct spinand_state *)info->priv;
+	struct spinand_state *state = info->priv;
 
 	return state;
 }
@@ -175,7 +175,7 @@ static int wait_till_ready(struct spi_device *spi_nand)
 		retval = spinand_read_status(spi_nand, &stat);
 		if (retval < 0)
 			return -1;
-		else if (!(stat & 0x1))
+		if (!(stat & 0x1))
 			break;
 
 		cond_resched();
@@ -746,7 +746,7 @@ static void spinand_cmdfunc(struct mtd_info *mtd, unsigned int command,
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct spinand_info *info = nand_get_controller_data(chip);
-	struct spinand_state *state = (struct spinand_state *)info->priv;
+	struct spinand_state *state = info->priv;
 
 	switch (command) {
 	/*
@@ -890,7 +890,8 @@ static int spinand_probe(struct spi_device *spi_nand)
 #else
 	chip->ecc.mode	= NAND_ECC_SOFT;
 	if (spinand_disable_ecc(spi_nand) < 0)
-		pr_info("%s: disable ecc failed!\n", __func__);
+		dev_info(&spi_nand->dev, "%s: disable ecc failed!\n",
+			 __func__);
 #endif
 
 	nand_set_flash_node(chip, spi_nand->dev.of_node);

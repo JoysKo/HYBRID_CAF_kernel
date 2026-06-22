@@ -15,10 +15,6 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
- *   You should have received a copy of the GNU General Public License
- *   along with Portals; if not, write to the Free Software
- *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
  */
 
 #define DEBUG_SUBSYSTEM S_LNET
@@ -75,25 +71,6 @@
 
 #define LNET_PROC_VERSION(v)	((unsigned int)((v) & LNET_PROC_VER_MASK))
 
-static int proc_call_handler(void *data, int write, loff_t *ppos,
-		void __user *buffer, size_t *lenp,
-		int (*handler)(void *data, int write,
-		loff_t pos, void __user *buffer, int len))
-{
-	int rc = handler(data, write, *ppos, buffer, *lenp);
-
-	if (rc < 0)
-		return rc;
-
-	if (write) {
-		*ppos += *lenp;
-	} else {
-		*lenp = rc;
-		*ppos += rc;
-	}
-	return 0;
-}
-
 static int __proc_lnet_stats(void *data, int write,
 			     loff_t pos, void __user *buffer, int nob)
 {
@@ -145,8 +122,8 @@ static int __proc_lnet_stats(void *data, int write,
 static int proc_lnet_stats(struct ctl_table *table, int write,
 			   void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	return proc_call_handler(table->data, write, ppos, buffer, lenp,
-				 __proc_lnet_stats);
+	return lprocfs_call_handler(table->data, write, ppos, buffer, lenp,
+				    __proc_lnet_stats);
 }
 
 static int proc_lnet_routes(struct ctl_table *table, int write,
@@ -237,10 +214,10 @@ static int proc_lnet_routes(struct ctl_table *table, int write,
 
 		if (route != NULL) {
 			__u32 net = rnet->lrn_net;
-			unsigned int hops = route->lr_hops;
+			__u32 hops = route->lr_hops;
 			unsigned int priority = route->lr_priority;
 			lnet_nid_t nid = route->lr_gateway->lp_nid;
-			int alive = route->lr_gateway->lp_alive;
+			int alive = lnet_is_route_alive(route);
 
 			s += snprintf(s, tmpstr + tmpsiz - s,
 				      "%-8s %4u %8u %7s %s\n",
@@ -638,8 +615,8 @@ static int __proc_lnet_buffers(void *data, int write,
 static int proc_lnet_buffers(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	return proc_call_handler(table->data, write, ppos, buffer, lenp,
-				 __proc_lnet_buffers);
+	return lprocfs_call_handler(table->data, write, ppos, buffer, lenp,
+				    __proc_lnet_buffers);
 }
 
 static int proc_lnet_nis(struct ctl_table *table, int write,
@@ -795,8 +772,6 @@ static struct lnet_portal_rotors	portal_rotors[] = {
 	},
 };
 
-extern int portal_rotor;
-
 static int __proc_lnet_portal_rotor(void *data, int write,
 				    loff_t pos, void __user *buffer, int nob)
 {
@@ -862,8 +837,8 @@ static int proc_lnet_portal_rotor(struct ctl_table *table, int write,
 				  void __user *buffer, size_t *lenp,
 				  loff_t *ppos)
 {
-	return proc_call_handler(table->data, write, ppos, buffer, lenp,
-				 __proc_lnet_portal_rotor);
+	return lprocfs_call_handler(table->data, write, ppos, buffer, lenp,
+				    __proc_lnet_portal_rotor);
 }
 
 static struct ctl_table lnet_table[] = {

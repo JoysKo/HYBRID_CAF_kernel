@@ -976,8 +976,6 @@ static struct dmi_system_id i8k_blacklist_fan_type_dmi_table[] __initdata = {
 		},
 	},
 	{
-<<<<<<< ours
-=======
 		/*
 		 * CPU fan speed going up and down on Dell Studio XPS 8000
 		 * for unknown reasons.
@@ -993,7 +991,6 @@ static struct dmi_system_id i8k_blacklist_fan_type_dmi_table[] __initdata = {
 		 * CPU fan speed going up and down on Dell Studio XPS 8100
 		 * for unknown reasons.
 		 */
->>>>>>> theirs
 		.ident = "Dell Studio XPS 8100",
 		.matches = {
 			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Dell Inc."),

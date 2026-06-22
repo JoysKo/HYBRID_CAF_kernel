@@ -126,7 +126,7 @@ struct sde_layer_buffer {
 	 * indicate that consumer is still using the buffer and it is not ready
 	 * for new content.
 	 */
-	struct sde_rot_sync_fence *fence;
+	struct sde_rot_sync_file *sync_file;
 };
 
 struct sde_mdp_plane_sizes {

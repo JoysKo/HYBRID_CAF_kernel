@@ -38,6 +38,8 @@
 /** \addtogroup lnet
  * @{ */
 
+#define LNET_VERSION		"0.6.0"
+
 /** \addtogroup lnet_addr
  * @{ */
 

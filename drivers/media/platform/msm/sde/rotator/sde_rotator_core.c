@@ -462,22 +462,22 @@ static bool sde_rotator_is_work_pending(struct sde_rot_mgr *mgr,
 
 static void sde_rotator_clear_fence(struct sde_rot_entry *entry)
 {
-	if (entry->input_fence) {
-		SDEROT_EVTLOG(entry->input_fence, 1111);
-		SDEROT_DBG("sys_fence_put i:%p\n", entry->input_fence);
-		sde_rotator_put_sync_fence(entry->input_fence);
-		entry->input_fence = NULL;
+	if (entry->input_sync_file) {
+		SDEROT_EVTLOG(entry->input_sync_file, 1111);
+		SDEROT_DBG("sys_fence_put i:%p\n", entry->input_sync_file);
+		sde_rotator_put_sync_file(entry->input_sync_file);
+		entry->input_sync_file = NULL;
 	}
 
 	/* fence failed to copy to user space */
-	if (entry->output_fence) {
-		if (entry->fenceq && entry->fenceq->timeline)
-			sde_rotator_resync_timeline(entry->fenceq->timeline);
+	if (entry->output_sync_file) {
+		if (entry->fileq && entry->fileq->timeline)
+			sde_rotator_resync_timeline(entry->fileq->timeline);
 
-		SDEROT_EVTLOG(entry->output_fence, 2222);
-		SDEROT_DBG("sys_fence_put o:%p\n", entry->output_fence);
-		sde_rotator_put_sync_fence(entry->output_fence);
-		entry->output_fence = NULL;
+		SDEROT_EVTLOG(entry->output_sync_file, 2222);
+		SDEROT_DBG("sys_fence_put o:%p\n", entry->output_sync_file);
+		sde_rotator_put_sync_file(entry->output_sync_file);
+		entry->output_sync_file = NULL;
 	}
 }
 
@@ -485,10 +485,10 @@ static int sde_rotator_signal_output(struct sde_rot_entry *entry)
 {
 	struct sde_rot_timeline *rot_timeline;
 
-	if (!entry->fenceq)
+	if (!entry->fileq)
 		return -EINVAL;
 
-	rot_timeline = entry->fenceq->timeline;
+	rot_timeline = entry->fileq->timeline;
 
 	if (entry->output_signaled) {
 		SDEROT_DBG("output already signaled\n");
@@ -1148,7 +1148,7 @@ static void sde_rotator_unassign_queue(struct sde_rot_mgr *mgr,
 	if (!queue)
 		return;
 
-	entry->fenceq = NULL;
+	entry->fileq = NULL;
 	entry->commitq = NULL;
 	entry->doneq = NULL;
 
@@ -1189,7 +1189,7 @@ void sde_rotator_queue_request(struct sde_rot_mgr *mgr,
 	for (i = 0; i < req->count; i++) {
 		entry = req->entries + i;
 		queue = entry->commitq;
-		entry->output_fence = NULL;
+		entry->output_sync_file = NULL;
 
 		if (entry->item.ts)
 			entry->item.ts[SDE_ROTATOR_TS_QUEUE] = ktime_get();
@@ -1421,9 +1421,9 @@ static void sde_rotator_commit_handler(struct kthread_work *work)
 		return;
 	}
 
-	ret = sched_setscheduler(entry->fenceq->rot_thread, SCHED_FIFO, &param);
+	ret = sched_setscheduler(entry->fileq->rot_thread, SCHED_FIFO, &param);
 	if (ret) {
-		SDEROT_WARN("Fail to set kthread priority for fenceq: %d\n",
+		SDEROT_WARN("Fail to set kthread priority for fileq: %d\n",
 				ret);
 	}
 
@@ -1927,7 +1927,7 @@ static int sde_rotator_add_request(struct sde_rot_mgr *mgr,
 	for (i = 0; i < req->count; i++) {
 		entry = req->entries + i;
 		item = &entry->item;
-		entry->fenceq = private->fenceq;
+		entry->fileq = private->fileq;
 
 		ret = sde_rotator_validate_entry(mgr, private, entry);
 		if (ret) {
@@ -1941,8 +1941,8 @@ static int sde_rotator_add_request(struct sde_rot_mgr *mgr,
 			return ret;
 		}
 
-		entry->input_fence = item->input.fence;
-		entry->output_fence = item->output.fence;
+		entry->input_sync_file = item->input.sync_file;
+		entry->output_sync_file = item->output.sync_file;
 
 		ret = sde_rotator_assign_queue(mgr, entry, private);
 		if (ret) {
@@ -3091,7 +3091,7 @@ int sde_rotator_session_open(struct sde_rot_mgr *mgr,
 		goto error_open;
 
 	private->mgr = mgr;
-	private->fenceq = queue;
+	private->fileq = queue;
 
 	ret = sde_rotator_open_session(mgr, private, session_id);
 	if (ret)

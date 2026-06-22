@@ -36,6 +36,7 @@
 
 #define DEBUG_SUBSYSTEM S_LNET
 #include <linux/completion.h>
+#include <net/sock.h>
 #include "../../include/linux/lnet/lib-lnet.h"
 
 static int   accept_port    = 988;
@@ -46,7 +47,9 @@ static struct {
 	int			pta_shutdown;
 	struct socket		*pta_sock;
 	struct completion	pta_signal;
-} lnet_acceptor_state;
+} lnet_acceptor_state = {
+	.pta_shutdown = 1
+};
 
 int
 lnet_acceptor_port(void)
@@ -201,8 +204,6 @@ lnet_connect(struct socket **sockp, lnet_nid_t peer_nid,
 	return rc;
 }
 EXPORT_SYMBOL(lnet_connect);
-
-/* Below is the code common for both kernel and MT user-space */
 
 static int
 lnet_accept(struct socket *sock, __u32 magic)
@@ -436,11 +437,16 @@ accept2secure(const char *acc, long *sec)
 int
 lnet_acceptor_start(void)
 {
+	struct task_struct *task;
 	int rc;
 	long rc2;
 	long secure;
 
-	LASSERT(lnet_acceptor_state.pta_sock == NULL);
+	/* if acceptor is already running return immediately */
+	if (!lnet_acceptor_state.pta_shutdown)
+		return 0;
+
+	LASSERT(!lnet_acceptor_state.pta_sock);
 
 	rc = lnet_acceptor_get_tunables();
 	if (rc != 0)
@@ -454,10 +460,10 @@ lnet_acceptor_start(void)
 	if (lnet_count_acceptor_nis() == 0)  /* not required */
 		return 0;
 
-	rc2 = PTR_ERR(kthread_run(lnet_acceptor,
-				  (void *)(ulong_ptr_t)secure,
-				  "acceptor_%03ld", secure));
-	if (IS_ERR_VALUE(rc2)) {
+	task = kthread_run(lnet_acceptor, (void *)(ulong_ptr_t)secure,
+			   "acceptor_%03ld", secure);
+	if (IS_ERR(task)) {
+		rc2 = PTR_ERR(task);
 		CERROR("Can't start acceptor thread: %ld\n", rc2);
 
 		return -ESRCH;
@@ -480,11 +486,17 @@ lnet_acceptor_start(void)
 void
 lnet_acceptor_stop(void)
 {
-	if (lnet_acceptor_state.pta_sock == NULL) /* not running */
+	struct sock *sk;
+
+	if (lnet_acceptor_state.pta_shutdown) /* not running */
 		return;
 
 	lnet_acceptor_state.pta_shutdown = 1;
-	wake_up_all(sk_sleep(lnet_acceptor_state.pta_sock->sk));
+
+	sk = lnet_acceptor_state.pta_sock->sk;
+
+	/* awake any sleepers using safe method */
+	sk->sk_state_change(sk);
 
 	/* block until acceptor signals exit */
 	wait_for_completion(&lnet_acceptor_state.pta_signal);

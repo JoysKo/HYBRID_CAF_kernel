@@ -464,7 +464,7 @@ struct mdss_mdp_cwb {
 	u32 wb_idx;
 	struct mdp_output_layer layer;
 	void *priv_data;
-	struct msm_sync_pt_data cwb_sync_pt_data;
+	struct msm_sync_fence_data cwb_sync_fence_data;
 	struct blocking_notifier_head notifier_head;
 	struct workqueue_struct *cwb_work_queue;
 	struct work_struct cwb_work;

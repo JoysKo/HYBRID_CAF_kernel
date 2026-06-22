@@ -70,7 +70,7 @@ struct adf_buffer {
 	u32 pitch[ADF_MAX_PLANES];
 	u8 n_planes;
 
-	struct sync_fence *acquire_fence;
+	struct sync_file *acquire_fence;
 };
 
 /**
@@ -263,7 +263,7 @@ struct adf_device_ops {
 	int (*validate)(struct adf_device *dev, struct adf_post *cfg,
 			void **driver_state);
 	/* optional */
-	struct sync_fence *(*complete_fence)(struct adf_device *dev,
+	struct sync_file *(*complete_fence)(struct adf_device *dev,
 			struct adf_post *cfg, void *driver_state);
 	/* required */
 	void (*post)(struct adf_device *dev, struct adf_post *cfg,

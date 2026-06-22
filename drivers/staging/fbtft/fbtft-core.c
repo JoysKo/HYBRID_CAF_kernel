@@ -129,7 +129,8 @@ static int fbtft_request_gpios(struct fbtft_par *par)
 	while (gpio->name[0]) {
 		flags = FBTFT_GPIO_NO_MATCH;
 		/* if driver provides match function, try it first,
-		   if no match use our own */
+		 * if no match use our own
+		 */
 		if (par->fbtftops.request_gpios_match)
 			flags = par->fbtftops.request_gpios_match(par, gpio);
 		if (flags == FBTFT_GPIO_NO_MATCH)
@@ -520,8 +521,7 @@ static ssize_t fbtft_fb_write(struct fb_info *info, const char __user *buf,
 		"%s: count=%zd, ppos=%llu\n", __func__,  count, *ppos);
 	res = fb_sys_write(info, buf, count, ppos);
 
-	/* TODO: only mark changed area
-	   update all for now */
+	/* TODO: only mark changed area update all for now */
 	par->fbtftops.mkdirty(info, -1, 0);
 
 	return res;
@@ -738,8 +738,11 @@ struct fb_info *fbtft_framebuffer_alloc(struct fbtft_display *display,
 		goto alloc_fail;
 
 	if (display->gamma_num && display->gamma_len) {
-		gamma_curves = devm_kzalloc(dev, display->gamma_num * display->gamma_len * sizeof(gamma_curves[0]),
-						GFP_KERNEL);
+		gamma_curves = devm_kcalloc(dev,
+					    display->gamma_num *
+					    display->gamma_len,
+					    sizeof(gamma_curves[0]),
+					    GFP_KERNEL);
 		if (!gamma_curves)
 			goto alloc_fail;
 	}
@@ -990,10 +993,6 @@ int fbtft_register_framebuffer(struct fb_info *fb_info)
 reg_fail:
 	if (par->fbtftops.unregister_backlight)
 		par->fbtftops.unregister_backlight(par);
-	if (spi)
-		spi_set_drvdata(spi, NULL);
-	if (par->pdev)
-		platform_set_drvdata(par->pdev, NULL);
 
 	return ret;
 }
@@ -1011,12 +1010,7 @@ EXPORT_SYMBOL(fbtft_register_framebuffer);
 int fbtft_unregister_framebuffer(struct fb_info *fb_info)
 {
 	struct fbtft_par *par = fb_info->par;
-	struct spi_device *spi = par->spi;
 
-	if (spi)
-		spi_set_drvdata(spi, NULL);
-	if (par->pdev)
-		platform_set_drvdata(par->pdev, NULL);
 	if (par->fbtftops.unregister_backlight)
 		par->fbtftops.unregister_backlight(par);
 	fbtft_sysfs_exit(par);

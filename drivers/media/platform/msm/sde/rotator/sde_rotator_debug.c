@@ -1321,9 +1321,9 @@ struct dentry *sde_rotator_create_debugfs(
 		return NULL;
 	}
 
-	if (!debugfs_create_u32("fence_timeout", S_IRUGO | S_IWUSR,
-			debugfs_root, &rot_dev->fence_timeout)) {
-		SDEROT_ERR("fail create fence_timeout\n");
+	if (!debugfs_create_u32("sync_file_timeout", S_IRUGO | S_IWUSR,
+			debugfs_root, &rot_dev->sync_file_timeout)) {
+		SDEROT_ERR("fail create sync_file_timeout\n");
 		debugfs_remove_recursive(debugfs_root);
 		return NULL;
 	}

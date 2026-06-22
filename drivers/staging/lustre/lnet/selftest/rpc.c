@@ -96,8 +96,8 @@ srpc_add_bulk_page(srpc_bulk_t *bk, struct page *pg, int i, int nob)
 	LASSERT(i >= 0 && i < bk->bk_niov);
 
 	bk->bk_iovs[i].kiov_offset = 0;
-	bk->bk_iovs[i].kiov_page   = pg;
-	bk->bk_iovs[i].kiov_len    = nob;
+	bk->bk_iovs[i].kiov_page = pg;
+	bk->bk_iovs[i].kiov_len = nob;
 	return nob;
 }
 
@@ -118,7 +118,6 @@ srpc_free_bulk(srpc_bulk_t *bk)
 	}
 
 	LIBCFS_FREE(bk, offsetof(srpc_bulk_t, bk_iovs[bk->bk_niov]));
-	return;
 }
 
 srpc_bulk_t *
@@ -137,9 +136,9 @@ srpc_alloc_bulk(int cpt, unsigned bulk_npg, unsigned bulk_len, int sink)
 	}
 
 	memset(bk, 0, offsetof(srpc_bulk_t, bk_iovs[bulk_npg]));
-	bk->bk_sink   = sink;
-	bk->bk_len    = bulk_len;
-	bk->bk_niov   = bulk_npg;
+	bk->bk_sink = sink;
+	bk->bk_len = bulk_len;
+	bk->bk_niov = bulk_npg;
 
 	for (i = 0; i < bulk_npg; i++) {
 		struct page *pg;
@@ -183,10 +182,10 @@ srpc_init_server_rpc(struct srpc_server_rpc *rpc,
 
 	rpc->srpc_ev.ev_fired = 1; /* no event expected now */
 
-	rpc->srpc_scd      = scd;
+	rpc->srpc_scd = scd;
 	rpc->srpc_reqstbuf = buffer;
-	rpc->srpc_peer     = buffer->buf_peer;
-	rpc->srpc_self     = buffer->buf_self;
+	rpc->srpc_peer = buffer->buf_peer;
+	rpc->srpc_self = buffer->buf_self;
 	LNetInvalidateHandle(&rpc->srpc_replymdh);
 }
 
@@ -370,10 +369,10 @@ srpc_post_passive_rdma(int portal, int local, __u64 matchbits, void *buf,
 	}
 
 	md.threshold = 1;
-	md.user_ptr  = ev;
-	md.start     = buf;
-	md.length    = len;
-	md.options   = options;
+	md.user_ptr = ev;
+	md.start = buf;
+	md.length = len;
+	md.options = options;
 	md.eq_handle = srpc_data.rpc_lnet_eq;
 
 	rc = LNetMDAttach(meh, md, LNET_UNLINK, mdh);
@@ -400,12 +399,12 @@ srpc_post_active_rdma(int portal, __u64 matchbits, void *buf, int len,
 	int rc;
 	lnet_md_t md;
 
-	md.user_ptr  = ev;
-	md.start     = buf;
-	md.length    = len;
+	md.user_ptr = ev;
+	md.start = buf;
+	md.length = len;
 	md.eq_handle = srpc_data.rpc_lnet_eq;
-	md.threshold = ((options & LNET_MD_OP_GET) != 0) ? 2 : 1;
-	md.options   = options & ~(LNET_MD_OP_PUT | LNET_MD_OP_GET);
+	md.threshold = options & LNET_MD_OP_GET ? 2 : 1;
+	md.options = options & ~(LNET_MD_OP_PUT | LNET_MD_OP_GET);
 
 	rc = LNetMDBind(md, LNET_UNLINK, mdh);
 	if (rc != 0) {
@@ -448,7 +447,7 @@ static int
 srpc_post_passive_rqtbuf(int service, int local, void *buf, int len,
 			 lnet_handle_md_t *mdh, srpc_event_t *ev)
 {
-	lnet_process_id_t any = {0};
+	lnet_process_id_t any = { 0 };
 
 	any.nid = LNET_NID_ANY;
 	any.pid = LNET_PID_ANY;
@@ -460,10 +459,10 @@ srpc_post_passive_rqtbuf(int service, int local, void *buf, int len,
 
 static int
 srpc_service_post_buffer(struct srpc_service_cd *scd, struct srpc_buffer *buf)
-	__must_hold(&scd->scd_lock)
+__must_hold(&scd->scd_lock)
 {
 	struct srpc_service *sv = scd->scd_svc;
-	struct srpc_msg *msg = &buf->buf_msg;
+	struct srpc_msg	*msg = &buf->buf_msg;
 	int rc;
 
 	LNetInvalidateHandle(&buf->buf_mdh);
@@ -658,7 +657,7 @@ srpc_finish_service(struct srpc_service *sv)
 		}
 
 		if (scd->scd_buf_nposted > 0) {
-			CDEBUG(D_NET, "waiting for %d posted buffers to unlink",
+			CDEBUG(D_NET, "waiting for %d posted buffers to unlink\n",
 			       scd->scd_buf_nposted);
 			spin_unlock(&scd->scd_lock);
 			return 0;
@@ -690,7 +689,7 @@ srpc_finish_service(struct srpc_service *sv)
 /* called with sv->sv_lock held */
 static void
 srpc_service_recycle_buffer(struct srpc_service_cd *scd, srpc_buffer_t *buf)
-	__must_hold(&scd->scd_lock)
+__must_hold(&scd->scd_lock)
 {
 	if (!scd->scd_svc->sv_shuttingdown && scd->scd_buf_adjust >= 0) {
 		if (srpc_service_post_buffer(scd, buf) != 0) {
@@ -786,8 +785,8 @@ srpc_send_request(srpc_client_rpc_t *rpc)
 	int rc;
 
 	ev->ev_fired = 0;
-	ev->ev_data  = rpc;
-	ev->ev_type  = SRPC_REQUEST_SENT;
+	ev->ev_data = rpc;
+	ev->ev_type = SRPC_REQUEST_SENT;
 
 	 rc = srpc_post_active_rdma(srpc_serv_portal(rpc->crpc_service),
 				    rpc->crpc_service, &rpc->crpc_reqstmsg,
@@ -809,8 +808,8 @@ srpc_prepare_reply(srpc_client_rpc_t *rpc)
 	int rc;
 
 	ev->ev_fired = 0;
-	ev->ev_data  = rpc;
-	ev->ev_type  = SRPC_REPLY_RCVD;
+	ev->ev_data = rpc;
+	ev->ev_type = SRPC_REPLY_RCVD;
 
 	*id = srpc_next_id();
 
@@ -830,7 +829,7 @@ srpc_prepare_bulk(srpc_client_rpc_t *rpc)
 {
 	srpc_bulk_t *bk = &rpc->crpc_bulk;
 	srpc_event_t *ev = &rpc->crpc_bulkev;
-	__u64	*id = &rpc->crpc_reqstmsg.msg_body.reqst.bulkid;
+	__u64 *id = &rpc->crpc_reqstmsg.msg_body.reqst.bulkid;
 	int rc;
 	int opt;
 
@@ -843,8 +842,8 @@ srpc_prepare_bulk(srpc_client_rpc_t *rpc)
 	opt |= LNET_MD_KIOV;
 
 	ev->ev_fired = 0;
-	ev->ev_data  = rpc;
-	ev->ev_type  = SRPC_BULK_REQ_RCVD;
+	ev->ev_data = rpc;
+	ev->ev_type = SRPC_BULK_REQ_RCVD;
 
 	*id = srpc_next_id();
 
@@ -873,8 +872,8 @@ srpc_do_bulk(struct srpc_server_rpc *rpc)
 	opt |= LNET_MD_KIOV;
 
 	ev->ev_fired = 0;
-	ev->ev_data  = rpc;
-	ev->ev_type  = bk->bk_sink ? SRPC_BULK_GET_RPLD : SRPC_BULK_PUT_SENT;
+	ev->ev_data = rpc;
+	ev->ev_type = bk->bk_sink ? SRPC_BULK_GET_RPLD : SRPC_BULK_PUT_SENT;
 
 	rc = srpc_post_active_rdma(SRPC_RDMA_PORTAL, id,
 				   &bk->bk_iovs[0], bk->bk_niov, opt,
@@ -890,7 +889,7 @@ static void
 srpc_server_rpc_done(struct srpc_server_rpc *rpc, int status)
 {
 	struct srpc_service_cd *scd = rpc->srpc_scd;
-	struct srpc_service *sv  = scd->scd_svc;
+	struct srpc_service *sv = scd->scd_svc;
 	srpc_buffer_t *buffer;
 
 	LASSERT(status != 0 || rpc->srpc_wi.swi_state == SWI_STATE_DONE);
@@ -945,7 +944,6 @@ srpc_server_rpc_done(struct srpc_server_rpc *rpc, int status)
 	}
 
 	spin_unlock(&scd->scd_lock);
-	return;
 }
 
 /* handles an incoming RPC */
@@ -1082,20 +1080,19 @@ srpc_client_rpc_expired(void *data)
 	spin_unlock(&srpc_data.rpc_glock);
 }
 
-inline void
+static void
 srpc_add_client_rpc_timer(srpc_client_rpc_t *rpc)
 {
-	stt_timer_t *timer = &rpc->crpc_timer;
+	struct stt_timer *timer = &rpc->crpc_timer;
 
 	if (rpc->crpc_timeout == 0)
 		return;
 
 	INIT_LIST_HEAD(&timer->stt_list);
-	timer->stt_data    = rpc;
-	timer->stt_func    = srpc_client_rpc_expired;
+	timer->stt_data	= rpc;
+	timer->stt_func	= srpc_client_rpc_expired;
 	timer->stt_expires = ktime_get_real_seconds() + rpc->crpc_timeout;
 	stt_add_timer(timer);
-	return;
 }
 
 /*
@@ -1158,7 +1155,6 @@ srpc_client_rpc_done(srpc_client_rpc_t *rpc, int status)
 	spin_unlock(&rpc->crpc_lock);
 
 	(*rpc->crpc_done)(rpc);
-	return;
 }
 
 /* sends an outgoing RPC */
@@ -1317,7 +1313,7 @@ srpc_abort_rpc(srpc_client_rpc_t *rpc, int why)
 	LASSERT(why != 0);
 
 	if (rpc->crpc_aborted || /* already aborted */
-	    rpc->crpc_closed)    /* callback imminent */
+	    rpc->crpc_closed)	 /* callback imminent */
 		return;
 
 	CDEBUG(D_NET,
@@ -1326,9 +1322,8 @@ srpc_abort_rpc(srpc_client_rpc_t *rpc, int why)
 		swi_state2str(rpc->crpc_wi.swi_state), why);
 
 	rpc->crpc_aborted = 1;
-	rpc->crpc_status  = why;
+	rpc->crpc_status = why;
 	swi_schedule_workitem(&rpc->crpc_wi);
-	return;
 }
 
 /* called with rpc->crpc_lock held */
@@ -1344,7 +1339,6 @@ srpc_post_rpc(srpc_client_rpc_t *rpc)
 
 	srpc_add_client_rpc_timer(rpc);
 	swi_schedule_workitem(&rpc->crpc_wi);
-	return;
 }
 
 int
@@ -1374,12 +1368,12 @@ srpc_send_reply(struct srpc_server_rpc *rpc)
 	spin_unlock(&scd->scd_lock);
 
 	ev->ev_fired = 0;
-	ev->ev_data  = rpc;
-	ev->ev_type  = SRPC_REPLY_SENT;
+	ev->ev_data = rpc;
+	ev->ev_type = SRPC_REPLY_SENT;
 
-	msg->msg_magic   = SRPC_MSG_MAGIC;
+	msg->msg_magic = SRPC_MSG_MAGIC;
 	msg->msg_version = SRPC_MSG_VERSION;
-	msg->msg_type    = srpc_service2reply(sv->sv_id);
+	msg->msg_type = srpc_service2reply(sv->sv_id);
 
 	rc = srpc_post_active_rdma(SRPC_RDMA_PORTAL, rpyid, msg,
 				   sizeof(*msg), LNET_MD_OP_PUT,
@@ -1405,10 +1399,17 @@ srpc_lnet_ev_handler(lnet_event_t *ev)
 
 	LASSERT(!in_interrupt());
 
-	if (ev->status != 0) {
+	if (ev->status) {
+		__u32 errors;
+
 		spin_lock(&srpc_data.rpc_glock);
-		srpc_data.rpc_counters.errors++;
+		if (ev->status != -ECANCELED) /* cancellation is not error */
+			srpc_data.rpc_counters.errors++;
+		errors = srpc_data.rpc_counters.errors;
 		spin_unlock(&srpc_data.rpc_glock);
+
+		CNETERR("LNet event status %d type %d, RPC errors %u\n",
+			ev->status, ev->type, errors);
 	}
 
 	rpcev->ev_lnet = ev->type;
@@ -1441,8 +1442,8 @@ srpc_lnet_ev_handler(lnet_event_t *ev)
 
 		spin_lock(&crpc->crpc_lock);
 
-		LASSERT(rpcev->ev_fired == 0);
-		rpcev->ev_fired  = 1;
+		LASSERT(!rpcev->ev_fired);
+		rpcev->ev_fired = 1;
 		rpcev->ev_status = (ev->type == LNET_EVENT_UNLINK) ?
 						-EINTR : ev->status;
 		swi_schedule_workitem(&crpc->crpc_wi);
@@ -1556,13 +1557,13 @@ srpc_lnet_ev_handler(lnet_event_t *ev)
 		}
 	case SRPC_REPLY_SENT:
 		srpc = rpcev->ev_data;
-		scd  = srpc->srpc_scd;
+		scd = srpc->srpc_scd;
 
 		LASSERT(rpcev == &srpc->srpc_ev);
 
 		spin_lock(&scd->scd_lock);
 
-		rpcev->ev_fired  = 1;
+		rpcev->ev_fired = 1;
 		rpcev->ev_status = (ev->type == LNET_EVENT_UNLINK) ?
 				   -EINTR : ev->status;
 		swi_schedule_workitem(&srpc->srpc_wi);
@@ -1587,7 +1588,7 @@ srpc_startup(void)
 
 	srpc_data.rpc_state = SRPC_STATE_NONE;
 
-	rc = LNetNIInit(LUSTRE_SRV_LNET_PID);
+	rc = LNetNIInit(LNET_PID_LUSTRE);
 	if (rc < 0) {
 		CERROR("LNetNIInit() has failed: %d\n", rc);
 		return rc;
@@ -1658,6 +1659,4 @@ srpc_shutdown(void)
 	case SRPC_STATE_NI_INIT:
 		LNetNIFini();
 	}
-
-	return;
 }

@@ -26,7 +26,7 @@ struct sde_rot_timeline {
 	struct mutex lock;
 	struct sw_sync_timeline *timeline;
 	u32 next_value;
-	char fence_name[32];
+	char sync_file_name[32];
 };
 /*
  * sde_rotator_create_timeline - Create timeline object with the given name
@@ -55,7 +55,7 @@ struct sde_rot_timeline *sde_rotator_create_timeline(const char *name)
 		return NULL;
 	}
 
-	snprintf(tl->fence_name, sizeof(tl->fence_name), "rot_fence_%s", name);
+	snprintf(tl->sync_file_name, sizeof(tl->sync_file_name), "rot_sync_file_%s", name);
 	mutex_init(&tl->lock);
 	tl->next_value = 0;
 
@@ -94,26 +94,26 @@ void sde_rotator_resync_timeline(struct sde_rot_timeline *tl)
 	mutex_lock(&tl->lock);
 	val = tl->next_value - tl->timeline->value;
 	if (val > 0) {
-		SDEROT_WARN("flush %s:%d\n", tl->fence_name, val);
+		SDEROT_WARN("flush %s:%d\n", tl->sync_file_name, val);
 		sw_sync_timeline_inc(tl->timeline, val);
 	}
 	mutex_unlock(&tl->lock);
 }
 
 /*
- * sde_rotator_get_sync_fence - Create fence object from the given timeline
+ * sde_rotator_get_sync_file - Create sync_file object from the given timeline
  * @tl: Pointer to timeline object
- * @fence_fd: Pointer to file descriptor associated with the returned fence.
+ * @sync_file_fd: Pointer to file descriptor associated with the returned sync_file.
  *		Null if not required.
- * @timestamp: Pointer to timestamp of the returned fence. Null if not required.
+ * @timestamp: Pointer to timestamp of the returned sync_file. Null if not required.
  */
-struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
-		struct sde_rot_timeline *tl, int *fence_fd,
+struct sde_rot_sync_file *sde_rotator_get_sync_file(
+		struct sde_rot_timeline *tl, int *sync_file_fd,
 		u32 *timestamp)
 {
 	u32 val;
-	struct sync_pt *sync_pt;
-	struct sync_fence *fence;
+	struct fence *sync_pt;
+	struct sync_file *sync_file;
 
 	if (!tl || !tl->timeline) {
 		SDEROT_ERR("invalid parameters\n");
@@ -123,21 +123,21 @@ struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
 	mutex_lock(&tl->lock);
 	val = tl->next_value + 1;
 
-	sync_pt = sw_sync_pt_create(tl->timeline, val);
+	sync_pt = sw_sync_fence_create(tl->timeline, val);
 	if (sync_pt == NULL) {
 		SDEROT_ERR("cannot create sync point\n");
 		goto sync_pt_create_err;
 	}
 
-	/* create fence */
-	fence = sync_fence_create(tl->fence_name, sync_pt);
-	if (fence == NULL) {
-		SDEROT_ERR("%s: cannot create fence\n",
-				tl->fence_name);
-		goto sync_fence_create_err;
+	/* create sync_file */
+	sync_file = sync_file_create(tl->sync_file_name, sync_pt);
+	if (sync_file == NULL) {
+		SDEROT_ERR("%s: cannot create sync_file\n",
+				tl->sync_file_name);
+		goto sync_file_create_err;
 	}
 
-	if (fence_fd) {
+	if (sync_file_fd) {
 		int fd = get_unused_fd_flags(0);
 
 		if (fd < 0) {
@@ -146,8 +146,8 @@ struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
 			goto get_fd_err;
 		}
 
-		sync_fence_install(fence, fd);
-		*fence_fd = fd;
+		sync_file_install(sync_file, fd);
+		*sync_file_fd = fd;
 	}
 
 	if (timestamp)
@@ -157,12 +157,12 @@ struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
 	mutex_unlock(&tl->lock);
 	SDEROT_DBG("output sync point created at val=%u\n", val);
 
-	return (struct sde_rot_sync_fence *) fence;
+	return (struct sde_rot_sync_file *) sync_file;
 get_fd_err:
-	SDEROT_DBG("sys_fence_put c:%p\n", fence);
-	sync_fence_put(fence);
-sync_fence_create_err:
-	sync_pt_free(sync_pt);
+	SDEROT_DBG("sys_sync_file_put c:%p\n", sync_file);
+	sync_file_put(sync_file);
+sync_file_create_err:
+	fence_put(sync_pt);
 sync_pt_create_err:
 	mutex_unlock(&tl->lock);
 	return NULL;
@@ -214,51 +214,84 @@ u32 sde_rotator_get_timeline_retire_ts(struct sde_rot_timeline *tl)
 }
 
 /*
- * sde_rotator_put_sync_fence - Destroy given fence object
- * @fence: Pointer to fence object.
+ * sde_rotator_put_sync_file - Destroy given sync_file object
+ * @sync_file: Pointer to sync_file object.
  */
-void sde_rotator_put_sync_fence(struct sde_rot_sync_fence *fence)
+void sde_rotator_put_sync_file(struct sde_rot_sync_file *sync_file)
 {
-	if (!fence) {
+	if (!sync_file) {
 		SDEROT_ERR("invalid parameters\n");
 		return;
 	}
 
-	sync_fence_put((struct sync_fence *) fence);
+	sync_file_put((struct sync_file *) sync_file);
+}
+
+static int sync_file_wait(struct sync_file *sync_file, long timeout)
+{
+	long ret;
+
+	if (timeout < 0)
+		timeout = MAX_SCHEDULE_TIMEOUT;
+	else
+		timeout = msecs_to_jiffies(timeout);
+
+	ret = wait_event_interruptible_timeout(sync_file->wq,
+					       atomic_read(&sync_file->status) <= 0,
+					       timeout);
+
+	if (ret < 0) {
+		return ret;
+	} else if (ret == 0) {
+		if (timeout) {
+			pr_info("sync_file timeout on [%p] after %dms\n",
+				sync_file, jiffies_to_msecs(timeout));
+			if (jiffies_to_msecs(timeout) >= 7000)
+				sync_dump();
+		}
+		return -ETIME;
+	}
+
+	ret = atomic_read(&sync_file->status);
+	if (ret) {
+		pr_info("sync_file error %ld on [%p]\n", ret, sync_file);
+		sync_dump();
+	}
+	return ret;
 }
 
 /*
- * sde_rotator_wait_sync_fence - Wait until fence signal or timeout
- * @fence: Pointer to fence object.
- * @timeout: maximum wait time, in msec, for fence to signal.
+ * sde_rotator_wait_sync_file - Wait until sync_file signal or timeout
+ * @sync_file: Pointer to sync_file object.
+ * @timeout: maximum wait time, in msec, for sync_file to signal.
  */
-int sde_rotator_wait_sync_fence(struct sde_rot_sync_fence *fence,
+int sde_rotator_wait_sync_file(struct sde_rot_sync_file *sync_file,
 		long timeout)
 {
-	if (!fence)
+	if (!sync_file)
 		return -EINVAL;
 
-	return sync_fence_wait((struct sync_fence *) fence, timeout);
+	return sync_file_wait((struct sync_file *) sync_file, timeout);
 }
 
 /*
- * sde_rotator_get_sync_fence_fd - Get fence object of given file descriptor
- * @fd: File description of fence object.
+ * sde_rotator_get_sync_file_fd - Get sync_file object of given file descriptor
+ * @fd: File description of sync_file object.
  */
-struct sde_rot_sync_fence *sde_rotator_get_fd_sync_fence(int fd)
+struct sde_rot_sync_file *sde_rotator_get_fd_sync_file(int fd)
 {
-	return (struct sde_rot_sync_fence *) sync_fence_fdget(fd);
+	return (struct sde_rot_sync_file *) sync_file_fdget(fd);
 }
 
 /*
- * sde_rotator_get_sync_fence_fd - Get file descriptor of given fence object
- * @fence: Pointer to fence object.
+ * sde_rotator_get_sync_file_fd - Get file descriptor of given sync_file object
+ * @sync_file: Pointer to sync_file object.
  */
-int sde_rotator_get_sync_fence_fd(struct sde_rot_sync_fence *fence)
+int sde_rotator_get_sync_file_fd(struct sde_rot_sync_file *sync_file)
 {
 	int fd;
 
-	if (!fence) {
+	if (!sync_file) {
 		SDEROT_ERR("invalid parameters\n");
 		return -EINVAL;
 	}
@@ -270,7 +303,7 @@ int sde_rotator_get_sync_fence_fd(struct sde_rot_sync_fence *fence)
 		return fd;
 	}
 
-	sync_fence_install((struct sync_fence *) fence, fd);
+	sync_file_install((struct sync_file *) sync_file, fd);
 
 	return fd;
 }

@@ -17,7 +17,7 @@
 #include <linux/types.h>
 #include <linux/errno.h>
 
-struct sde_rot_sync_fence;
+struct sde_rot_sync_file;
 struct sde_rot_timeline;
 
 #if defined(CONFIG_SYNC) && defined(CONFIG_SW_SYNC)
@@ -25,8 +25,8 @@ struct sde_rot_timeline *sde_rotator_create_timeline(const char *name);
 
 void sde_rotator_destroy_timeline(struct sde_rot_timeline *tl);
 
-struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
-		struct sde_rot_timeline *tl, int *fence_fd, u32 *timestamp);
+struct sde_rot_sync_file *sde_rotator_get_sync_file(
+		struct sde_rot_timeline *tl, int *sync_file_fd, u32 *timestamp);
 
 void sde_rotator_resync_timeline(struct sde_rot_timeline *tl);
 
@@ -36,14 +36,14 @@ u32 sde_rotator_get_timeline_retire_ts(struct sde_rot_timeline *tl);
 
 int sde_rotator_inc_timeline(struct sde_rot_timeline *tl, int increment);
 
-void sde_rotator_put_sync_fence(struct sde_rot_sync_fence *fence);
+void sde_rotator_put_sync_file(struct sde_rot_sync_file *sync_file);
 
-int sde_rotator_wait_sync_fence(struct sde_rot_sync_fence *fence,
+int sde_rotator_wait_sync_file(struct sde_rot_sync_file *sync_file,
 		long timeout);
 
-struct sde_rot_sync_fence *sde_rotator_get_fd_sync_fence(int fd);
+struct sde_rot_sync_file *sde_rotator_get_fd_sync_file(int fd);
 
-int sde_rotator_get_sync_fence_fd(struct sde_rot_sync_fence *fence);
+int sde_rotator_get_sync_file_fd(struct sde_rot_sync_file *sync_file);
 
 #else
 static inline
@@ -58,8 +58,8 @@ void sde_rotator_destroy_timeline(struct sde_rot_timeline *tl)
 }
 
 static inline
-struct sde_rot_sync_fence *sde_rotator_get_sync_fence(
-		struct sde_rot_timeline *tl, int *fence_fd, u32 *timestamp)
+struct sde_rot_sync_file *sde_rotator_get_sync_file(
+		struct sde_rot_timeline *tl, int *sync_file_fd, u32 *timestamp)
 {
 	return NULL;
 }
@@ -88,25 +88,25 @@ u32 sde_rotator_get_timeline_retire_ts(struct sde_rot_timeline *tl)
 }
 
 static inline
-void sde_rotator_put_sync_fence(struct sde_rot_sync_fence *fence)
+void sde_rotator_put_sync_file(struct sde_rot_sync_file *sync_file)
 {
 }
 
 static inline
-int sde_rotator_wait_sync_fence(struct sde_rot_sync_fence *fence,
+int sde_rotator_wait_sync_fence(struct sde_rot_sync_file *sync_file,
 		long timeout)
 {
 	return 0;
 }
 
 static inline
-struct sde_rot_sync_fence *sde_rotator_get_fd_sync_fence(int fd)
+struct sde_rot_sync_file *sde_rotator_get_fd_sync_file(int fd)
 {
 	return NULL;
 }
 
 static inline
-int sde_rotator_get_sync_fence_fd(struct sde_rot_sync_fence *fence)
+int sde_rotator_get_sync_file_fd(struct sde_rot_sync_file *sync_file)
 {
 	return -EBADF;
 }

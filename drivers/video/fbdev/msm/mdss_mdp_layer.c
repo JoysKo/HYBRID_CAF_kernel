@@ -1373,13 +1373,13 @@ end:
 	return ret;
 }
 
-static struct sync_fence *__create_fence(struct msm_fb_data_type *mfd,
-	struct msm_sync_pt_data *sync_pt_data, u32 fence_type,
-	int *fence_fd, int value)
+static struct sync_file *__create_sync_file(struct msm_fb_data_type *mfd,
+	struct msm_sync_fence_data *sync_pt_data, u32 sync_file_type,
+	int *sync_file_fd, int value)
 {
 	struct mdss_overlay_private *mdp5_data;
 	struct mdss_mdp_ctl *ctl;
-	struct sync_fence *sync_fence = NULL;
+	struct sync_file *sync_file = NULL;
 
 	mdp5_data = mfd_to_mdp5_data(mfd);
 
@@ -1394,127 +1394,127 @@ static struct sync_fence *__create_fence(struct msm_fb_data_type *mfd,
 		return ERR_PTR(-EPERM);
 	}
 
-	if ((fence_type == MDSS_MDP_RETIRE_FENCE) &&
+	if ((sync_file_type == MDSS_MDP_RETIRE_FENCE) &&
 		(mfd->panel.type == MIPI_CMD_PANEL)) {
 		if (mdp5_data->vsync_timeline) {
 			value = mdp5_data->vsync_timeline->value + 1 +
 				mdp5_data->retire_cnt++;
-			sync_fence = mdss_fb_sync_get_fence(
+			sync_file = mdss_fb_sync_get_file(
 				mdp5_data->vsync_timeline, "", value);
 		} else {
 			return ERR_PTR(-EPERM);
 		}
-	} else if (fence_type == MDSS_MDP_CWB_RETIRE_FENCE) {
-		sync_fence = mdss_fb_sync_get_fence(sync_pt_data->timeline,
+	} else if (sync_file_type == MDSS_MDP_CWB_RETIRE_FENCE) {
+		sync_file = mdss_fb_sync_get_file(sync_pt_data->timeline,
 				"", sync_pt_data->timeline_value + 1);
 	} else {
-		sync_fence = mdss_fb_sync_get_fence(sync_pt_data->timeline,
+		sync_file = mdss_fb_sync_get_file(sync_pt_data->timeline,
 				"", value);
 	}
 
-	if (IS_ERR_OR_NULL(sync_fence)) {
-		pr_err("%s: unable to retrieve release fence\n", __func__);
+	if (IS_ERR_OR_NULL(sync_file)) {
+		pr_err("%s: unable to retrieve release sync_file\n", __func__);
 		goto end;
 	}
 
-	/* get fence fd */
-	*fence_fd = get_unused_fd_flags(0);
-	if (*fence_fd < 0) {
+	/* get sync_file fd */
+	*sync_file_fd = get_unused_fd_flags(0);
+	if (*sync_file_fd < 0) {
 		pr_err("%s: get_unused_fd_flags failed error:0x%x\n",
-			__func__, *fence_fd);
-		sync_fence_put(sync_fence);
-		sync_fence = NULL;
+			__func__, *sync_file_fd);
+		sync_file_put(sync_file);
+		sync_file = NULL;
 		goto end;
 	}
 
 end:
-	return sync_fence;
+	return sync_file;
 }
 
 /*
- * __handle_buffer_fences() - copy sync fences and return release/retire
- * fence to caller.
+ * __handle_buffer_sync_files() - copy sync sync_files and return release/retire
+ * sync_file to caller.
  *
- * This function copies all input sync fences to acquire fence array and
- * returns release/retire fences to caller. It acts like buff_sync ioctl.
+ * This function copies all input sync sync_files to acquire sync_file array and
+ * returns release/retire sync_files to caller. It acts like buff_sync ioctl.
  */
-static int __handle_buffer_fences(struct msm_fb_data_type *mfd,
+static int __handle_buffer_sync_files(struct msm_fb_data_type *mfd,
 	struct mdp_layer_commit_v1 *commit, struct mdp_input_layer *layer_list)
 {
-	struct sync_fence *fence, *release_fence, *retire_fence;
-	struct msm_sync_pt_data *sync_pt_data = NULL;
+	struct sync_file *sync_file, *release_sync_file, *retire_sync_file;
+	struct msm_sync_fence_data *sync_pt_data = NULL;
 	struct mdp_input_layer *layer;
 	int value;
 
 	u32 acq_fen_count, i, ret = 0;
 	u32 layer_count = commit->input_layer_cnt;
 
-	sync_pt_data = &mfd->mdp_sync_pt_data;
+	sync_pt_data = &mfd->mdp_sync_fence_data;
 	if (!sync_pt_data) {
 		pr_err("sync point data are NULL\n");
 		return -EINVAL;
 	}
 
-	i = mdss_fb_wait_for_fence(sync_pt_data);
+	i = mdss_fb_wait_for_sync_file(sync_pt_data);
 	if (i > 0)
-		pr_warn("%s: waited on %d active fences\n",
-			sync_pt_data->fence_name, i);
+		pr_warn("%s: waited on %d active sync_files\n",
+			sync_pt_data->sync_file_name, i);
 
 	mutex_lock(&sync_pt_data->sync_mutex);
 	for (i = 0, acq_fen_count = 0; i < layer_count; i++) {
 		layer = &layer_list[i];
 
-		if (layer->buffer.fence < 0)
+		if (layer->buffer.sync_file < 0)
 			continue;
 
-		fence = sync_fence_fdget(layer->buffer.fence);
-		if (!fence) {
-			pr_err("%s: sync fence get failed! fd=%d\n",
-				sync_pt_data->fence_name, layer->buffer.fence);
+		sync_file = sync_file_fdget(layer->buffer.sync_file);
+		if (!sync_file) {
+			pr_err("%s: sync sync_file get failed! fd=%d\n",
+				sync_pt_data->sync_file_name, layer->buffer.sync_file);
 			ret = -EINVAL;
 			break;
 		} else {
-			sync_pt_data->acq_fen[acq_fen_count++] = fence;
+			sync_pt_data->acq_fen[acq_fen_count++] = sync_file;
 		}
 	}
 	sync_pt_data->acq_fen_cnt = acq_fen_count;
 	if (ret)
-		goto sync_fence_err;
+		goto sync_file_err;
 
 	value = sync_pt_data->timeline_value + sync_pt_data->threshold +
 			atomic_read(&sync_pt_data->commit_cnt);
 
-	release_fence = __create_fence(mfd, sync_pt_data,
-		MDSS_MDP_RELEASE_FENCE, &commit->release_fence, value);
-	if (IS_ERR_OR_NULL(release_fence)) {
-		pr_err("unable to retrieve release fence\n");
-		ret = PTR_ERR(release_fence);
-		goto release_fence_err;
+	release_sync_file = __create_sync_file(mfd, sync_pt_data,
+		MDSS_MDP_RELEASE_FENCE, &commit->release_sync_file, value);
+	if (IS_ERR_OR_NULL(release_sync_file)) {
+		pr_err("unable to retrieve release sync_file\n");
+		ret = PTR_ERR(release_sync_file);
+		goto release_sync_file_err;
 	}
 
-	retire_fence = __create_fence(mfd, sync_pt_data,
-		MDSS_MDP_RETIRE_FENCE, &commit->retire_fence, value);
-	if (IS_ERR_OR_NULL(retire_fence)) {
-		pr_err("unable to retrieve retire fence\n");
-		ret = PTR_ERR(retire_fence);
-		goto retire_fence_err;
+	retire_sync_file = __create_sync_file(mfd, sync_pt_data,
+		MDSS_MDP_RETIRE_FENCE, &commit->retire_sync_file, value);
+	if (IS_ERR_OR_NULL(retire_sync_file)) {
+		pr_err("unable to retrieve retire sync_file\n");
+		ret = PTR_ERR(retire_sync_file);
+		goto retire_sync_file_err;
 	}
 
-	sync_fence_install(release_fence, commit->release_fence);
-	sync_fence_install(retire_fence, commit->retire_fence);
+	sync_file_install(release_sync_file, commit->release_sync_file);
+	sync_file_install(retire_sync_file, commit->retire_sync_file);
 
 	mutex_unlock(&sync_pt_data->sync_mutex);
 	return ret;
 
-retire_fence_err:
-	put_unused_fd(commit->release_fence);
-	sync_fence_put(release_fence);
-release_fence_err:
-	commit->retire_fence = -1;
-	commit->release_fence = -1;
-sync_fence_err:
+retire_sync_file_err:
+	put_unused_fd(commit->release_sync_file);
+	sync_file_put(release_sync_file);
+release_sync_file_err:
+	commit->retire_sync_file = -1;
+	commit->release_sync_file = -1;
+sync_file_err:
 	for (i = 0; i < sync_pt_data->acq_fen_cnt; i++)
-		sync_fence_put(sync_pt_data->acq_fen[i]);
+		sync_file_put(sync_pt_data->acq_fen[i]);
 	sync_pt_data->acq_fen_cnt = 0;
 
 	mutex_unlock(&sync_pt_data->sync_mutex);
@@ -1634,7 +1634,7 @@ static inline bool __compare_layer_config(struct mdp_input_layer *validate,
  *
  * This functions helps to skip validation for layers where only buffer is
  * changing. For ex: video playback case. In order to skip validation, it
- * compares all input layer params except buffer handle, offset, fences.
+ * compares all input layer params except buffer handle, offset, sync_files.
  */
 static struct mdss_mdp_pipe *__find_layer_in_validate_q(
 	struct mdss_mdp_validate_info_t *vinfo,
@@ -2769,7 +2769,7 @@ int __is_cwb_requested(uint32_t commit_flags)
  * This function checks if layers present in commit request are already
  * validated or not. If there is mismatch in validate and commit layers
  * then it validate all input layers again. On successful validation, it
- * maps the input layer buffer and creates release/retire fences.
+ * maps the input layer buffer and creates release/retire sync_files.
  *
  * This function is called from client context and can return the error.
  */
@@ -2889,31 +2889,31 @@ int mdss_mdp_layer_pre_commit(struct msm_fb_data_type *mfd,
 		goto map_err;
 	}
 
-	ret = __handle_buffer_fences(mfd, commit, layer_list);
+	ret = __handle_buffer_sync_files(mfd, commit, layer_list);
 	if (ret) {
-		pr_err("failed to handle fences for fb: %d", mfd->index);
+		pr_err("failed to handle sync_files for fb: %d", mfd->index);
 		goto map_err;
 	}
 
 	if (mdp5_data->cwb.valid) {
-		struct sync_fence *retire_fence = NULL;
+		struct sync_file *retire_sync_file = NULL;
 
 		if (!commit->output_layer) {
 			pr_err("cwb request without setting output layer\n");
 			goto map_err;
 		}
 
-		retire_fence = __create_fence(mfd,
-				&mdp5_data->cwb.cwb_sync_pt_data,
+		retire_sync_file = __create_sync_file(mfd,
+				&mdp5_data->cwb.cwb_sync_fence_data,
 				MDSS_MDP_CWB_RETIRE_FENCE,
-				&commit->output_layer->buffer.fence, 0);
-		if (IS_ERR_OR_NULL(retire_fence)) {
-			pr_err("failed to handle cwb fence");
+				&commit->output_layer->buffer.sync_file, 0);
+		if (IS_ERR_OR_NULL(retire_sync_file)) {
+			pr_err("failed to handle cwb sync_file");
 			goto map_err;
 		}
 
-		sync_fence_install(retire_fence,
-				commit->output_layer->buffer.fence);
+		sync_file_install(retire_sync_file,
+				commit->output_layer->buffer.sync_file);
 	}
 
 map_err:
@@ -3066,8 +3066,8 @@ int mdss_mdp_layer_pre_commit_wfd(struct msm_fb_data_type *mfd,
 	struct mdss_mdp_wfd *wfd = NULL;
 	struct mdp_output_layer *output_layer = NULL;
 	struct mdss_mdp_wb_data *data = NULL;
-	struct sync_fence *fence = NULL;
-	struct msm_sync_pt_data *sync_pt_data = NULL;
+	struct sync_file *sync_file = NULL;
+	struct msm_sync_fence_data *sync_pt_data = NULL;
 
 	if (!mfd || !commit)
 		return -EINVAL;
@@ -3093,12 +3093,12 @@ int mdss_mdp_layer_pre_commit_wfd(struct msm_fb_data_type *mfd,
 		if (IS_ERR_OR_NULL(data))
 			return PTR_ERR(data);
 
-		if (output_layer->buffer.fence >= 0) {
-			fence = sync_fence_fdget(output_layer->buffer.fence);
-			if (!fence) {
-				pr_err("fail to get output buffer fence\n");
+		if (output_layer->buffer.sync_file >= 0) {
+			sync_file = sync_file_fdget(output_layer->buffer.sync_file);
+			if (!sync_file) {
+				pr_err("fail to get output buffer sync_file\n");
 				rc = -EINVAL;
-				goto fence_get_err;
+				goto sync_file_get_err;
 			}
 		}
 	} else {
@@ -3115,28 +3115,28 @@ int mdss_mdp_layer_pre_commit_wfd(struct msm_fb_data_type *mfd,
 		goto input_layer_err;
 	}
 
-	if (fence) {
-		sync_pt_data = &mfd->mdp_sync_pt_data;
+	if (sync_file) {
+		sync_pt_data = &mfd->mdp_sync_fence_data;
 		mutex_lock(&sync_pt_data->sync_mutex);
 		count = sync_pt_data->acq_fen_cnt;
 
 		if (count >= MDP_MAX_FENCE_FD) {
-			pr_err("Reached maximum possible value for fence count\n");
+			pr_err("Reached maximum possible value for sync_file count\n");
 			mutex_unlock(&sync_pt_data->sync_mutex);
 			rc = -EINVAL;
 			goto input_layer_err;
 		}
 
-		sync_pt_data->acq_fen[count] = fence;
+		sync_pt_data->acq_fen[count] = sync_file;
 		sync_pt_data->acq_fen_cnt++;
 		mutex_unlock(&sync_pt_data->sync_mutex);
 	}
 	return rc;
 
 input_layer_err:
-	if (fence)
-		sync_fence_put(fence);
-fence_get_err:
+	if (sync_file)
+		sync_file_put(sync_file);
+sync_file_get_err:
 	if (data)
 		mdss_mdp_wfd_remove_data(wfd, data);
 	return rc;

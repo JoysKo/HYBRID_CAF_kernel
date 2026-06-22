@@ -793,7 +793,7 @@ static int mdp3_ctrl_on(struct msm_fb_data_type *mfd)
 	/* Increment the overlay active count */
 	atomic_inc(&mdp3_res->active_intf_cnt);
 	mdp3_ctrl_notifier_register(mdp3_session,
-		&mdp3_session->mfd->mdp_sync_pt_data.notifier);
+		&mdp3_session->mfd->mdp_sync_fence_data.notifier);
 
 	/* request bus bandwidth before DSI DMA traffic */
 	rc = mdp3_ctrl_res_req_bus(mfd, 1);
@@ -981,7 +981,7 @@ static int mdp3_ctrl_off(struct msm_fb_data_type *mfd)
 		}
 
 		mdp3_ctrl_notifier_unregister(mdp3_session,
-			&mdp3_session->mfd->mdp_sync_pt_data.notifier);
+			&mdp3_session->mfd->mdp_sync_fence_data.notifier);
 
 		mdp3_session->vsync_enabled = 0;
 		atomic_set(&mdp3_session->vsync_countdown, 0);
@@ -2737,7 +2737,7 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 		mdp3_session->clk_on = 1;
 		mdp3_session->in_splash_screen = 1;
 		mdp3_ctrl_notifier_register(mdp3_session,
-			&mdp3_session->mfd->mdp_sync_pt_data.notifier);
+			&mdp3_session->mfd->mdp_sync_fence_data.notifier);
 	}
 
 	/*

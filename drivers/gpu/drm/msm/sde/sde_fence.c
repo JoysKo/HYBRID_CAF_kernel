@@ -43,7 +43,7 @@ uint32_t sde_sync_get_name_prefix(void *fence)
 	if (!fence)
 		return 0x0;
 
-	name = ((struct sync_fence *)fence)->name;
+	name = ((struct sync_file *)fence)->name;
 	prefix = 0x0;
 	for (i = 0; i < sizeof(uint32_t) && name[i]; ++i)
 		prefix = (prefix << CHAR_BIT) | name[i];
@@ -62,8 +62,8 @@ uint32_t sde_sync_get_name_prefix(void *fence)
  */
 static int _sde_fence_create_fd(void *timeline, const char *name, uint32_t val)
 {
-	struct sync_pt *sync_pt;
-	struct sync_fence *fence;
+	struct fence *sync_pt;
+	struct sync_file *fence;
 	signed int fd = -EINVAL;
 
 	if (!timeline) {
@@ -75,7 +75,7 @@ static int _sde_fence_create_fd(void *timeline, const char *name, uint32_t val)
 		name = "sde_fence";
 
 	/* create sync point */
-	sync_pt = sw_sync_pt_create(timeline, val);
+	sync_pt = sw_sync_fence_create(timeline, val);
 	if (sync_pt == NULL) {
 		SDE_ERROR("failed to create sync point, %s\n", name);
 		goto exit;

@@ -549,6 +549,7 @@ struct binder_proc {
 	struct rb_root refs_by_node;
 	struct list_head waiting_threads;
 	int pid;
+	struct mm_struct *vma_vm_mm;
 	struct task_struct *tsk;
 	struct files_struct *files;
 	struct mutex files_lock;
@@ -5017,6 +5018,11 @@ static long binder_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	/*pr_info("binder_ioctl: %d:%d %x %lx\n",
 			proc->pid, current->pid, cmd, arg);*/
 
+	if (unlikely(current->mm != proc->vma_vm_mm)) {
+		pr_err("current mm mismatch proc mm\n");
+		return -EINVAL;
+	}
+	
 	binder_selftest_alloc(&proc->alloc);
 
 	trace_binder_ioctl(cmd, arg);
@@ -5229,6 +5235,7 @@ static int binder_open(struct inode *nodp, struct file *filp)
 	spin_lock_init(&proc->outer_lock);
 	get_task_struct(current->group_leader);
 	proc->tsk = current->group_leader;
+	proc->vma_vm_mm = current->mm;
 	mutex_init(&proc->files_lock);
 	proc->cred = get_cred(filp->f_cred);
 	INIT_LIST_HEAD(&proc->todo);

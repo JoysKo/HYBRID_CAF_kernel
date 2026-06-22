@@ -72,14 +72,14 @@ LNetEQAlloc(unsigned int count, lnet_eq_handler_t callback,
 {
 	lnet_eq_t *eq;
 
-	LASSERT(the_lnet.ln_init);
 	LASSERT(the_lnet.ln_refcount > 0);
 
 	/* We need count to be a power of 2 so that when eq_{enq,deq}_seq
 	 * overflow, they don't skip entries, so the queue has the same
 	 * apparent capacity at all times */
 
-	count = roundup_pow_of_two(count);
+	if (count)
+		count = roundup_pow_of_two(count);
 
 	if (callback != LNET_EQ_HANDLER_NONE && count != 0)
 		CWARN("EQ callback is guaranteed to get every event, do you still want to set eqcount %d for polling event which will have locking overhead? Please contact with developer to confirm\n", count);
@@ -159,7 +159,6 @@ LNetEQFree(lnet_handle_eq_t eqh)
 	int size = 0;
 	int i;
 
-	LASSERT(the_lnet.ln_init);
 	LASSERT(the_lnet.ln_refcount > 0);
 
 	lnet_res_lock(LNET_LOCK_EX);
@@ -309,8 +308,8 @@ __must_hold(&the_lnet.ln_eq_wait_lock)
 	wait_queue_t wl;
 	unsigned long now;
 
-	if (tms == 0)
-		return -1; /* don't want to wait and no new event */
+	if (!tms)
+		return -ENXIO; /* don't want to wait and no new event */
 
 	init_waitqueue_entry(&wl, current);
 	set_current_state(TASK_INTERRUPTIBLE);
@@ -372,7 +371,6 @@ LNetEQPoll(lnet_handle_eq_t *eventqs, int neq, int timeout_ms,
 	int rc;
 	int i;
 
-	LASSERT(the_lnet.ln_init);
 	LASSERT(the_lnet.ln_refcount > 0);
 
 	if (neq < 1)

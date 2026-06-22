@@ -145,11 +145,11 @@ enum cmd_mode {
 	DOASYNC
 };
 
-#define THROTTLE_JIFFIES	(HZ/8)
+#define THROTTLE_JIFFIES	(HZ / 8)
 #define URB_ASYNC_UNLINK 0
 #define USB_QUEUE_BULK 0
 
-#define ROUNDUP64(a) (((a)+63)&~63)
+#define ROUNDUP64(a) (((a) + 63) & ~63)
 
 #ifdef DEBUG_USB
 static void dbprint_urb(struct urb *urb);
@@ -212,8 +212,6 @@ static int
 unlocked_usbctlx_cancel_async(hfa384x_t *hw, hfa384x_usbctlx_t *ctlx);
 
 static void hfa384x_cb_status(hfa384x_t *hw, const hfa384x_usbctlx_t *ctlx);
-
-static void hfa384x_cb_rrid(hfa384x_t *hw, const hfa384x_usbctlx_t *ctlx);
 
 static int
 usbctlx_get_status(const hfa384x_usb_cmdresp_t *cmdresp,
@@ -808,43 +806,6 @@ static void hfa384x_cb_status(hfa384x_t *hw, const hfa384x_usbctlx_t *ctlx)
 		}
 
 		ctlx->usercb(hw, &cmdresult, ctlx->usercb_data);
-	}
-}
-
-/*----------------------------------------------------------------
-* hfa384x_cb_rrid
-*
-* CTLX completion handler for async RRID type control exchanges.
-*
-* Note: If the handling is changed here, it should probably be
-*       changed in dorrid as well.
-*
-* Arguments:
-*	hw		hw struct
-*	ctlx		completed CTLX
-*
-* Returns:
-*	nothing
-*
-* Side effects:
-*
-* Call context:
-*	interrupt
-----------------------------------------------------------------*/
-static void hfa384x_cb_rrid(hfa384x_t *hw, const hfa384x_usbctlx_t *ctlx)
-{
-	if (ctlx->usercb != NULL) {
-		hfa384x_rridresult_t rridresult;
-
-		if (ctlx->state != CTLX_COMPLETE) {
-			memset(&rridresult, 0, sizeof(rridresult));
-			rridresult.rid = le16_to_cpu(ctlx->outbuf.rridreq.rid);
-		} else {
-			usbctlx_get_rridresult(&ctlx->inbuf.rridresp,
-					       &rridresult);
-		}
-
-		ctlx->usercb(hw, &rridresult, ctlx->usercb_data);
 	}
 }
 
@@ -1742,37 +1703,6 @@ done:
 }
 
 /*----------------------------------------------------------------
-* hfa384x_drvr_commtallies
-*
-* Send a commtallies inquiry to the MAC.  Note that this is an async
-* call that will result in an info frame arriving sometime later.
-*
-* Arguments:
-*	hw		device structure
-*
-* Returns:
-*	zero		success.
-*
-* Side effects:
-*
-* Call context:
-*	process
-----------------------------------------------------------------*/
-int hfa384x_drvr_commtallies(hfa384x_t *hw)
-{
-	hfa384x_metacmd_t cmd;
-
-	cmd.cmd = HFA384x_CMDCODE_INQ;
-	cmd.parm0 = HFA384x_IT_COMMTALLIES;
-	cmd.parm1 = 0;
-	cmd.parm2 = 0;
-
-	hfa384x_docmd_async(hw, &cmd, NULL, NULL, NULL);
-
-	return 0;
-}
-
-/*----------------------------------------------------------------
 * hfa384x_drvr_disable
 *
 * Issues the disable command to stop communications on one of
@@ -2114,41 +2044,6 @@ exit_proc:
 int hfa384x_drvr_getconfig(hfa384x_t *hw, u16 rid, void *buf, u16 len)
 {
 	return hfa384x_dorrid_wait(hw, rid, buf, len);
-}
-
-/*----------------------------------------------------------------
- * hfa384x_drvr_getconfig_async
- *
- * Performs the sequence necessary to perform an async read of
- * of a config/info item.
- *
- * Arguments:
- *       hw              device structure
- *       rid             config/info record id (host order)
- *       buf             host side record buffer.  Upon return it will
- *                       contain the body portion of the record (minus the
- *                       RID and len).
- *       len             buffer length (in bytes, should match record length)
- *       cbfn            caller supplied callback, called when the command
- *                       is done (successful or not).
- *       cbfndata        pointer to some caller supplied data that will be
- *                       passed in as an argument to the cbfn.
- *
- * Returns:
- *       nothing         the cbfn gets a status argument identifying if
- *                       any errors occur.
- * Side effects:
- *       Queues an hfa384x_usbcmd_t for subsequent execution.
- *
- * Call context:
- *       Any
- ----------------------------------------------------------------*/
-int
-hfa384x_drvr_getconfig_async(hfa384x_t *hw,
-			     u16 rid, ctlx_usercb_t usercb, void *usercb_data)
-{
-	return hfa384x_dorrid_async(hw, rid, NULL, 0,
-				    hfa384x_cb_rrid, usercb, usercb_data);
 }
 
 /*----------------------------------------------------------------
@@ -2805,8 +2700,7 @@ void hfa384x_tx_timeout(wlandevice_t *wlandev)
 static void hfa384x_usbctlx_reaper_task(unsigned long data)
 {
 	hfa384x_t *hw = (hfa384x_t *)data;
-	struct list_head *entry;
-	struct list_head *temp;
+	hfa384x_usbctlx_t *ctlx, *temp;
 	unsigned long flags;
 
 	spin_lock_irqsave(&hw->ctlxq.lock, flags);
@@ -2814,10 +2708,7 @@ static void hfa384x_usbctlx_reaper_task(unsigned long data)
 	/* This list is guaranteed to be empty if someone
 	 * has unplugged the adapter.
 	 */
-	list_for_each_safe(entry, temp, &hw->ctlxq.reapable) {
-		hfa384x_usbctlx_t *ctlx;
-
-		ctlx = list_entry(entry, hfa384x_usbctlx_t, list);
+	list_for_each_entry_safe(ctlx, temp, &hw->ctlxq.reapable, list) {
 		list_del(&ctlx->list);
 		kfree(ctlx);
 	}
@@ -2842,8 +2733,7 @@ static void hfa384x_usbctlx_reaper_task(unsigned long data)
 static void hfa384x_usbctlx_completion_task(unsigned long data)
 {
 	hfa384x_t *hw = (hfa384x_t *)data;
-	struct list_head *entry;
-	struct list_head *temp;
+	hfa384x_usbctlx_t *ctlx, *temp;
 	unsigned long flags;
 
 	int reap = 0;
@@ -2853,11 +2743,7 @@ static void hfa384x_usbctlx_completion_task(unsigned long data)
 	/* This list is guaranteed to be empty if someone
 	 * has unplugged the adapter ...
 	 */
-	list_for_each_safe(entry, temp, &hw->ctlxq.completing) {
-		hfa384x_usbctlx_t *ctlx;
-
-		ctlx = list_entry(entry, hfa384x_usbctlx_t, list);
-
+	list_for_each_entry_safe(ctlx, temp, &hw->ctlxq.completing, list) {
 		/* Call the completion function that this
 		 * command was assigned, assuming it has one.
 		 */
@@ -3982,8 +3868,7 @@ static void hfa384x_usb_throttlefn(unsigned long data)
 	pr_debug("flags=0x%lx\n", hw->usb_flags);
 	if (!hw->wlandev->hwremoved &&
 	    ((test_and_clear_bit(THROTTLE_RX, &hw->usb_flags) &&
-	      !test_and_set_bit(WORK_RX_RESUME, &hw->usb_flags))
-	     |
+	      !test_and_set_bit(WORK_RX_RESUME, &hw->usb_flags)) |
 	     (test_and_clear_bit(THROTTLE_TX, &hw->usb_flags) &&
 	      !test_and_set_bit(WORK_TX_RESUME, &hw->usb_flags))
 	    )) {

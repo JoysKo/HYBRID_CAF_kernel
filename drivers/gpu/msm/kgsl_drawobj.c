@@ -113,9 +113,9 @@ static void syncobj_timer(unsigned long data)
 
 			if (event->handle != NULL) {
 				dev_err(device->dev, "       [%d] FENCE %s\n",
-				i, event->handle->fence ?
-					event->handle->fence->name : "NULL");
-				kgsl_sync_fence_log(event->handle->fence);
+				i, event->handle->sync_file ?
+					event->handle->sync_file->name : "NULL");
+				kgsl_sync_fence_log(event->handle->sync_file);
 			}
 
 			spin_unlock_irqrestore(&event->handle_lock, flags);
@@ -345,13 +345,13 @@ static int drawobj_add_sync_fence(struct kgsl_device *device,
 	struct kgsl_cmd_syncpoint_fence *sync = priv;
 	struct kgsl_drawobj *drawobj = DRAWOBJ(syncobj);
 	struct kgsl_drawobj_sync_event *event;
-	struct sync_fence *fence = NULL;
+	struct sync_file *sync_file = NULL;
 	unsigned int id;
 	unsigned long flags;
 	int ret = 0;
 
-	fence = sync_fence_fdget(sync->fd);
-	if (fence == NULL)
+	sync_file = sync_file_fdget(sync->fd);
+	if (sync_file == NULL)
 		return -EINVAL;
 
 	kref_get(&drawobj->refcount);
@@ -369,7 +369,7 @@ static int drawobj_add_sync_fence(struct kgsl_device *device,
 	spin_lock_init(&event->handle_lock);
 	set_bit(event->id, &syncobj->pending);
 
-//	trace_syncpoint_fence(syncobj, fence->name);
+//	trace_syncpoint_fence(syncobj, sync_file->name);
 
 	spin_lock_irqsave(&event->handle_lock, flags);
 
@@ -392,12 +392,12 @@ static int drawobj_add_sync_fence(struct kgsl_device *device,
 		 * a failure in registering the fence waiter.
 		 */
 //		trace_syncpoint_fence_expire(syncobj, (ret < 0) ?
-//				"error" : fence->name);
+//				"error" : sync_file->name);
 	} else {
 		spin_unlock_irqrestore(&event->handle_lock, flags);
 	}
 
-	sync_fence_put(fence);
+	sync_file_put(sync_file);
 	return ret;
 }
 

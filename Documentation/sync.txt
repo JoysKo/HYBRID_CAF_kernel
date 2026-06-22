@@ -71,5 +71,5 @@ The new API will become:
  * returns immediately with a fence that will signal when buf
  * is no longer displayed.
  */
-struct sync_fence* display_buffer(struct dma_buf *buf,
-                                 struct sync_fence *fence);
+struct sync_file* display_buffer(struct dma_buf *buf,
+                                 struct sync_file *sync_file);

@@ -85,12 +85,12 @@ struct sde_rotation_config {
 enum sde_rotator_ts {
 	SDE_ROTATOR_TS_SRCQB,		/* enqueue source buffer */
 	SDE_ROTATOR_TS_DSTQB,		/* enqueue destination buffer */
-	SDE_ROTATOR_TS_FENCE,		/* wait for source buffer fence */
+	SDE_ROTATOR_TS_FENCE,		/* wait for source buffer sync_file */
 	SDE_ROTATOR_TS_QUEUE,		/* wait for h/w resource */
 	SDE_ROTATOR_TS_COMMIT,		/* prepare h/w command */
 	SDE_ROTATOR_TS_FLUSH,		/* initiate h/w processing */
 	SDE_ROTATOR_TS_DONE,		/* receive h/w completion */
-	SDE_ROTATOR_TS_RETIRE,		/* signal destination buffer fence */
+	SDE_ROTATOR_TS_RETIRE,		/* signal destination buffer sync_file */
 	SDE_ROTATOR_TS_SRCDQB,		/* dequeue source buffer */
 	SDE_ROTATOR_TS_DSTDQB,		/* dequeue destination buffer */
 	SDE_ROTATOR_TS_MAX
@@ -210,16 +210,16 @@ struct sde_rot_entry {
 	struct kthread_work commit_work;
 	struct kthread_work done_work;
 	struct sde_rot_queue *commitq;
-	struct sde_rot_queue *fenceq;
+	struct sde_rot_queue *fileq;
 	struct sde_rot_queue *doneq;
 	struct sde_rot_entry_container *request;
 
 	struct sde_mdp_data src_buf;
 	struct sde_mdp_data dst_buf;
 
-	struct sde_rot_sync_fence *input_fence;
+	struct sde_rot_sync_file *input_sync_file;
 
-	struct sde_rot_sync_fence *output_fence;
+	struct sde_rot_sync_file *output_sync_file;
 	bool output_signaled;
 
 	u32 dnsc_factor_w;
@@ -247,7 +247,7 @@ struct sde_rot_file_private {
 	struct list_head req_list;
 	struct list_head perf_list;
 	struct sde_rot_mgr *mgr;
-	struct sde_rot_queue *fenceq;
+	struct sde_rot_queue *fileq;
 };
 
 struct sde_rot_bus_data_type {

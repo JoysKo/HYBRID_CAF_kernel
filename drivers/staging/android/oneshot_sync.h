@@ -16,7 +16,7 @@
 #include <uapi/linux/oneshot_sync.h>
 
 struct oneshot_sync_timeline;
-struct sync_fence;
+struct sync_file;
 
 #ifdef CONFIG_ONESHOT_SYNC
 
@@ -24,10 +24,10 @@ struct oneshot_sync_timeline *oneshot_timeline_create(const char *name);
 
 void oneshot_timeline_destroy(struct oneshot_sync_timeline *);
 
-struct sync_fence *oneshot_fence_create(struct oneshot_sync_timeline *,
+struct sync_file *oneshot_fence_create(struct oneshot_sync_timeline *,
 					const char *name);
 
-int oneshot_fence_signal(struct oneshot_sync_timeline *, struct sync_fence *);
+int oneshot_fence_signal(struct oneshot_sync_timeline *, struct sync_file *);
 
 #else
 
@@ -41,14 +41,14 @@ void oneshot_timeline_destroy(struct oneshot_sync_timeline *timeline)
 {
 }
 
-struct sync_fence *oneshot_fence_create(struct oneshot_sync_timeline *timeline,
+struct sync_file *oneshot_fence_create(struct oneshot_sync_timeline *timeline,
 					const char *name)
 {
 	return NULL;
 }
 
 int oneshot_fence_signal(struct oneshot_sync_timeline *timeline,
-			struct sync_fence *fence)
+			struct sync_file *sync_file)
 {
 	return -EINVAL;
 }

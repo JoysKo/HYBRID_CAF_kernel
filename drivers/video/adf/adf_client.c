@@ -313,10 +313,10 @@ done:
 	return ret;
 }
 
-static struct sync_fence *adf_sw_complete_fence(struct adf_device *dev)
+static struct sync_file *adf_sw_complete_fence(struct adf_device *dev)
 {
-	struct sync_pt *pt;
-	struct sync_fence *complete_fence;
+	struct fence *pt;
+	struct sync_file *complete_fence;
 
 	if (!dev->timeline) {
 		dev->timeline = sw_sync_timeline_create(dev->base.name);
@@ -326,7 +326,7 @@ static struct sync_fence *adf_sw_complete_fence(struct adf_device *dev)
 	}
 
 	dev->timeline_max++;
-	pt = sw_sync_pt_create(dev->timeline, dev->timeline_max);
+	pt = sw_sync_fence_create(dev->timeline, dev->timeline_max);
 	if (!pt)
 		goto err_pt_create;
 	complete_fence = sync_fence_create(dev->base.name, pt);
@@ -361,7 +361,7 @@ err_pt_create:
  * On success, returns a sync fence which signals when the buffers are removed
  * from the screen.  On failure, returns ERR_PTR(-errno).
  */
-struct sync_fence *adf_device_post(struct adf_device *dev,
+struct sync_file *adf_device_post(struct adf_device *dev,
 		struct adf_interface **intfs, size_t n_intfs,
 		struct adf_buffer *bufs, size_t n_bufs, void *custom_data,
 		size_t custom_data_size)
@@ -369,7 +369,7 @@ struct sync_fence *adf_device_post(struct adf_device *dev,
 	struct adf_interface **intfs_copy = NULL;
 	struct adf_buffer *bufs_copy = NULL;
 	void *custom_data_copy = NULL;
-	struct sync_fence *ret;
+	struct sync_file *ret;
 	size_t i;
 
 	intfs_copy = kzalloc(sizeof(intfs_copy[0]) * n_intfs, GFP_KERNEL);
@@ -436,14 +436,14 @@ EXPORT_SYMBOL(adf_device_post);
  * Clients may find the nocopy variant useful in limited cases, but most should
  * call adf_device_post() instead.
  */
-struct sync_fence *adf_device_post_nocopy(struct adf_device *dev,
+struct sync_file *adf_device_post_nocopy(struct adf_device *dev,
 		struct adf_interface **intfs, size_t n_intfs,
 		struct adf_buffer *bufs, size_t n_bufs,
 		void *custom_data, size_t custom_data_size)
 {
 	struct adf_pending_post *cfg;
 	struct adf_buffer_mapping *mappings;
-	struct sync_fence *ret;
+	struct sync_file *ret;
 	size_t i;
 	int err;
 
@@ -780,12 +780,12 @@ EXPORT_SYMBOL(adf_interface_simple_buffer_alloc);
  * On success, returns a sync fence which signals when the buffer is removed
  * from the screen.  On failure, returns ERR_PTR(-errno).
  */
-struct sync_fence *adf_interface_simple_post(struct adf_interface *intf,
+struct sync_file *adf_interface_simple_post(struct adf_interface *intf,
 		struct adf_buffer *buf)
 {
 	size_t custom_data_size = 0;
 	void *custom_data = NULL;
-	struct sync_fence *ret;
+	struct sync_file *ret;
 
 	if (intf->ops && intf->ops->describe_simple_post) {
 		int err;

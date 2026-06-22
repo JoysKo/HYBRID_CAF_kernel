@@ -150,7 +150,7 @@ VALIDATE/COMMIT FLAG CONFIGURATION
 
 /*
  * This flag is only valid for commit call and used for debugging purpose. It
- * forces the to wait for sync fences.
+ * forces the to wait for sync_files.
  */
 #define MDP_COMMIT_SYNC_FENCE_WAIT		0x04
 
@@ -304,11 +304,11 @@ struct mdp_layer_buffer {
 	 * of primary and external display.
 	 *
 	 * 2. Writeback device uses buffer structure for output buffer where
-	 * driver is producer. However, client sends the fence with buffer to
+	 * driver is producer. However, client sends the sync_file with buffer to
 	 * indicate that consumer is still using the buffer and it is not ready
 	 * for new content.
 	 */
-	int	 fence;
+	int	 sync_file;
 
 	/* 32bits reserved value for future usage. */
 	uint32_t reserved;
@@ -520,13 +520,13 @@ struct mdp_layer_commit_v1 {
 	/*
 	 * This is an output parameter.
 	 *
-	 * Frame buffer device provides release fence handle to client. It
-	 * triggers release fence when display hardware has consumed all the
+	 * Frame buffer device provides release sync_file handle to client. It
+	 * triggers release sync_file when display hardware has consumed all the
 	 * buffers attached to this commit call and buffer is ready for reuse
 	 * for primary and external. For writeback case, it triggers it when
 	 * output buffer is ready for consumer.
 	 */
-	int			release_fence;
+	int			release_sync_file;
 
 	/*
 	 * Left_roi is optional configuration. Client configures it only when
@@ -560,16 +560,16 @@ struct mdp_layer_commit_v1 {
 	/*
 	 * This is an output parameter.
 	 *
-	 * Frame buffer device provides retire fence handle if
+	 * Frame buffer device provides retire sync_file handle if
 	 * COMMIT_RETIRE_FENCE flag is set in commit call. It triggers
-	 * retire fence when current layers are swapped with new layers
+	 * retire sync_file when current layers are swapped with new layers
 	 * on display hardware. For video mode panel and writeback,
-	 * retire fence and release fences are triggered at the same
-	 * time while command mode panel triggers release fence first
-	 * (on pingpong done) and retire fence (on rdptr done)
+	 * retire sync_file and release sync_files are triggered at the same
+	 * time while command mode panel triggers release sync_file first
+	 * (on pingpong done) and retire sync_file (on rdptr done)
 	 * after that.
 	 */
-	int			retire_fence;
+	int			retire_sync_file;
 
 	/*
 	 * Scaler data and control for setting up destination scaler.

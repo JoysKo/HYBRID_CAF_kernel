@@ -761,7 +761,7 @@ struct kgsl_timestamp_event_genlock {
 #define KGSL_TIMESTAMP_EVENT_FENCE 2
 
 struct kgsl_timestamp_event_fence {
-	int fence_fd; /* Fence to signal */
+	int sync_file_fd; /* Fence to signal */
 };
 
 /*
@@ -1155,7 +1155,7 @@ struct kgsl_syncsource_destroy {
  * struct kgsl_syncsource_create_fence - Argument to
  *     IOCTL_KGSL_SYNCSOURCE_CREATE_FENCE
  * @id: syncsource id
- * @fence_fd: returned sync_fence fd
+ * @sync_file_fd: returned sync_fence fd
  *
  * Create a fence that may be signaled by userspace by calling
  * IOCTL_KGSL_SYNCSOURCE_SIGNAL_FENCE. There are no order dependencies between
@@ -1163,7 +1163,7 @@ struct kgsl_syncsource_destroy {
  */
 struct kgsl_syncsource_create_fence {
 	unsigned int id;
-	int fence_fd;
+	int sync_file_fd;
 /* private: reserved for future use */
 	unsigned int __pad[4];
 };
@@ -1172,7 +1172,7 @@ struct kgsl_syncsource_create_fence {
  * struct kgsl_syncsource_signal_fence - Argument to
  *     IOCTL_KGSL_SYNCSOURCE_SIGNAL_FENCE
  * @id: syncsource id
- * @fence_fd: sync_fence fd to signal
+ * @sync_file_fd: sync_fence fd to signal
  *
  * Signal a fence that was created by a IOCTL_KGSL_SYNCSOURCE_CREATE_FENCE
  * call using the same syncsource id. This allows a fence to be shared
@@ -1184,7 +1184,7 @@ struct kgsl_syncsource_create_fence {
 
 struct kgsl_syncsource_signal_fence {
 	unsigned int id;
-	int fence_fd;
+	int sync_file_fd;
 /* private: reserved for future use */
 	unsigned int __pad[4];
 };

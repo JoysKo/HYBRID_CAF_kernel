@@ -99,7 +99,10 @@ lnet_ipif_query(char *name, int *up, __u32 *ip, __u32 *mask)
 
 	CLASSERT(sizeof(ifr.ifr_name) >= IFNAMSIZ);
 
-	strcpy(ifr.ifr_name, name);
+	if (strlen(name) > sizeof(ifr.ifr_name) - 1)
+		return -E2BIG;
+	strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+
 	rc = lnet_sock_ioctl(SIOCGIFFLAGS, (unsigned long)&ifr);
 	if (rc != 0) {
 		CERROR("Can't get flags for interface %s\n", name);
@@ -114,7 +117,10 @@ lnet_ipif_query(char *name, int *up, __u32 *ip, __u32 *mask)
 	}
 	*up = 1;
 
-	strcpy(ifr.ifr_name, name);
+	if (strlen(name) > sizeof(ifr.ifr_name) - 1)
+		return -E2BIG;
+	strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+
 	ifr.ifr_addr.sa_family = AF_INET;
 	rc = lnet_sock_ioctl(SIOCGIFADDR, (unsigned long)&ifr);
 	if (rc != 0) {
@@ -125,7 +131,10 @@ lnet_ipif_query(char *name, int *up, __u32 *ip, __u32 *mask)
 	val = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr;
 	*ip = ntohl(val);
 
-	strcpy(ifr.ifr_name, name);
+	if (strlen(name) > sizeof(ifr.ifr_name) - 1)
+		return -E2BIG;
+	strncpy(ifr.ifr_name, name, sizeof(ifr.ifr_name));
+
 	ifr.ifr_addr.sa_family = AF_INET;
 	rc = lnet_sock_ioctl(SIOCGIFNETMASK, (unsigned long)&ifr);
 	if (rc != 0) {
@@ -253,7 +262,7 @@ int
 lnet_sock_write(struct socket *sock, void *buffer, int nob, int timeout)
 {
 	int rc;
-	long ticks = timeout * HZ;
+	long jiffies_left = timeout * msecs_to_jiffies(MSEC_PER_SEC);
 	unsigned long then;
 	struct timeval tv;
 
@@ -272,10 +281,7 @@ lnet_sock_write(struct socket *sock, void *buffer, int nob, int timeout)
 
 		if (timeout != 0) {
 			/* Set send timeout to remaining time */
-			tv = (struct timeval) {
-				.tv_sec = ticks / HZ,
-				.tv_usec = ((ticks % HZ) * 1000000) / HZ
-			};
+			jiffies_to_timeval(jiffies_left, &tv);
 			rc = kernel_setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO,
 					       (char *)&tv, sizeof(tv));
 			if (rc != 0) {
@@ -287,7 +293,7 @@ lnet_sock_write(struct socket *sock, void *buffer, int nob, int timeout)
 
 		then = jiffies;
 		rc = kernel_sendmsg(sock, &msg, &iov, 1, nob);
-		ticks -= jiffies - then;
+		jiffies_left -= jiffies - then;
 
 		if (rc == nob)
 			return 0;
@@ -300,7 +306,7 @@ lnet_sock_write(struct socket *sock, void *buffer, int nob, int timeout)
 			return -ECONNABORTED;
 		}
 
-		if (ticks <= 0)
+		if (jiffies_left <= 0)
 			return -EAGAIN;
 
 		buffer = ((char *)buffer) + rc;
@@ -314,12 +320,12 @@ int
 lnet_sock_read(struct socket *sock, void *buffer, int nob, int timeout)
 {
 	int rc;
-	long ticks = timeout * HZ;
+	long jiffies_left = timeout * msecs_to_jiffies(MSEC_PER_SEC);
 	unsigned long then;
 	struct timeval tv;
 
 	LASSERT(nob > 0);
-	LASSERT(ticks > 0);
+	LASSERT(jiffies_left > 0);
 
 	for (;;) {
 		struct kvec  iov = {
@@ -331,10 +337,7 @@ lnet_sock_read(struct socket *sock, void *buffer, int nob, int timeout)
 		};
 
 		/* Set receive timeout to remaining time */
-		tv = (struct timeval) {
-			.tv_sec = ticks / HZ,
-			.tv_usec = ((ticks % HZ) * 1000000) / HZ
-		};
+		jiffies_to_timeval(jiffies_left, &tv);
 		rc = kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
 				       (char *)&tv, sizeof(tv));
 		if (rc != 0) {
@@ -345,7 +348,7 @@ lnet_sock_read(struct socket *sock, void *buffer, int nob, int timeout)
 
 		then = jiffies;
 		rc = kernel_recvmsg(sock, &msg, &iov, 1, nob, 0);
-		ticks -= jiffies - then;
+		jiffies_left -= jiffies - then;
 
 		if (rc < 0)
 			return rc;
@@ -359,7 +362,7 @@ lnet_sock_read(struct socket *sock, void *buffer, int nob, int timeout)
 		if (nob == 0)
 			return 0;
 
-		if (ticks <= 0)
+		if (jiffies_left <= 0)
 			return -ETIMEDOUT;
 	}
 }
@@ -513,7 +516,6 @@ lnet_sock_listen(struct socket **sockp, __u32 local_ip, int local_port,
 	sock_release(*sockp);
 	return rc;
 }
-EXPORT_SYMBOL(lnet_sock_listen);
 
 int
 lnet_sock_accept(struct socket **newsockp, struct socket *sock)
@@ -522,10 +524,10 @@ lnet_sock_accept(struct socket **newsockp, struct socket *sock)
 	struct socket *newsock;
 	int rc;
 
-	init_waitqueue_entry(&wait, current);
-
-	/* XXX this should add a ref to sock->ops->owner, if
-	 * TCP could be a module */
+	/*
+	 * XXX this should add a ref to sock->ops->owner, if
+	 * TCP could be a module
+	 */
 	rc = sock_create_lite(PF_PACKET, sock->type, IPPROTO_TCP, &newsock);
 	if (rc) {
 		CERROR("Can't allocate socket\n");
@@ -537,11 +539,11 @@ lnet_sock_accept(struct socket **newsockp, struct socket *sock)
 	rc = sock->ops->accept(sock, newsock, O_NONBLOCK);
 	if (rc == -EAGAIN) {
 		/* Nothing ready, so wait for activity */
-		set_current_state(TASK_INTERRUPTIBLE);
+		init_waitqueue_entry(&wait, current);
 		add_wait_queue(sk_sleep(sock->sk), &wait);
+		set_current_state(TASK_INTERRUPTIBLE);
 		schedule();
 		remove_wait_queue(sk_sleep(sock->sk), &wait);
-		set_current_state(TASK_RUNNING);
 		rc = sock->ops->accept(sock, newsock, O_NONBLOCK);
 	}
 
@@ -555,7 +557,6 @@ failed:
 	sock_release(newsock);
 	return rc;
 }
-EXPORT_SYMBOL(lnet_sock_accept);
 
 int
 lnet_sock_connect(struct socket **sockp, int *fatal, __u32 local_ip,
@@ -591,4 +592,3 @@ lnet_sock_connect(struct socket **sockp, int *fatal, __u32 local_ip,
 	sock_release(*sockp);
 	return rc;
 }
-EXPORT_SYMBOL(lnet_sock_connect);

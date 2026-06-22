@@ -237,7 +237,6 @@ void rtl92e_set_reg(struct net_device *dev, u8 variable, u8 *val)
 		u8 acm = pAciAifsn->f.acm;
 		u8 AcmCtrl = rtl92e_readb(dev, AcmHwCtrl);
 
-		RT_TRACE(COMP_DBG, "===========>%s():HW_VAR_ACM_CTRL:%x\n",
 			 __func__, eACI);
 		AcmCtrl = AcmCtrl | ((priv->AcmMethod == 2) ? 0x0 : 0x1);
 
@@ -626,13 +625,11 @@ void rtl92e_get_eeprom_size(struct net_device *dev)
 	u16 curCR;
 	struct r8192_priv *priv = rtllib_priv(dev);
 
-	RT_TRACE(COMP_INIT, "===========>%s()\n", __func__);
 	curCR = rtl92e_readw(dev, EPROM_CMD);
 	RT_TRACE(COMP_INIT, "read from Reg Cmd9346CR(%x):%x\n", EPROM_CMD,
 		 curCR);
 	priv->epromtype = (curCR & EPROM_CMD_9356SEL) ? EEPROM_93C56 :
 			  EEPROM_93C46;
-	RT_TRACE(COMP_INIT, "<===========%s(), epromtype:%d\n", __func__,
 		 priv->epromtype);
 	_rtl92e_read_eeprom_info(dev);
 }
@@ -681,7 +678,7 @@ static void _rtl92e_hwconfig(struct net_device *dev)
 
 	rtl92e_writeb(dev, BW_OPMODE, regBwOpMode);
 	{
-		u32 ratr_value = 0;
+		u32 ratr_value;
 
 		ratr_value = regRATR;
 		if (priv->rf_type == RF_1T2R)
@@ -1001,7 +998,7 @@ void rtl92e_link_change(struct net_device *dev)
 	_rtl92e_update_msr(dev);
 
 	if (ieee->iw_mode == IW_MODE_INFRA || ieee->iw_mode == IW_MODE_ADHOC) {
-		u32 reg = 0;
+		u32 reg;
 
 		reg = rtl92e_readl(dev, RCR);
 		if (priv->rtllib->state == RTLLIB_LINKED) {
@@ -1185,8 +1182,9 @@ void  rtl92e_fill_tx_desc(struct net_device *dev, struct tx_desc *pdesc,
 			  struct cb_desc *cb_desc, struct sk_buff *skb)
 {
 	struct r8192_priv *priv = rtllib_priv(dev);
-	dma_addr_t mapping;
-	struct tx_fwinfo_8190pci *pTxFwInfo = NULL;
+	dma_addr_t mapping = pci_map_single(priv->pdev, skb->data, skb->len,
+			 PCI_DMA_TODEVICE);
+	struct tx_fwinfo_8190pci *pTxFwInfo;
 
 	pTxFwInfo = (struct tx_fwinfo_8190pci *)skb->data;
 	memset(pTxFwInfo, 0, sizeof(struct tx_fwinfo_8190pci));
@@ -1253,7 +1251,6 @@ void  rtl92e_fill_tx_desc(struct net_device *dev, struct tx_desc *pdesc,
 		static u8 tmp;
 
 		if (!tmp) {
-			RT_TRACE(COMP_DBG, "==>================hw sec\n");
 			tmp = 1;
 		}
 		switch (priv->rtllib->pairwise_key_type) {
@@ -2241,7 +2238,7 @@ void rtl92e_disable_irq(struct net_device *dev)
 
 void rtl92e_clear_irq(struct net_device *dev)
 {
-	u32 tmp = 0;
+	u32 tmp;
 
 	tmp = rtl92e_readl(dev, ISR);
 	rtl92e_writel(dev, ISR, tmp);

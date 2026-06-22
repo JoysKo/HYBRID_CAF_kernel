@@ -64,17 +64,17 @@ struct sde_rotator_buf_handle {
 
 /*
  * struct sde_rotator_vbinfo - Structure define video buffer info.
- * @fd: fence file descriptor.
- * @fence: fence associated with fd.
- * @fence_ts: completion timestamp associated with fd
+ * @fd: sync_file descriptor.
+ * @sync_file: sync_file associated with fd.
+ * @sync_file_ts: completion timestamp associated with fd
  * @qbuf_ts: timestamp associated with buffer queue event
  * @dqbuf_ts: Pointer to timestamp associated with buffer dequeue event
  * @comp_ratio: compression ratio of this buffer
  */
 struct sde_rotator_vbinfo {
 	int fd;
-	struct sde_rot_sync_fence *fence;
-	u32 fence_ts;
+	struct sde_rot_sync_file *sync_file;
+	u32 sync_file_ts;
 	ktime_t qbuf_ts;
 	ktime_t *dqbuf_ts;
 	struct sde_mult_factor comp_ratio;
@@ -100,8 +100,8 @@ struct sde_rotator_vbinfo {
  * @abort_pending: True if abort is requested for async handling.
  * @nbuf_cap: Number of requested buffer for capture queue
  * @nbuf_out: Number of requested buffer for output queue
- * @fence_cap: Fence info for each requested capture buffer
- * @fence_out: Fence info for each requested output buffer
+ * @sync_file_cap: Fence info for each requested capture buffer
+ * @sync_file_out: Fence info for each requested output buffer
  * @wait_queue: Wait queue for signaling end of job
  * @submit_work: Work structure for submitting work
  * @retire_work: Work structure for retiring work
@@ -164,7 +164,7 @@ struct sde_rotator_statistics {
  * @mgr: Pointer to core rotator manager.
  * @mdata: Pointer to common rotator data/resource.
  * @session_id: Next context session identifier
- * @fence_timeout: Timeout value in msec for fence wait
+ * @sync_file_timeout: Timeout value in msec for sync_file wait
  * @streamoff_timeout: Timeout value in msec for stream off
  * @min_rot_clk: Override the minimum rotator clock from perf calculation
  * @min_bw: Override the minimum bandwidth from perf calculation
@@ -184,7 +184,7 @@ struct sde_rotator_device {
 	struct sde_rot_mgr *mgr;
 	struct sde_rot_data_type *mdata;
 	u32 session_id;
-	u32 fence_timeout;
+	u32 sync_file_timeout;
 	u32 streamoff_timeout;
 	u32 min_rot_clk;
 	u32 min_bw;

@@ -65,12 +65,12 @@
 #define SDE_PIX_FMT_Y_CBCR_H2V2_TP10_UBWC	V4L2_PIX_FMT_NV12_TP10_UBWC
 
 /**
-* struct msm_sde_rotator_fence - v4l2 buffer fence info
+* struct msm_sde_rotator_sync_file - v4l2 buffer fence info
 * @index: id number of the buffer
 * @type: enum v4l2_buf_type; buffer type
 * @fd: file descriptor of the fence associated with this buffer
 **/
-struct msm_sde_rotator_fence {
+struct msm_sde_rotator_sync_file {
 	__u32	index;
 	__u32	type;
 	__s32	fd;
@@ -94,9 +94,9 @@ struct msm_sde_rotator_comp_ratio {
 
 /* SDE Rotator private ioctl ID */
 #define VIDIOC_G_SDE_ROTATOR_FENCE \
-	_IOWR('V', BASE_VIDIOC_PRIVATE + 10, struct msm_sde_rotator_fence)
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 10, struct msm_sde_rotator_sync_file)
 #define VIDIOC_S_SDE_ROTATOR_FENCE \
-	_IOWR('V', BASE_VIDIOC_PRIVATE + 11, struct msm_sde_rotator_fence)
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 11, struct msm_sde_rotator_sync_file)
 #define VIDIOC_G_SDE_ROTATOR_COMP_RATIO \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 12, struct msm_sde_rotator_comp_ratio)
 #define VIDIOC_S_SDE_ROTATOR_COMP_RATIO \

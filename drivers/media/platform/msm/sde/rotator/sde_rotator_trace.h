@@ -83,7 +83,7 @@ DECLARE_EVENT_CLASS(rot_entry_template,
 			__entry->dst_w, __entry->dst_h)
 );
 
-DEFINE_EVENT(rot_entry_template, rot_entry_fence,
+DEFINE_EVENT(rot_entry_template, rot_entry_sync_file,
 	TP_PROTO(u32 ss_id, u32 sq_id, u32 pr_id, u32 flags,
 			u32 src_fmt, u32 src_bw, u32 src_bh,
 			u32 src_x, u32 src_y, u32 src_w, u32 src_h,

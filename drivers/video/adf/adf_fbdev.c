@@ -199,7 +199,7 @@ EXPORT_SYMBOL(adf_modeinfo_from_fb_videomode);
 static int adf_fbdev_post(struct adf_fbdev *fbdev)
 {
 	struct adf_buffer buf;
-	struct sync_fence *complete_fence;
+	struct sync_file *complete_fence;
 	int ret = 0;
 
 	memset(&buf, 0, sizeof(buf));

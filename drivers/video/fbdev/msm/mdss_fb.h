@@ -41,7 +41,7 @@
 /*
  * Display op timeout should be greater than total time it can take for
  * a display thread to commit one frame. One of the largest time consuming
- * activity performed by display thread is waiting for fences. So keeping
+ * activity performed by display thread is waiting for sync_files. So keeping
  * that as a reference and add additional 20s to sustain system holdups.
  */
 #define WAIT_DISP_OP_TIMEOUT (WAIT_FENCE_FIRST_TIMEOUT + \
@@ -169,12 +169,12 @@ struct disp_info_notify {
 	bool init_done;
 };
 
-struct msm_sync_pt_data {
-	char *fence_name;
+struct msm_sync_fence_data {
+	char *sync_file_name;
 	u32 acq_fen_cnt;
-	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
+	struct sync_file *acq_fen[MDP_MAX_FENCE_FD];
 	u32 temp_fen_cnt;
-	struct sync_fence *temp_fen[MDP_MAX_FENCE_FD];
+	struct sync_file *temp_fen[MDP_MAX_FENCE_FD];
 
 	struct sw_sync_timeline *timeline;
 	int timeline_value;
@@ -182,13 +182,13 @@ struct msm_sync_pt_data {
 	u32 retire_threshold;
 	atomic_t commit_cnt;
 	bool flushed;
-	bool async_wait_fences;
+	bool async_wait_sync_files;
 
 	struct mutex sync_mutex;
 	struct notifier_block notifier;
 
-	struct sync_fence *(*get_retire_fence)
-		(struct msm_sync_pt_data *sync_pt_data);
+	struct sync_file *(*get_retire_sync_file)
+		(struct msm_sync_fence_data *sync_pt_data);
 };
 
 struct msm_fb_data_type;
@@ -235,7 +235,7 @@ struct msm_mdp_interface {
 	int (*input_event_handler)(struct msm_fb_data_type *mfd);
 	void (*footswitch_ctrl)(bool on);
 	int (*pp_release_fnc)(struct msm_fb_data_type *mfd);
-	void (*signal_retire_fence)(struct msm_fb_data_type *mfd,
+	void (*signal_retire_sync_file)(struct msm_fb_data_type *mfd,
 					int retire_cnt);
 	void *private1;
 };
@@ -337,7 +337,7 @@ struct msm_fb_data_type {
 
 	struct msm_mdp_interface mdp;
 
-	struct msm_sync_pt_data mdp_sync_pt_data;
+	struct msm_sync_fence_data mdp_sync_fence_data;
 
 	/* for non-blocking */
 	struct task_struct *disp_thread;
@@ -469,10 +469,10 @@ static inline void mdss_fb_init_fps_info(struct msm_fb_data_type *mfd)
 int mdss_fb_get_phys_info(dma_addr_t *start, unsigned long *len, int fb_num);
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl);
 void mdss_fb_update_backlight(struct msm_fb_data_type *mfd);
-int mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data);
-void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data);
-struct sync_fence *mdss_fb_sync_get_fence(struct sw_sync_timeline *timeline,
-				const char *fence_name, int val);
+int mdss_fb_wait_for_sync_file(struct msm_sync_fence_data *sync_pt_data);
+void mdss_fb_signal_timeline(struct msm_sync_fence_data *sync_pt_data);
+struct sync_file *mdss_fb_sync_get_file(struct sw_sync_timeline *timeline,
+				const char *sync_file_name, int val);
 int mdss_fb_register_mdp_instance(struct msm_mdp_interface *mdp);
 int mdss_fb_dcm(struct msm_fb_data_type *mfd, int req_state);
 int mdss_fb_suspres_panel(struct device *dev, void *data);

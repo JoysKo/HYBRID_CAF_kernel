@@ -216,7 +216,7 @@ done:
 static int adf_device_post_config(struct adf_device *dev,
 		struct adf_post_config __user *arg)
 {
-	struct sync_fence *complete_fence;
+	struct sync_file *complete_fence;
 	int complete_fence_fd;
 	struct adf_buffer *bufs = NULL;
 	struct adf_interface **intfs = NULL;
@@ -331,7 +331,7 @@ static int adf_intf_simple_post_config(struct adf_interface *intf,
 		struct adf_simple_post_config __user *arg)
 {
 	struct adf_device *dev = intf->base.parent;
-	struct sync_fence *complete_fence;
+	struct sync_file *complete_fence;
 	int complete_fence_fd;
 	struct adf_buffer buf;
 	int ret = 0;

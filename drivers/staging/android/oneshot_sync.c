@@ -31,7 +31,7 @@
  * @obj: base sync timeline
  * @lock: spinlock to guard other members
  * @state_list: list of oneshot_sync_states.
- * @id: next id for points creating oneshot_sync_pts
+ * @id: next id for points creating oneshot_sync_fences
  */
 struct oneshot_sync_timeline {
 	struct sync_timeline obj;
@@ -56,21 +56,21 @@ struct oneshot_sync_state {
 	struct list_head node;
 	bool signaled;
 	unsigned int id;
-	struct sync_fence *orig_fence;
+	struct sync_file *orig_sync_file;
 	struct oneshot_sync_timeline *timeline;
 };
 
 /**
- * struct oneshot_sync_pt
+ * struct oneshot_sync_fence
  * @sync_pt: base sync point structure
  * @state: reference counted pointer to the state of this pt
  */
-struct oneshot_sync_pt {
-	struct sync_pt sync_pt;
+struct oneshot_sync_fence {
+	struct fence fence;
 	struct oneshot_sync_state *state;
 	bool dup;
 };
-#define to_oneshot_pt(_p) container_of((_p), struct oneshot_sync_pt, sync_pt)
+#define to_oneshot_pt(_p) container_of((_p), struct oneshot_sync_fence, fence)
 
 static void oneshot_state_destroy(struct kref *ref)
 {
@@ -89,12 +89,12 @@ static void oneshot_state_put(struct oneshot_sync_state *state)
 	kref_put(&state->refcount, oneshot_state_destroy);
 }
 
-static struct oneshot_sync_pt *
+static struct oneshot_sync_fence *
 oneshot_pt_create(struct oneshot_sync_timeline *timeline)
 {
-	struct oneshot_sync_pt *pt = NULL;
+	struct oneshot_sync_fence *pt = NULL;
 
-	pt = (struct oneshot_sync_pt *)sync_pt_create(&timeline->obj,
+	pt = (struct oneshot_sync_fence *)sync_pt_create(&timeline->obj,
 						     sizeof(*pt));
 	if (pt == NULL)
 		return NULL;
@@ -117,96 +117,28 @@ oneshot_pt_create(struct oneshot_sync_timeline *timeline)
 	return pt;
 error:
 	if (pt)
-		sync_pt_free(&pt->sync_pt);
+		fence_put(&pt->fence);
 	return NULL;
 }
 
-static struct sync_pt *oneshot_pt_dup(struct sync_pt *sync_pt)
+static int oneshot_pt_has_signaled(struct fence *fence)
 {
-	struct oneshot_sync_pt *out_pt;
-	struct oneshot_sync_pt *pt = to_oneshot_pt(sync_pt);
-
-	if (!kref_get_unless_zero(&pt->state->refcount))
-		return NULL;
-
-	out_pt = (struct oneshot_sync_pt *)
-		sync_pt_create(sync_pt_parent(sync_pt), sizeof(*out_pt));
-
-	if (out_pt == NULL) {
-		oneshot_state_put(pt->state);
-		return NULL;
-	}
-	out_pt->state = pt->state;
-	out_pt->dup = true;
-
-	return &out_pt->sync_pt;
-}
-
-static int oneshot_pt_has_signaled(struct sync_pt *sync_pt)
-{
-	struct oneshot_sync_pt *pt = to_oneshot_pt(sync_pt);
+	struct oneshot_sync_fence *pt = to_oneshot_pt(fence);
 
 	return pt->state->signaled;
 }
 
-static int oneshot_pt_compare(struct sync_pt *a, struct sync_pt *b)
+static void oneshot_fence_value_str(struct fence *fence, char *str, int size)
 {
-	struct oneshot_sync_pt *pt_a = to_oneshot_pt(a);
-	struct oneshot_sync_pt *pt_b = to_oneshot_pt(b);
-	/*
-	 * since oneshot sync points are order-independent,
-	 * return an arbitrary order which just happens to
-	 * prevent sync.c from collapsing the points.
-	 */
-	return (pt_a->state == pt_b->state) ? 0 : 1;
-}
-
-static void oneshot_pt_free(struct sync_pt *sync_pt)
-{
-	struct oneshot_sync_pt *pt = to_oneshot_pt(sync_pt);
-	struct sync_timeline *parent = sync_pt_parent(sync_pt);
-	struct oneshot_sync_timeline *timeline = parent != NULL?
-		to_oneshot_timeline(parent) : NULL;
-
-	if (timeline != NULL) {
-		spin_lock(&timeline->lock);
-		/*
-		 * If this is the original pt (and fence), signal to avoid
-		 * deadlock. Unfornately, we can't signal the timeline here
-		 * safely, so there could be a delay until the pt's
-		 * state change is noticed.
-		 */
-
-		if (pt->dup == false) {
-			/*
-			 * If the original pt goes away, force it signaled to
-			 * avoid deadlock.
-			 */
-			if (!pt->state->signaled) {
-				pr_debug("id %d: fence closed before signal.\n",
-						pt->state->id);
-				pt->state->signaled = true;
-			}
-		}
-		spin_unlock(&timeline->lock);
-	}
-	oneshot_state_put(pt->state);
-}
-
-static void oneshot_pt_value_str(struct sync_pt *sync_pt, char *str, int size)
-{
-	struct oneshot_sync_pt *pt = to_oneshot_pt(sync_pt);
+	struct oneshot_sync_fence *pt = to_oneshot_pt(fence);
 
 	snprintf(str, size, "%u", pt->state->id);
 }
 
 static struct sync_timeline_ops oneshot_timeline_ops = {
 	.driver_name = "oneshot",
-	.dup = oneshot_pt_dup,
 	.has_signaled = oneshot_pt_has_signaled,
-	.compare = oneshot_pt_compare,
-	.free_pt = oneshot_pt_free,
-	.pt_value_str = oneshot_pt_value_str,
+	.fence_value_str = oneshot_fence_value_str,
 };
 
 struct oneshot_sync_timeline *oneshot_timeline_create(const char *name)
@@ -239,36 +171,36 @@ void oneshot_timeline_destroy(struct oneshot_sync_timeline *timeline)
 }
 EXPORT_SYMBOL(oneshot_timeline_destroy);
 
-struct sync_fence *oneshot_fence_create(struct oneshot_sync_timeline *timeline,
+struct sync_file *oneshot_fence_create(struct oneshot_sync_timeline *timeline,
 					const char *name)
 {
-	struct sync_fence *fence = NULL;
-	struct oneshot_sync_pt *pt = NULL;
+	struct sync_file *sync_file = NULL;
+	struct oneshot_sync_fence *pt = NULL;
 
 	pt = oneshot_pt_create(timeline);
 	if (pt == NULL)
 		return NULL;
 
-	fence = sync_fence_create(name, &pt->sync_pt);
-	if (fence == NULL) {
-		sync_pt_free(&pt->sync_pt);
+	sync_file = sync_file_create(name, &pt->fence);
+	if (sync_file == NULL) {
+		fence_put(&pt->fence);
 		return NULL;
 	}
 
-	pt->state->orig_fence = fence;
+	pt->state->orig_sync_file = sync_file;
 
-	return fence;
+	return sync_file;
 }
 EXPORT_SYMBOL(oneshot_fence_create);
 
 int oneshot_fence_signal(struct oneshot_sync_timeline *timeline,
-			struct sync_fence *fence)
+			struct sync_file *sync_file)
 {
 	int ret = -EINVAL;
 	struct oneshot_sync_state *state = NULL;
 	bool signaled = false;
 
-	if (timeline == NULL || fence == NULL)
+	if (timeline == NULL || sync_file == NULL)
 		return -EINVAL;
 
 	spin_lock(&timeline->lock);
@@ -277,7 +209,7 @@ int oneshot_fence_signal(struct oneshot_sync_timeline *timeline,
 		 * If we have the point from this fence on our list,
 		 * this is is the original fence we created, so signal it.
 		 */
-		if (state->orig_fence == fence) {
+		if (state->orig_sync_file == sync_file) {
 			/* ignore attempts to signal multiple times */
 			if (!state->signaled) {
 				state->signaled = true;
@@ -289,7 +221,7 @@ int oneshot_fence_signal(struct oneshot_sync_timeline *timeline,
 	}
 	spin_unlock(&timeline->lock);
 	if (ret == -EINVAL)
-		pr_debug("fence: %pK not from this timeline\n", fence);
+		pr_debug("fence: %pK not from this timeline\n", sync_file);
 
 	if (signaled)
 		sync_timeline_signal(&timeline->obj);
@@ -330,7 +262,7 @@ static long oneshot_ioctl_fence_create(struct oneshot_sync_timeline *timeline,
 {
 	struct oneshot_sync_create_fence param;
 	int ret = -ENOMEM;
-	struct sync_fence *fence = NULL;
+	struct sync_file *sync_file = NULL;
 	int fd = get_unused_fd_flags(0);
 
 	if (fd < 0)
@@ -341,8 +273,8 @@ static long oneshot_ioctl_fence_create(struct oneshot_sync_timeline *timeline,
 		goto out;
 	}
 
-	fence = oneshot_fence_create(timeline, param.name);
-	if (fence == NULL) {
+	sync_file = oneshot_fence_create(timeline, param.name);
+	if (sync_file == NULL) {
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -354,12 +286,12 @@ static long oneshot_ioctl_fence_create(struct oneshot_sync_timeline *timeline,
 		goto out;
 	}
 
-	sync_fence_install(fence, fd);
+	sync_fence_install(sync_file, fd);
 	ret = 0;
 out:
 	if (ret) {
-		if (fence)
-			sync_fence_put(fence);
+		if (sync_file)
+			sync_file_put(sync_file);
 		put_unused_fd(fd);
 	}
 	return ret;
@@ -372,17 +304,17 @@ static long oneshot_ioctl_fence_signal(struct oneshot_sync_timeline *timeline,
 {
 	int ret = -EINVAL;
 	int fd = -1;
-	struct sync_fence *fence = NULL;
+	struct sync_file *sync_file = NULL;
 
 	if (get_user(fd, (int __user *)arg))
 		return -EFAULT;
 
-	fence = sync_fence_fdget(fd);
-	if (fence == NULL)
+	sync_file = sync_file_fdget(fd);
+	if (sync_file == NULL)
 		return -EBADF;
 
 	ret = oneshot_fence_signal(timeline, fence);
-	sync_fence_put(fence);
+	sync_file_put(sync_file);
 
 	return ret;
 }

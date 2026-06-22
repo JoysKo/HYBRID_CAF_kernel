@@ -41,7 +41,7 @@
 
 static DEFINE_IDR(adf_devices);
 
-static void adf_fence_wait(struct adf_device *dev, struct sync_fence *fence)
+static void adf_fence_wait(struct adf_device *dev, struct sync_file *fence)
 {
 	/* sync_fence_wait() dumps debug information on timeout.  Experience
 	   has shown that if the pipeline gets stuck, a short timeout followed
@@ -129,7 +129,7 @@ static void adf_post_work_func(struct kthread_work *work)
 		int i;
 
 		for (i = 0; i < post->config.n_bufs; i++) {
-			struct sync_fence *fence =
+			struct sync_file *fence =
 					post->config.bufs[i].acquire_fence;
 			if (fence)
 				adf_fence_wait(dev, fence);

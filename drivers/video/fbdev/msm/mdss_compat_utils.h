@@ -528,13 +528,13 @@ struct mdp_output_layer32 {
 };
 struct mdp_layer_commit_v1_32 {
 	uint32_t		flags;
-	int			release_fence;
+	int			release_sync_file;
 	struct mdp_rect		left_roi;
 	struct mdp_rect		right_roi;
 	compat_caddr_t		input_layers;
 	uint32_t		input_layer_cnt;
 	compat_caddr_t		output_layer;
-	int			retire_fence;
+	int			retire_sync_file;
 	compat_caddr_t		dest_scaler;
 	uint32_t                dest_scaler_cnt;
 	compat_caddr_t		frc_info;

@@ -3669,7 +3669,7 @@ int mdss_mdp_cwb_setup(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_TOP, opmode);
 
 	/* Increase commit count to signal CWB release fence */
-	atomic_inc(&cwb->cwb_sync_pt_data.commit_cnt);
+	atomic_inc(&cwb->cwb_sync_fence_data.commit_cnt);
 
 	goto cwb_setup_done;
 

@@ -82,12 +82,12 @@ struct blit_req_list {
 	struct mdp_blit_req req_list[MAX_LIST_WINDOW];
 	struct mdp3_img_data src_data[MAX_LIST_WINDOW];
 	struct mdp3_img_data dst_data[MAX_LIST_WINDOW];
-	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
+	struct sync_file *acq_fen[MDP_MAX_FENCE_FD];
 	u32 acq_fen_cnt;
 	int cur_rel_fen_fd;
-	struct sync_pt *cur_rel_sync_pt;
-	struct sync_fence *cur_rel_fence;
-	struct sync_fence *last_rel_fence;
+	struct fence *cur_rel_sync_fence;
+	struct sync_file *cur_rel_fence;
+	struct sync_file *last_rel_fence;
 };
 
 struct blit_req_queue {
@@ -1232,7 +1232,7 @@ static int mdp3_ppp_handle_buf_sync(struct blit_req_list *req,
 {
 	int i, fence_cnt = 0, ret = 0;
 	int acq_fen_fd[MDP_MAX_FENCE_FD];
-	struct sync_fence *fence;
+	struct sync_file *fence;
 
 	if ((buf_sync->acq_fen_fd_cnt > MDP_MAX_FENCE_FD) ||
 		(ppp_stat->timeline == NULL))
@@ -1262,19 +1262,19 @@ static int mdp3_ppp_handle_buf_sync(struct blit_req_list *req,
 	if (buf_sync->flags & MDP_BUF_SYNC_FLAG_WAIT)
 		mdp3_ppp_wait_for_fence(req);
 
-	req->cur_rel_sync_pt = sw_sync_pt_create(ppp_stat->timeline,
+	req->cur_rel_sync_fence = sw_sync_fence_create(ppp_stat->timeline,
 			ppp_stat->timeline_value++);
-	if (req->cur_rel_sync_pt == NULL) {
+	if (req->cur_rel_sync_fence == NULL) {
 		pr_err("%s: cannot create sync point\n", __func__);
 		ret = -ENOMEM;
 		goto buf_sync_err_2;
 	}
 	/* create fence */
 	req->cur_rel_fence = sync_fence_create("ppp-fence",
-			req->cur_rel_sync_pt);
+			req->cur_rel_sync_fence);
 	if (req->cur_rel_fence == NULL) {
-		sync_pt_free(req->cur_rel_sync_pt);
-		req->cur_rel_sync_pt = NULL;
+		sync_pt_free(req->cur_rel_sync_fence);
+		req->cur_rel_sync_fence = NULL;
 		pr_err("%s: cannot create fence\n", __func__);
 		ret = -ENOMEM;
 		goto buf_sync_err_2;
@@ -1581,7 +1581,7 @@ int mdp3_ppp_parse_req(void __user *p,
 {
 	struct blit_req_list *req;
 	struct blit_req_queue *req_q = &ppp_stat->req_q;
-	struct sync_fence *fence = NULL;
+	struct sync_file *fence = NULL;
 	int count, rc, idx, i;
 	count = req_list_header->count;
 

@@ -127,7 +127,7 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 		struct vm_area_struct *vma);
 static int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd,
 		size_t size);
-static void mdss_fb_release_fences(struct msm_fb_data_type *mfd);
+static void mdss_fb_release_sync_files(struct msm_fb_data_type *mfd);
 static int __mdss_fb_sync_buf_done_callback(struct notifier_block *p,
 		unsigned long val, void *data);
 
@@ -135,7 +135,7 @@ static int __mdss_fb_display_thread(void *data);
 static int mdss_fb_pan_idle(struct msm_fb_data_type *mfd);
 static int mdss_fb_send_panel_event(struct msm_fb_data_type *mfd,
 					int event, void *arg);
-static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
+static void mdss_fb_set_mdp_sync_fence_threshold(struct msm_fb_data_type *mfd,
 		int type);
 
 #define WAIT_RESUME_TIMEOUT 200
@@ -876,7 +876,7 @@ static int mdss_fb_blanking_mode_switch(struct msm_fb_data_type *mfd, int mode)
 	mfd->op_enable = false;
 
 	ret = mfd->mdp.configure_panel(mfd, mode, 1);
-	mdss_fb_set_mdp_sync_pt_threshold(mfd, mfd->panel.type);
+	mdss_fb_set_mdp_sync_fence_threshold(mfd, mfd->panel.type);
 
 	mfd->op_enable = true;
 
@@ -1534,29 +1534,29 @@ static int mdss_fb_probe(struct platform_device *pdev)
 
 	mdss_fb_init_panel_modes(mfd, pdata);
 
-	mfd->mdp_sync_pt_data.fence_name = "mdp-fence";
-	if (mfd->mdp_sync_pt_data.timeline == NULL) {
+	mfd->mdp_sync_fence_data.sync_file_name = "mdp-sync_file";
+	if (mfd->mdp_sync_fence_data.timeline == NULL) {
 		char timeline_name[16];
 		snprintf(timeline_name, sizeof(timeline_name),
 			"mdss_fb_%d", mfd->index);
-		 mfd->mdp_sync_pt_data.timeline =
+		 mfd->mdp_sync_fence_data.timeline =
 				sw_sync_timeline_create(timeline_name);
-		if (mfd->mdp_sync_pt_data.timeline == NULL) {
-			pr_err("cannot create release fence time line\n");
+		if (mfd->mdp_sync_fence_data.timeline == NULL) {
+			pr_err("cannot create release sync_file time line\n");
 			return -ENOMEM;
 		}
-		mfd->mdp_sync_pt_data.notifier.notifier_call =
+		mfd->mdp_sync_fence_data.notifier.notifier_call =
 			__mdss_fb_sync_buf_done_callback;
 
 		/* Initialize CWB notifier callback */
 		mdp5_data = mfd_to_mdp5_data(mfd);
 		if (test_bit(MDSS_CAPS_CWB_SUPPORTED,
 					mdp5_data->mdata->mdss_caps_map))
-			mdp5_data->cwb.cwb_sync_pt_data.notifier.notifier_call =
+			mdp5_data->cwb.cwb_sync_fence_data.notifier.notifier_call =
 				__mdss_fb_sync_buf_done_callback;
 	}
 
-	mdss_fb_set_mdp_sync_pt_threshold(mfd, mfd->panel.type);
+	mdss_fb_set_mdp_sync_fence_threshold(mfd, mfd->panel.type);
 
 	if (mfd->mdp.splash_init_fnc)
 		mfd->mdp.splash_init_fnc(mfd);
@@ -1597,7 +1597,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	return rc;
 }
 
-static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
+static void mdss_fb_set_mdp_sync_fence_threshold(struct msm_fb_data_type *mfd,
 		int type)
 {
 	if (!mfd)
@@ -1605,16 +1605,16 @@ static void mdss_fb_set_mdp_sync_pt_threshold(struct msm_fb_data_type *mfd,
 
 	switch (type) {
 	case WRITEBACK_PANEL:
-		mfd->mdp_sync_pt_data.threshold = 1;
-		mfd->mdp_sync_pt_data.retire_threshold = 0;
+		mfd->mdp_sync_fence_data.threshold = 1;
+		mfd->mdp_sync_fence_data.retire_threshold = 0;
 		break;
 	case MIPI_CMD_PANEL:
-		mfd->mdp_sync_pt_data.threshold = 1;
-		mfd->mdp_sync_pt_data.retire_threshold = 1;
+		mfd->mdp_sync_fence_data.threshold = 1;
+		mfd->mdp_sync_fence_data.retire_threshold = 1;
 		break;
 	default:
-		mfd->mdp_sync_pt_data.threshold = 2;
-		mfd->mdp_sync_pt_data.retire_threshold = 0;
+		mfd->mdp_sync_fence_data.threshold = 2;
+		mfd->mdp_sync_fence_data.retire_threshold = 0;
 		break;
 	}
 }
@@ -2153,7 +2153,7 @@ static int mdss_fb_blank_blank(struct msm_fb_data_type *mfd,
 	if (ret)
 		mfd->panel_power_state = cur_power_state;
 	else if (mdss_panel_is_power_off(req_power_state))
-		mdss_fb_release_fences(mfd);
+		mdss_fb_release_sync_files(mfd);
 	mfd->op_enable = true;
 	complete(&mfd->power_off_comp);
 
@@ -2399,7 +2399,7 @@ static int mdss_fb_blank(int blank_mode, struct fb_info *info)
 			blank_mode == FB_BLANK_UNBLANK) {
 		pr_debug("panel is in lpm mode\n");
 		mfd->mdp.configure_panel(mfd, 0, 1);
-		mdss_fb_set_mdp_sync_pt_threshold(mfd, mfd->panel.type);
+		mdss_fb_set_mdp_sync_fence_threshold(mfd, mfd->panel.type);
 		pdata->panel_info.is_lpm_mode = false;
 	}
 
@@ -3000,8 +3000,8 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 
 	mutex_init(&mfd->update.lock);
 	mutex_init(&mfd->no_update.lock);
-	mutex_init(&mfd->mdp_sync_pt_data.sync_mutex);
-	atomic_set(&mfd->mdp_sync_pt_data.commit_cnt, 0);
+	mutex_init(&mfd->mdp_sync_fence_data.sync_mutex);
+	atomic_set(&mfd->mdp_sync_fence_data.commit_cnt, 0);
 	atomic_set(&mfd->commits_pending, 0);
 	atomic_set(&mfd->ioctl_ref_cnt, 0);
 	atomic_set(&mfd->kickoff_pending, 0);
@@ -3225,26 +3225,59 @@ static void mdss_fb_power_setting_idle(struct msm_fb_data_type *mfd)
 	}
 }
 
-static void __mdss_fb_copy_fence(struct msm_sync_pt_data *sync_pt_data,
-	struct sync_fence **fences, u32 *fence_cnt)
+static void __mdss_fb_copy_sync_file(struct msm_sync_fence_data *sync_pt_data,
+	struct sync_file **sync_files, u32 *sync_file_cnt)
 {
-	pr_debug("%s: wait for fences\n", sync_pt_data->fence_name);
+	pr_debug("%s: wait for sync_files\n", sync_pt_data->sync_file_name);
 
 	mutex_lock(&sync_pt_data->sync_mutex);
 	/*
 	 * Assuming that acq_fen_cnt is sanitized in bufsync ioctl
 	 * to check for sync_pt_data->acq_fen_cnt <= MDP_MAX_FENCE_FD
 	 */
-	*fence_cnt = sync_pt_data->acq_fen_cnt;
+	*sync_file_cnt = sync_pt_data->acq_fen_cnt;
 	sync_pt_data->acq_fen_cnt = 0;
-	if (*fence_cnt)
-		memcpy(fences, sync_pt_data->acq_fen,
-				*fence_cnt * sizeof(struct sync_fence *));
+	if (*sync_file_cnt)
+		memcpy(sync_files, sync_pt_data->acq_fen,
+				*sync_file_cnt * sizeof(struct sync_file *));
 	mutex_unlock(&sync_pt_data->sync_mutex);
 }
 
-static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
-	struct sync_fence **fences, int fence_cnt)
+static int sync_file_wait(struct sync_file *sync_file, long timeout)
+{
+	long ret;
+
+	if (timeout < 0)
+		timeout = MAX_SCHEDULE_TIMEOUT;
+	else
+		timeout = msecs_to_jiffies(timeout);
+
+	ret = wait_event_interruptible_timeout(sync_file->wq,
+					       atomic_read(&sync_file->status) <= 0,
+					       timeout);
+
+	if (ret < 0) {
+		return ret;
+	} else if (ret == 0) {
+		if (timeout) {
+			pr_info("sync_file timeout on [%p] after %dms\n",
+				sync_file, jiffies_to_msecs(timeout));
+			if (jiffies_to_msecs(timeout) >= 7000)
+				sync_dump();
+		}
+		return -ETIME;
+	}
+
+	ret = atomic_read(&sync_file->status);
+	if (ret) {
+		pr_info("sync_file error %ld on [%p]\n", ret, sync_file);
+		sync_dump();
+	}
+	return ret;
+}
+
+static int __mdss_fb_wait_for_sync_file_sub(struct msm_sync_fence_data *sync_pt_data,
+	struct sync_file **sync_files, int sync_file_cnt)
 {
 	int i, ret = 0;
 	unsigned long max_wait = msecs_to_jiffies(WAIT_MAX_FENCE_TIMEOUT);
@@ -3252,14 +3285,14 @@ static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
 	long wait_ms, wait_jf;
 
 	/* buf sync */
-	for (i = 0; i < fence_cnt && !ret; i++) {
+	for (i = 0; i < sync_file_cnt && !ret; i++) {
 		wait_jf = timeout - jiffies;
 		wait_ms = jiffies_to_msecs(wait_jf);
 
 		/*
-		 * In this loop, if one of the previous fence took long
-		 * time, give a chance for the next fence to check if
-		 * fence is already signalled. If not signalled it breaks
+		 * In this loop, if one of the previous sync_file took long
+		 * time, give a chance for the next sync_file to check if
+		 * sync_file is already signalled. If not signalled it breaks
 		 * in the final wait timeout.
 		 */
 		if (wait_jf < 0)
@@ -3268,7 +3301,7 @@ static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
 			wait_ms = min_t(long, WAIT_FENCE_FIRST_TIMEOUT,
 					wait_ms);
 
-		ret = sync_fence_wait(fences[i], wait_ms);
+		ret = sync_file_wait(sync_files[i], wait_ms);
 
 		if (ret == -ETIME) {
 			wait_jf = timeout - jiffies;
@@ -3279,51 +3312,51 @@ static int __mdss_fb_wait_for_fence_sub(struct msm_sync_pt_data *sync_pt_data,
 				wait_ms = min_t(long, WAIT_FENCE_FINAL_TIMEOUT,
 						wait_ms);
 
-			pr_warn("%s: sync_fence_wait timed out! ",
-					fences[i]->name);
+			pr_warn("%s: sync_file_wait timed out! ",
+					sync_files[i]->name);
 			pr_cont("Waiting %ld.%ld more seconds\n",
 				(wait_ms/MSEC_PER_SEC), (wait_ms%MSEC_PER_SEC));
 
-			ret = sync_fence_wait(fences[i], wait_ms);
+			ret = sync_file_wait(sync_files[i], wait_ms);
 
 			if (ret == -ETIME)
 				break;
 		}
-		sync_fence_put(fences[i]);
+		sync_file_put(sync_files[i]);
 	}
 
 	if (ret < 0) {
-		pr_err("%s: sync_fence_wait failed! ret = %x\n",
-				sync_pt_data->fence_name, ret);
-		for (; i < fence_cnt; i++)
-			sync_fence_put(fences[i]);
+		pr_err("%s: sync_file_wait failed! ret = %x\n",
+				sync_pt_data->sync_file_name, ret);
+		for (; i < sync_file_cnt; i++)
+			sync_file_put(sync_files[i]);
 	}
 	return ret;
 }
 
-int mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data)
+int mdss_fb_wait_for_sync_file(struct msm_sync_fence_data *sync_pt_data)
 {
-	struct sync_fence *fences[MDP_MAX_FENCE_FD];
-	int fence_cnt = 0;
+	struct sync_file *sync_files[MDP_MAX_FENCE_FD];
+	int sync_file_cnt = 0;
 
-	__mdss_fb_copy_fence(sync_pt_data, fences, &fence_cnt);
+	__mdss_fb_copy_sync_file(sync_pt_data, sync_files, &sync_file_cnt);
 
-	if (fence_cnt)
-		__mdss_fb_wait_for_fence_sub(sync_pt_data,
-			fences, fence_cnt);
+	if (sync_file_cnt)
+		__mdss_fb_wait_for_sync_file_sub(sync_pt_data,
+			sync_files, sync_file_cnt);
 
-	return fence_cnt;
+	return sync_file_cnt;
 }
 
 /**
- * mdss_fb_signal_timeline() - signal a single release fence
+ * mdss_fb_signal_timeline() - signal a single release sync_file
  * @sync_pt_data:	Sync point data structure for the timeline which
  *			should be signaled.
  *
  * This is called after a frame has been pushed to display. This signals the
- * timeline to release the fences associated with this frame.
+ * timeline to release the sync_files associated with this frame.
  */
-void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data)
+void mdss_fb_signal_timeline(struct msm_sync_fence_data *sync_pt_data)
 {
 	mutex_lock(&sync_pt_data->sync_mutex);
 	if (atomic_add_unless(&sync_pt_data->commit_cnt, -1, 0) &&
@@ -3332,27 +3365,27 @@ void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data)
 		sync_pt_data->timeline_value++;
 
 		pr_debug("%s: buffer signaled! timeline val=%d remaining=%d\n",
-			sync_pt_data->fence_name, sync_pt_data->timeline_value,
+			sync_pt_data->sync_file_name, sync_pt_data->timeline_value,
 			atomic_read(&sync_pt_data->commit_cnt));
 	} else {
 		pr_debug("%s timeline signaled without commits val=%d\n",
-			sync_pt_data->fence_name, sync_pt_data->timeline_value);
+			sync_pt_data->sync_file_name, sync_pt_data->timeline_value);
 	}
 	mutex_unlock(&sync_pt_data->sync_mutex);
 }
 
 /**
- * mdss_fb_release_fences() - signal all pending release fences
+ * mdss_fb_release_sync_files() - signal all pending release sync_files
  * @mfd:	Framebuffer data structure for display
  *
- * Release all currently pending release fences, including those that are in
+ * Release all currently pending release sync_files, including those that are in
  * the process to be commited.
  *
  * Note: this should only be called during close or suspend sequence.
  */
-static void mdss_fb_release_fences(struct msm_fb_data_type *mfd)
+static void mdss_fb_release_sync_files(struct msm_fb_data_type *mfd)
 {
-	struct msm_sync_pt_data *sync_pt_data = &mfd->mdp_sync_pt_data;
+	struct msm_sync_fence_data *sync_pt_data = &mfd->mdp_sync_fence_data;
 	int val;
 
 	mutex_lock(&sync_pt_data->sync_mutex);
@@ -3385,14 +3418,14 @@ static void mdss_fb_release_kickoff(struct msm_fb_data_type *mfd)
 static int __mdss_fb_sync_buf_done_callback(struct notifier_block *p,
 		unsigned long event, void *data)
 {
-	struct msm_sync_pt_data *sync_pt_data;
+	struct msm_sync_fence_data *sync_pt_data;
 	struct msm_fb_data_type *mfd;
-	int fence_cnt;
+	int sync_file_cnt;
 	int ret = NOTIFY_OK;
 
-	sync_pt_data = container_of(p, struct msm_sync_pt_data, notifier);
+	sync_pt_data = container_of(p, struct msm_sync_fence_data, notifier);
 	mfd = container_of(sync_pt_data, struct msm_fb_data_type,
-		mdp_sync_pt_data);
+		mdp_sync_fence_data);
 
 	switch (event) {
 	case MDP_NOTIFY_FRAME_BEGIN:
@@ -3405,12 +3438,12 @@ static int __mdss_fb_sync_buf_done_callback(struct notifier_block *p,
 		mfd->idle_state = MDSS_FB_NOT_IDLE;
 		break;
 	case MDP_NOTIFY_FRAME_READY:
-		if (sync_pt_data->async_wait_fences &&
+		if (sync_pt_data->async_wait_sync_files &&
 			sync_pt_data->temp_fen_cnt) {
-			fence_cnt = sync_pt_data->temp_fen_cnt;
+			sync_file_cnt = sync_pt_data->temp_fen_cnt;
 			sync_pt_data->temp_fen_cnt = 0;
-			ret = __mdss_fb_wait_for_fence_sub(sync_pt_data,
-				sync_pt_data->temp_fen, fence_cnt);
+			ret = __mdss_fb_wait_for_sync_file_sub(sync_pt_data,
+				sync_pt_data->temp_fen, sync_file_cnt);
 		}
 		if (mfd->idle_time) {
 			if (!mod_delayed_work(system_wq,
@@ -3426,21 +3459,21 @@ static int __mdss_fb_sync_buf_done_callback(struct notifier_block *p,
 			ret = NOTIFY_BAD;
 		break;
 	case MDP_NOTIFY_FRAME_FLUSHED:
-		pr_debug("%s: frame flushed\n", sync_pt_data->fence_name);
+		pr_debug("%s: frame flushed\n", sync_pt_data->sync_file_name);
 		sync_pt_data->flushed = true;
 		break;
 	case MDP_NOTIFY_FRAME_TIMEOUT:
-		pr_err("%s: frame timeout\n", sync_pt_data->fence_name);
+		pr_err("%s: frame timeout\n", sync_pt_data->sync_file_name);
 		mdss_fb_signal_timeline(sync_pt_data);
 		break;
 	case MDP_NOTIFY_FRAME_DONE:
-		pr_debug("%s: frame done\n", sync_pt_data->fence_name);
+		pr_debug("%s: frame done\n", sync_pt_data->sync_file_name);
 		mdss_fb_signal_timeline(sync_pt_data);
 		mdss_fb_calc_fps(mfd);
 		break;
 	case MDP_NOTIFY_FRAME_CFG_DONE:
-		if (sync_pt_data->async_wait_fences)
-			__mdss_fb_copy_fence(sync_pt_data,
+		if (sync_pt_data->async_wait_sync_files)
+			__mdss_fb_copy_sync_file(sync_pt_data,
 					sync_pt_data->temp_fen,
 					&sync_pt_data->temp_fen_cnt);
 		break;
@@ -3551,7 +3584,7 @@ static int mdss_fb_pan_display_ex(struct fb_info *info,
 		}
 	}
 
-	mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
+	mutex_lock(&mfd->mdp_sync_fence_data.sync_mutex);
 	if (info->fix.xpanstep)
 		info->var.xoffset =
 		(var->xoffset / info->fix.xpanstep) * info->fix.xpanstep;
@@ -3563,11 +3596,11 @@ static int mdss_fb_pan_display_ex(struct fb_info *info,
 	mfd->msm_fb_backup.info = *info;
 	mfd->msm_fb_backup.disp_commit = *disp_commit;
 
-	atomic_inc(&mfd->mdp_sync_pt_data.commit_cnt);
+	atomic_inc(&mfd->mdp_sync_fence_data.commit_cnt);
 	atomic_inc(&mfd->commits_pending);
 	atomic_inc(&mfd->kickoff_pending);
 	wake_up_all(&mfd->commit_wait_q);
-	mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
+	mutex_unlock(&mfd->mdp_sync_fence_data.sync_mutex);
 	if (wait_for_finish) {
 		ret = mdss_fb_pan_idle(mfd);
 		if (ret)
@@ -3598,7 +3631,7 @@ u32 mdss_fb_get_mode_switch(struct msm_fb_data_type *mfd)
  * are used to make sure that panel mode switch occurs on next
  * prepare/sync/commit (for legacy) and validate/pre_commit (for
  * atomic commit) pairing. This state machine insure that calculation
- * and return values (such as buffer release fences) are based on the
+ * and return values (such as buffer release sync_files) are based on the
  * panel mode being switching into.
  */
 static int __ioctl_transition_dyn_mode_state(struct msm_fb_data_type *mfd,
@@ -3617,7 +3650,7 @@ static int __ioctl_transition_dyn_mode_state(struct msm_fb_data_type *mfd,
 			mfd->switch_state = MDSS_MDP_WAIT_FOR_COMMIT;
 		} else if (mfd->switch_state == MDSS_MDP_WAIT_FOR_COMMIT) {
 			if (mfd->switch_new_mode != SWITCH_RESOLUTION)
-				mdss_fb_set_mdp_sync_pt_threshold(mfd,
+				mdss_fb_set_mdp_sync_fence_threshold(mfd,
 					mfd->switch_new_mode);
 			mfd->switch_state = MDSS_MDP_WAIT_FOR_KICKOFF;
 		} else if ((mfd->switch_state == MDSS_MDP_WAIT_FOR_VALIDATE)
@@ -3771,7 +3804,7 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 	} else
 		mfd->bl_extn_level = -1;
 
-	atomic_inc(&mfd->mdp_sync_pt_data.commit_cnt);
+	atomic_inc(&mfd->mdp_sync_fence_data.commit_cnt);
 	atomic_inc(&mfd->commits_pending);
 	atomic_inc(&mfd->kickoff_pending);
 	wake_up_all(&mfd->commit_wait_q);
@@ -3965,17 +3998,17 @@ void mdss_panelinfo_to_fb_var(struct mdss_panel_info *pinfo,
  * @mfd:	Framebuffer data structure for display
  *
  * Processes all layers and buffers programmed and ensures all pending release
- * fences are signaled once the buffer is transfered to display.
+ * sync_files are signaled once the buffer is transfered to display.
  */
 static int __mdss_fb_perform_commit(struct msm_fb_data_type *mfd)
 {
-	struct msm_sync_pt_data *sync_pt_data = &mfd->mdp_sync_pt_data;
+	struct msm_sync_fence_data *sync_pt_data = &mfd->mdp_sync_fence_data;
 	struct msm_fb_backup_type *fb_backup = &mfd->msm_fb_backup;
 	int ret = -ENOSYS;
 	u32 new_dsi_mode, dynamic_dsi_switch = 0;
 
-	if (!sync_pt_data->async_wait_fences)
-		mdss_fb_wait_for_fence(sync_pt_data);
+	if (!sync_pt_data->async_wait_sync_files)
+		mdss_fb_wait_for_sync_file(sync_pt_data);
 	sync_pt_data->flushed = false;
 
 	mutex_lock(&mfd->switch_lock);
@@ -4031,8 +4064,8 @@ skip_commit:
 		mdss_fb_signal_timeline(sync_pt_data);
 
 		if ((mfd->panel.type == MIPI_CMD_PANEL) &&
-			(mfd->mdp.signal_retire_fence))
-			mfd->mdp.signal_retire_fence(mfd, 1);
+			(mfd->mdp.signal_retire_sync_file))
+			mfd->mdp.signal_retire_sync_file(mfd, 1);
 	}
 	if (dynamic_dsi_switch) {
 		MDSS_XLOG(mfd->index, mfd->split_mode, new_dsi_mode,
@@ -4555,45 +4588,45 @@ static int mdss_fb_set_lut(struct fb_info *info, void __user *p)
 }
 
 /**
- * mdss_fb_sync_get_fence() - get fence from timeline
- * @timeline:	Timeline to create the fence on
- * @fence_name:	Name of the fence that will be created for debugging
- * @val:	Timeline value at which the fence will be signaled
+ * mdss_fb_sync_get_file() - get sync_file from timeline
+ * @timeline:	Timeline to create the sync_file on
+ * @sync_file_name:	Name of the sync_file that will be created for debugging
+ * @val:	Timeline value at which the sync_file will be signaled
  *
- * Function returns a fence on the timeline given with the name provided.
- * The fence created will be signaled when the timeline is advanced.
+ * Function returns a sync_file on the timeline given with the name provided.
+ * The sync_file created will be signaled when the timeline is advanced.
  */
-struct sync_fence *mdss_fb_sync_get_fence(struct sw_sync_timeline *timeline,
-		const char *fence_name, int val)
+struct sync_file *mdss_fb_sync_get_file(struct sw_sync_timeline *timeline,
+		const char *sync_file_name, int val)
 {
-	struct sync_pt *sync_pt;
-	struct sync_fence *fence;
+	struct fence *sync_pt;
+	struct sync_file *sync_file;
 
-	pr_debug("%s: buf sync fence timeline=%d\n", fence_name, val);
+	pr_debug("%s: buf sync sync_file timeline=%d\n", sync_file_name, val);
 
-	sync_pt = sw_sync_pt_create(timeline, val);
+	sync_pt = sw_sync_fence_create(timeline, val);
 	if (sync_pt == NULL) {
-		pr_err("%s: cannot create sync point\n", fence_name);
+		pr_err("%s: cannot create sync point\n", sync_file_name);
 		return NULL;
 	}
 
-	/* create fence */
-	fence = sync_fence_create(fence_name, sync_pt);
-	if (fence == NULL) {
-		sync_pt_free(sync_pt);
-		pr_err("%s: cannot create fence\n", fence_name);
+	/* create sync_file */
+	sync_file = sync_file_create(sync_file_name, sync_pt);
+	if (sync_file == NULL) {
+		fence_put(sync_pt);
+		pr_err("%s: cannot create sync_file\n", sync_file_name);
 		return NULL;
 	}
 
-	return fence;
+	return sync_file;
 }
 
-static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
+static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_fence_data *sync_pt_data,
 				 struct mdp_buf_sync *buf_sync)
 {
 	int i, ret = 0;
 	int acq_fen_fd[MDP_MAX_FENCE_FD];
-	struct sync_fence *fence, *rel_fence, *retire_fence;
+	struct sync_file *sync_file, *rel_sync_file, *retire_sync_file;
 	int rel_fen_fd;
 	int retire_fen_fd;
 	int val;
@@ -4606,26 +4639,26 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 		ret = copy_from_user(acq_fen_fd, buf_sync->acq_fen_fd,
 				buf_sync->acq_fen_fd_cnt * sizeof(int));
 	if (ret) {
-		pr_err("%s: copy_from_user failed\n", sync_pt_data->fence_name);
+		pr_err("%s: copy_from_user failed\n", sync_pt_data->sync_file_name);
 		return ret;
 	}
 
-	i = mdss_fb_wait_for_fence(sync_pt_data);
+	i = mdss_fb_wait_for_sync_file(sync_pt_data);
 	if (i > 0)
-		pr_warn("%s: waited on %d active fences\n",
-				sync_pt_data->fence_name, i);
+		pr_warn("%s: waited on %d active sync_files\n",
+				sync_pt_data->sync_file_name, i);
 
 	mutex_lock(&sync_pt_data->sync_mutex);
 	for (i = 0; i < buf_sync->acq_fen_fd_cnt; i++) {
-		fence = sync_fence_fdget(acq_fen_fd[i]);
-		if (fence == NULL) {
-			pr_err("%s: null fence! i=%d fd=%d\n",
-					sync_pt_data->fence_name, i,
+		sync_file = sync_file_fdget(acq_fen_fd[i]);
+		if (sync_file == NULL) {
+			pr_err("%s: null sync_file! i=%d fd=%d\n",
+					sync_pt_data->sync_file_name, i,
 					acq_fen_fd[i]);
 			ret = -EINVAL;
 			break;
 		}
-		sync_pt_data->acq_fen[i] = fence;
+		sync_pt_data->acq_fen[i] = sync_file;
 	}
 	sync_pt_data->acq_fen_cnt = i;
 	if (ret)
@@ -4634,13 +4667,13 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 	val = sync_pt_data->timeline_value + sync_pt_data->threshold +
 			atomic_read(&sync_pt_data->commit_cnt);
 
-	/* Set release fence */
-	rel_fence = mdss_fb_sync_get_fence(sync_pt_data->timeline,
-			sync_pt_data->fence_name, val);
-	if (IS_ERR_OR_NULL(rel_fence)) {
-		pr_err("%s: unable to retrieve release fence\n",
-				sync_pt_data->fence_name);
-		ret = rel_fence ? PTR_ERR(rel_fence) : -ENOMEM;
+	/* Set release sync_file */
+	rel_sync_file = mdss_fb_sync_get_file(sync_pt_data->timeline,
+			sync_pt_data->sync_file_name, val);
+	if (IS_ERR_OR_NULL(rel_sync_file)) {
+		pr_err("%s: unable to retrieve release sync_file\n",
+				sync_pt_data->sync_file_name);
+		ret = rel_sync_file ? PTR_ERR(rel_sync_file) : -ENOMEM;
 		goto buf_sync_err_1;
 	}
 
@@ -4648,74 +4681,74 @@ static int mdss_fb_handle_buf_sync_ioctl(struct msm_sync_pt_data *sync_pt_data,
 	rel_fen_fd = get_unused_fd_flags(0);
 	if (rel_fen_fd < 0) {
 		pr_err("%s: get_unused_fd_flags failed error:0x%x\n",
-				sync_pt_data->fence_name, rel_fen_fd);
+				sync_pt_data->sync_file_name, rel_fen_fd);
 		ret = rel_fen_fd;
 		goto buf_sync_err_2;
 	}
 
 	ret = copy_to_user(buf_sync->rel_fen_fd, &rel_fen_fd, sizeof(int));
 	if (ret) {
-		pr_err("%s: copy_to_user failed\n", sync_pt_data->fence_name);
+		pr_err("%s: copy_to_user failed\n", sync_pt_data->sync_file_name);
 		goto buf_sync_err_3;
 	}
 
 	if (!(buf_sync->flags & MDP_BUF_SYNC_FLAG_RETIRE_FENCE))
-		goto skip_retire_fence;
+		goto skip_retire_sync_file;
 
-	if (sync_pt_data->get_retire_fence)
-		retire_fence = sync_pt_data->get_retire_fence(sync_pt_data);
+	if (sync_pt_data->get_retire_sync_file)
+		retire_sync_file = sync_pt_data->get_retire_sync_file(sync_pt_data);
 	else
-		retire_fence = NULL;
+		retire_sync_file = NULL;
 
-	if (IS_ERR_OR_NULL(retire_fence)) {
+	if (IS_ERR_OR_NULL(retire_sync_file)) {
 		val += sync_pt_data->retire_threshold;
-		retire_fence = mdss_fb_sync_get_fence(
+		retire_sync_file = mdss_fb_sync_get_file(
 			sync_pt_data->timeline, "mdp-retire", val);
 	}
 
-	if (IS_ERR_OR_NULL(retire_fence)) {
-		pr_err("%s: unable to retrieve retire fence\n",
-				sync_pt_data->fence_name);
-		ret = retire_fence ? PTR_ERR(rel_fence) : -ENOMEM;
+	if (IS_ERR_OR_NULL(retire_sync_file)) {
+		pr_err("%s: unable to retrieve retire sync_file\n",
+				sync_pt_data->sync_file_name);
+		ret = retire_sync_file ? PTR_ERR(rel_sync_file) : -ENOMEM;
 		goto buf_sync_err_3;
 	}
 	retire_fen_fd = get_unused_fd_flags(0);
 
 	if (retire_fen_fd < 0) {
-		pr_err("%s: get_unused_fd_flags failed for retire fence error:0x%x\n",
-				sync_pt_data->fence_name, retire_fen_fd);
+		pr_err("%s: get_unused_fd_flags failed for retire sync_file error:0x%x\n",
+				sync_pt_data->sync_file_name, retire_fen_fd);
 		ret = retire_fen_fd;
-		sync_fence_put(retire_fence);
+		sync_file_put(retire_sync_file);
 		goto buf_sync_err_3;
 	}
 
 	ret = copy_to_user(buf_sync->retire_fen_fd, &retire_fen_fd,
 			sizeof(int));
 	if (ret) {
-		pr_err("%s: copy_to_user failed for retire fence\n",
-				sync_pt_data->fence_name);
+		pr_err("%s: copy_to_user failed for retire sync_file\n",
+				sync_pt_data->sync_file_name);
 		put_unused_fd(retire_fen_fd);
-		sync_fence_put(retire_fence);
+		sync_file_put(retire_sync_file);
 		goto buf_sync_err_3;
 	}
 
-	sync_fence_install(rel_fence, rel_fen_fd);
-	sync_fence_install(retire_fence, retire_fen_fd);
+	sync_file_install(rel_sync_file, rel_fen_fd);
+	sync_file_install(retire_sync_file, retire_fen_fd);
 
-skip_retire_fence:
+skip_retire_sync_file:
 	mutex_unlock(&sync_pt_data->sync_mutex);
 
 	if (buf_sync->flags & MDP_BUF_SYNC_FLAG_WAIT)
-		mdss_fb_wait_for_fence(sync_pt_data);
+		mdss_fb_wait_for_sync_file(sync_pt_data);
 
 	return ret;
 buf_sync_err_3:
 	put_unused_fd(rel_fen_fd);
 buf_sync_err_2:
-	sync_fence_put(rel_fence);
+	sync_file_put(rel_sync_file);
 buf_sync_err_1:
 	for (i = 0; i < sync_pt_data->acq_fen_cnt; i++)
-		sync_fence_put(sync_pt_data->acq_fen[i]);
+		sync_file_put(sync_pt_data->acq_fen[i]);
 	sync_pt_data->acq_fen_cnt = 0;
 	mutex_unlock(&sync_pt_data->sync_mutex);
 	return ret;
@@ -4941,12 +4974,12 @@ static int mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 		MDSS_XLOG(mfd->panel_info->panel_dead);
 		/*
 		 * In case of an ESD attack, since we early return from the
-		 * commits, we need to signal the outstanding fences.
+		 * commits, we need to signal the outstanding sync_files.
 		 */
-		mdss_fb_release_fences(mfd);
+		mdss_fb_release_sync_files(mfd);
 		if ((mfd->panel.type == MIPI_CMD_PANEL) &&
-			mfd->mdp.signal_retire_fence && mdp5_data)
-			mfd->mdp.signal_retire_fence(mfd,
+			mfd->mdp.signal_retire_sync_file && mdp5_data)
+			mfd->mdp.signal_retire_sync_file(mfd,
 						mdp5_data->retire_cnt);
 		return 0;
 	}
@@ -5046,18 +5079,18 @@ static int mdss_fb_atomic_commit_ioctl(struct fb_info *info,
 		rc = copy_to_user(argp, &commit,
 			sizeof(struct mdp_layer_commit));
 		if (rc) {
-			pr_err("copy to user for release & retire fence failed\n");
+			pr_err("copy to user for release & retire sync_file failed\n");
 			goto err;
 		}
 	}
 
 	if (output_layer_user) {
-		rc = copy_to_user(&output_layer_user->buffer.fence,
-			&output_layer.buffer.fence,
+		rc = copy_to_user(&output_layer_user->buffer.sync_file,
+			&output_layer.buffer.sync_file,
 			sizeof(int));
 
 		if (rc)
-			pr_err("copy to user for output fence failed");
+			pr_err("copy to user for output sync_file failed");
 	}
 
 err:
@@ -5272,7 +5305,7 @@ int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
 			goto exit;
 		}
 
-		ret = mdss_fb_handle_buf_sync_ioctl(&mfd->mdp_sync_pt_data,
+		ret = mdss_fb_handle_buf_sync_ioctl(&mfd->mdp_sync_fence_data,
 				&buf_sync);
 		if (!ret)
 			ret = copy_to_user(argp, &buf_sync, sizeof(buf_sync));
