@@ -529,11 +529,14 @@ static inline int page_mapcount(struct page *page)
 	return atomic_read(&page->_mapcount) + 1;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
+int total_mapcount(struct page *page);
+int page_trans_huge_mapcount(struct page *page, int *total_mapcount);
+#else
 static inline int total_mapcount(struct page *page)
  {
  	return page_mapcount(page);
  }
- 
 static inline int page_trans_huge_mapcount(struct page *page,
 					   int *total_mapcount)
 {
@@ -542,6 +545,7 @@ static inline int page_trans_huge_mapcount(struct page *page,
 		*total_mapcount = mapcount;
 	return mapcount;
 }
+#endif
 
 static inline int page_count(struct page *page)
 {

@@ -372,6 +372,7 @@ int ocfs2_init_acl(handle_t *handle,
 			acl = ocfs2_get_acl_nolock(dir, ACL_TYPE_DEFAULT,
 						   dir_bh);
 			up_read(&OCFS2_I(dir)->ip_xattr_sem);
+l
 			if (IS_ERR(acl))
 				return PTR_ERR(acl);
 		}
