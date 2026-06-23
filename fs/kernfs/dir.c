@@ -120,7 +120,8 @@ static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 {
 	struct kernfs_node *kn, *common;
 	const char parent_str[] = "/..";
-	size_t depth_from, depth_to, len = 0;
+	size_t depth_from, depth_to, len = 0, nlen = 0;
+	char *p;
 	int i, j;
 
 	if (!kn_from)
@@ -144,13 +145,19 @@ static int kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 			       len < buflen ? buflen - len : 0);
 
 	/* Calculate how many bytes we need for the rest */
-	for (i = depth_to - 1; i >= 0; i--) {
-		for (kn = kn_to, j = 0; j < i; j++)
-			kn = kn->parent;
-		len += strlcpy(buf + len, "/",
-			       len < buflen ? buflen - len : 0);
-		len += strlcpy(buf + len, kn->name,
-			       len < buflen ? buflen - len : 0);
+	for (kn = kn_to; kn != common; kn = kn->parent)
+		nlen += strlen(kn->name) + 1;
+
+	if (len + nlen >= buflen)
+		return len + nlen;
+
+	p = buf + len + nlen;
+	*p = '\0';
+	for (kn = kn_to; kn != common; kn = kn->parent) {
+		size_t tmp = strlen(kn->name);
+		p -= tmp;
+		memcpy(p, kn->name, tmp);
+		*(--p) = '/';
 	}
 
 	return len;
