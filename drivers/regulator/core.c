@@ -4277,6 +4277,11 @@ static inline void rdev_init_debugfs(struct regulator_dev *rdev)
 
 #endif
 
+static int regulator_register_resolve_supply(struct device *dev, void *data)
+{
+	return regulator_resolve_supply(dev_to_rdev(dev));
+}
+
 /**
  * regulator_register - register regulator
  * @regulator_desc: regulator to register
@@ -4422,15 +4427,14 @@ regulator_register(const struct regulator_desc *regulator_desc,
 		}
 	}
 
-	mutex_unlock(&regulator_list_mutex);
 	rdev_init_debugfs(rdev);
+	mutex_unlock(&regulator_list_mutex);
+
+	/* try to resolve regulators supply since a new one was registered */
+	class_for_each_device(&regulator_class, NULL, NULL,
+			      regulator_register_resolve_supply);
 	rdev->proxy_consumer = regulator_proxy_consumer_register(dev,
 							config->of_node);
-	kfree(config);
-	return rdev;
-
-out:
-	mutex_unlock(&regulator_list_mutex);
 	kfree(config);
 	return rdev;
 
@@ -4441,15 +4445,16 @@ scrub:
 	regulator_ena_gpio_free(rdev);
 	device_unregister(&rdev->dev);
 	/* device core frees rdev */
-	rdev = ERR_PTR(ret);
 	goto out;
 
 wash:
 	regulator_ena_gpio_free(rdev);
 clean:
 	kfree(rdev);
-	rdev = ERR_PTR(ret);
-	goto out;
+out:
+	mutex_unlock(&regulator_list_mutex);
+	kfree(config);
+	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL_GPL(regulator_register);
 

@@ -1004,8 +1004,7 @@ static long uinput_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
  * These IOCTLs change their size and thus their numbers between
  * 32 and 64 bits.
  */
-#define UI_SET_PHYS_COMPAT		\
-	_IOW(UINPUT_IOCTL_BASE, 108, compat_uptr_t)
+#define UI_SET_PHYS_COMPAT	_IOW(UINPUT_IOCTL_BASE, 108, compat_uptr_t)
 #define UI_BEGIN_FF_UPLOAD_COMPAT	\
 	_IOWR(UINPUT_IOCTL_BASE, 200, struct uinput_ff_upload_compat)
 #define UI_END_FF_UPLOAD_COMPAT		\

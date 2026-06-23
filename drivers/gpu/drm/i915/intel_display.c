@@ -13491,12 +13491,12 @@ static bool needs_vblank_wait(struct intel_crtc_state *crtc_state)
 		return true;
 
 	/* wm changes, need vblank before final wm's */
-	if (crtc_state->wm_changed)
+	if (crtc_state->update_wm_post)
 		return true;
 
 	/*
 	 * cxsr is re-enabled after vblank.
-	 * This is already handled by crtc_state->wm_changed,
+	 * This is already handled by crtc_state->update_wm_post,
 	 * but added for clarity.
 	 */
 	if (crtc_state->disable_cxsr)
@@ -16005,6 +16005,18 @@ void intel_display_resume(struct drm_device *dev)
 
 retry:
 	ret = drm_modeset_lock_all_ctx(dev, &ctx);
+
+	/*
+	 * With MST, the number of connectors can change between suspend and
+	 * resume, which means that the state we want to restore might now be
+	 * impossible to use since it'll be pointing to non-existant
+	 * connectors.
+	 */
+	if (ret == 0 && state &&
+	    state->num_connector != dev->mode_config.num_connector) {
+		drm_atomic_state_free(state);
+		state = NULL;
+	}
 
 	if (ret == 0 && !setup) {
 		setup = true;
