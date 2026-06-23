@@ -239,15 +239,6 @@ static int ecryptfs_open(struct inode *inode, struct file *file)
 	}
 	ecryptfs_set_file_lower(
 		file, ecryptfs_inode_to_private(inode)->lower_file);
-	if (d_is_dir(ecryptfs_dentry)) {
-		ecryptfs_printk(KERN_DEBUG, "This is a directory\n");
-		mutex_lock(&crypt_stat->cs_mutex);
-		crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED);
-		mutex_unlock(&crypt_stat->cs_mutex);
-		rc = 0;
-		goto out;
-	}
-
 	rc = read_or_initialize_metadata(ecryptfs_dentry);
 	if (rc)
 		goto out_put;
@@ -339,6 +330,14 @@ static int ecryptfs_release(struct inode *inode, struct file *file)
 	kmem_cache_free(ecryptfs_file_info_cache,
 			ecryptfs_file_to_private(file));
 
+	return 0;
+}
+
+static int ecryptfs_dir_release(struct inode *inode, struct file *file)
+{
+	fput(ecryptfs_file_to_lower(file));
+	kmem_cache_free(ecryptfs_file_info_cache,
+			ecryptfs_file_to_private(file));
 	return 0;
 }
 
