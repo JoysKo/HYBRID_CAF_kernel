@@ -367,18 +367,8 @@ static void del_rule(struct fs_node *node)
 	memcpy(match_value, fte->val, sizeof(fte->val));
 	fs_get_obj(ft, fg->node.parent);
 	list_del(&rule->node.list);
-<<<<<<< HEAD
-	if (rule->sw_action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
-		mutex_lock(&rule->dest_attr.ft->lock);
-		list_del(&rule->next_ft);
-		mutex_unlock(&rule->dest_attr.ft->lock);
-	}
-	fte->dests_size--;
-	if (fte->dests_size) {
-=======
 	if ((fte->action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) &&
 	    --fte->dests_size) {
->>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		err = mlx5_cmd_update_fte(dev, ft,
 					  fg->id, fte);
 		if (err)
@@ -866,19 +856,10 @@ static struct mlx5_flow_rule *add_rule_fte(struct fs_fte *fte,
 	 * end of the list for forward to next prio rules.
 	 */
 	tree_init_node(&rule->node, 1, del_rule);
-<<<<<<< HEAD
-	if (dest && dest->type != MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE)
-		list_add(&rule->node.list, &fte->node.children);
-	else
-		list_add_tail(&rule->node.list, &fte->node.children);
-	fte->dests_size++;
-	if (fte->dests_size == 1)
-=======
 	list_add_tail(&rule->node.list, &fte->node.children);
 	if (dest)
 		fte->dests_size++;
 	if (fte->dests_size == 1 || !dest)
->>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		err = mlx5_cmd_create_fte(get_dev(&ft->node),
 					  ft, fg->id, fte);
 	else
@@ -1144,24 +1125,6 @@ mlx5_add_flow_rule(struct mlx5_flow_table *ft,
 	u32 sw_action = action;
 	struct fs_prio *prio;
 
-<<<<<<< HEAD
-	fs_get_obj(prio, ft->node.parent);
-	if (action == MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO) {
-		if (!fwd_next_prio_supported(ft))
-			return ERR_PTR(-EOPNOTSUPP);
-		if (dest)
-			return ERR_PTR(-EINVAL);
-		mutex_lock(&root->chain_lock);
-		next_ft = find_next_chained_ft(prio);
-		if (next_ft) {
-			gen_dest.type = MLX5_FLOW_DESTINATION_TYPE_FLOW_TABLE;
-			gen_dest.ft = next_ft;
-			dest = &gen_dest;
-			action = MLX5_FLOW_CONTEXT_ACTION_FWD_DEST;
-		} else {
-			mutex_unlock(&root->chain_lock);
-			return ERR_PTR(-EOPNOTSUPP);
-=======
 	if ((action & MLX5_FLOW_CONTEXT_ACTION_FWD_DEST) && !dest)
 		return ERR_PTR(-EINVAL);
 
@@ -1175,7 +1138,6 @@ mlx5_add_flow_rule(struct mlx5_flow_table *ft,
 					   action, flow_tag, dest);
 			if (!IS_ERR(rule) || PTR_ERR(rule) != -ENOSPC)
 				goto unlock;
->>>>>>> 60ab4584f5bf... net/mlx5_core: Set flow steering dest only for forward rules
 		}
 	}
 

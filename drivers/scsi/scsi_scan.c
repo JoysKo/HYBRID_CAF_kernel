@@ -387,8 +387,7 @@ static void scsi_target_reap_ref_release(struct kref *kref)
 	 * means it was allocated but never made visible (because a scan
 	 * turned up no LUNs), so don't call device_del() on it.
 	 */
-	if ((starget->state != STARGET_CREATED) &&
-	    (starget->state != STARGET_CREATED_REMOVE)) {
+	if (starget->state != STARGET_CREATED) {
 		transport_remove_device(&starget->dev);
 		device_del(&starget->dev);
 	}

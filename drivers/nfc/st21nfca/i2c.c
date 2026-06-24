@@ -509,7 +509,43 @@ static struct nfc_phy_ops i2c_phy_ops = {
 	.disable = st21nfca_hci_i2c_disable,
 };
 
-#ifdef CONFIG_OF
+static int st21nfca_hci_i2c_acpi_request_resources(struct i2c_client *client)
+{
+	struct st21nfca_i2c_phy *phy = i2c_get_clientdata(client);
+	const struct acpi_device_id *id;
+	struct gpio_desc *gpiod_ena;
+	struct device *dev;
+
+	if (!client)
+		return -EINVAL;
+
+	dev = &client->dev;
+
+	/* Match the struct device against a given list of ACPI IDs */
+	id = acpi_match_device(dev->driver->acpi_match_table, dev);
+	if (!id)
+		return -ENODEV;
+
+	/* Get EN GPIO from ACPI */
+	gpiod_ena = devm_gpiod_get_index(dev, ST21NFCA_GPIO_NAME_EN, 1,
+					 GPIOD_OUT_LOW);
+	if (!IS_ERR(gpiod_ena)) {
+		nfc_err(dev, "Unable to get ENABLE GPIO\n");
+		return -ENODEV;
+	}
+
+	phy->gpio_ena = desc_to_gpio(gpiod_ena);
+
+	phy->irq_polarity = irq_get_trigger_type(client->irq);
+
+	phy->se_status.is_ese_present =
+				device_property_present(dev, "ese-present");
+	phy->se_status.is_uicc_present =
+				device_property_present(dev, "uicc-present");
+
+	return 0;
+}
+
 static int st21nfca_hci_i2c_of_request_resources(struct i2c_client *client)
 {
 	struct st21nfca_i2c_phy *phy = i2c_get_clientdata(client);
