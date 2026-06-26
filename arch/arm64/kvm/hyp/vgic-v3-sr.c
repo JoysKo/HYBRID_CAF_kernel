@@ -57,10 +57,30 @@ void __hyp_text __vgic_v3_save_state(struct kvm_vcpu *vcpu)
 	cpu_if->vgic_eisr  = read_gicreg(ICH_EISR_EL2);
 	cpu_if->vgic_elrsr = read_gicreg(ICH_ELSR_EL2);
 
-	write_gicreg(0, ICH_HCR_EL2);
-	val = read_gicreg(ICH_VTR_EL2);
-	max_lr_idx = vtr_to_max_lr_idx(val);
-	nr_pri_bits = vtr_to_nr_pri_bits(val);
+	if (vcpu->arch.vgic_cpu.live_lrs) {
+		int i;
+		u32 max_lr_idx, nr_pri_bits;
+
+		cpu_if->vgic_elrsr = read_gicreg(ICH_ELSR_EL2);
+
+		write_gicreg(0, ICH_HCR_EL2);
+		val = read_gicreg(ICH_VTR_EL2);
+		max_lr_idx = vtr_to_max_lr_idx(val);
+		nr_pri_bits = vtr_to_nr_pri_bits(val);
+
+		save_maint_int_state(vcpu, max_lr_idx + 1);
+
+		for (i = 0; i <= max_lr_idx; i++) {
+			if (!(vcpu->arch.vgic_cpu.live_lrs & (1UL << i)))
+				continue;
+
+			if (cpu_if->vgic_elrsr & (1 << i))
+				cpu_if->vgic_lr[i] &= ~ICH_LR_STATE;
+			else
+				cpu_if->vgic_lr[i] = __gic_v3_get_lr(i);
+
+			__gic_v3_set_lr(0, i);
+		}
 
 	switch (max_lr_idx) {
 	case 15:

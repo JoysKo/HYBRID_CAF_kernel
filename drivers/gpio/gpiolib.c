@@ -436,10 +436,60 @@ static void gpiodevice_release(struct device *dev)
 {
 	struct gpio_device *gdev = dev_get_drvdata(dev);
 
-	cdev_del(&gdev->chrdev);
 	list_del(&gdev->list);
 	ida_simple_remove(&gpio_ida, gdev->id);
 	kfree(gdev);
+}
+
+static int gpiochip_setup_dev(struct gpio_device *gdev)
+{
+	int status;
+
+	cdev_init(&gdev->chrdev, &gpio_fileops);
+	gdev->chrdev.owner = THIS_MODULE;
+	gdev->chrdev.kobj.parent = &gdev->dev.kobj;
+	gdev->dev.devt = MKDEV(MAJOR(gpio_devt), gdev->id);
+	status = cdev_add(&gdev->chrdev, gdev->dev.devt, 1);
+	if (status < 0)
+		chip_warn(gdev->chip, "failed to add char device %d:%d\n",
+			  MAJOR(gpio_devt), gdev->id);
+	else
+		chip_dbg(gdev->chip, "added GPIO chardev (%d:%d)\n",
+			 MAJOR(gpio_devt), gdev->id);
+	status = device_add(&gdev->dev);
+	if (status)
+		goto err_remove_chardev;
+
+	status = gpiochip_sysfs_register(gdev->chip);
+	if (status)
+		goto err_remove_device;
+
+	/* From this point, the .release() function cleans up gpio_device */
+	gdev->dev.release = gpiodevice_release;
+	pr_debug("%s: registered GPIOs %d to %d on device: %s (%s)\n",
+		 __func__, gdev->base, gdev->base + gdev->ngpio - 1,
+		 dev_name(&gdev->dev), gdev->chip->label ? : "generic");
+
+	return 0;
+
+err_remove_device:
+	device_del(&gdev->dev);
+err_remove_chardev:
+	cdev_del(&gdev->chrdev);
+	return status;
+}
+
+static void gpiochip_setup_devs(void)
+{
+	struct gpio_device *gdev;
+	int err;
+
+	list_for_each_entry(gdev->chip, &gpio_chips, list) {
+		err = gpiochip_setup_dev(gdev);
+		if (err)
+			pr_err("%s: Failed to initialize gpio device (%d)\n",
+			       dev_name(&gdev->dev), err);
+	}
 }
 
 /**
@@ -1176,6 +1226,38 @@ done:
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	return status;
 }
+
+/*
+ * This descriptor validation needs to be inserted verbatim into each
+ * function taking a descriptor, so we need to use a preprocessor
+ * macro to avoid endless duplication. If the desc is NULL it is an
+ * optional GPIO and calls should just bail out.
+ */
+#define VALIDATE_DESC(desc) do { \
+	if (!desc) \
+		return 0; \
+	if (!desc->gdev) { \
+		pr_warn("%s: invalid GPIO\n", __func__); \
+		return -EINVAL; \
+	} \
+	if ( !desc->gdev->chip ) { \
+		dev_warn(&desc->gdev->dev, \
+			 "%s: backing chip is gone\n", __func__); \
+		return 0; \
+	} } while (0)
+
+#define VALIDATE_DESC_VOID(desc) do { \
+	if (!desc) \
+		return; \
+	if (!desc->gdev) { \
+		pr_warn("%s: invalid GPIO\n", __func__); \
+		return; \
+	} \
+	if (!desc->gdev->chip) { \
+		dev_warn(&desc->gdev->dev, \
+			 "%s: backing chip is gone\n", __func__); \
+		return; \
+	} } while (0)
 
 int gpiod_request(struct gpio_desc *desc, const char *label)
 {

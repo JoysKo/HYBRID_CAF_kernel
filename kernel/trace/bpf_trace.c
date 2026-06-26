@@ -313,8 +313,8 @@ BPF_CALL_2(bpf_perf_event_read, struct bpf_map *, map, u64, flags)
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	ee = READ_ONCE(array->ptrs[index]);
-	if (!ee)
+	file = READ_ONCE(array->ptrs[index]);
+	if (unlikely(!file))
 		return -ENOENT;
 
 	event = ee->event;
@@ -362,8 +362,8 @@ __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 	if (unlikely(index >= array->map.max_entries))
 		return -E2BIG;
 
-	ee = READ_ONCE(array->ptrs[index]);
-	if (!ee)
+	file = READ_ONCE(array->ptrs[index]);
+	if (unlikely(!file))
 		return -ENOENT;
 
 	event = ee->event;
