@@ -1993,7 +1993,7 @@ void xhci_mem_cleanup(struct xhci_hcd *xhci)
 	struct device	*dev = xhci_to_hcd(xhci)->self.controller;
 	int i, j, num_ports;
 
-	cancel_delayed_work_sync(&xhci->cmd_timer);
+	del_timer_sync(&xhci->cmd_timer);
 
 	xhci_event_ring_cleanup(xhci);
 
@@ -2713,7 +2713,8 @@ int xhci_mem_init(struct xhci_hcd *xhci, gfp_t flags)
 	INIT_LIST_HEAD(&xhci->cmd_list);
 
 	/* init command timeout work */
-	INIT_DELAYED_WORK(&xhci->cmd_timer, xhci_handle_command_timeout);
+	setup_timer(&xhci->cmd_timer, xhci_handle_command_timeout,
+		    (unsigned long)xhci);
 	init_completion(&xhci->cmd_ring_stop_completion);
 
 	page_size = readl(&xhci->op_regs->page_size);
