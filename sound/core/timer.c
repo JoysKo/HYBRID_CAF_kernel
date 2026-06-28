@@ -2032,7 +2032,6 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 		}
 
 		spin_lock_irq(&tu->qlock);
-		tu->qused--;
 		if (err < 0)
 			goto _error;
 		result += unit;

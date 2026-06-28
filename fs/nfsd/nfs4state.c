@@ -3529,7 +3529,10 @@ init_open_stateid(struct nfs4_file *fp, struct nfsd4_open *open)
 	mutex_init(&stp->st_mutex);
 	mutex_lock(&stp->st_mutex);
 
-retry:
+	/* We are moving these outside of the spinlocks to avoid the warnings */
+	mutex_init(&stp->st_mutex);
+	mutex_lock(&stp->st_mutex);
+
 	spin_lock(&oo->oo_owner.so_client->cl_lock);
 	spin_lock(&fp->fi_lock);
 
@@ -3554,16 +3557,11 @@ out_unlock:
 	spin_unlock(&fp->fi_lock);
 	spin_unlock(&oo->oo_owner.so_client->cl_lock);
 	if (retstp) {
-		/* Handle races with CLOSE */
-		if (nfsd4_lock_ol_stateid(retstp) != nfs_ok) {
-			nfs4_put_stid(&retstp->st_stid);
-			goto retry;
-		}
-		/* To keep mutex tracking happy */
+		mutex_lock(&retstp->st_mutex);
+		/* Not that we need to, just for neatness */
 		mutex_unlock(&stp->st_mutex);
-		stp = retstp;
 	}
-	return stp;
+	return retstp;
 }
 
 /*
@@ -4402,15 +4400,34 @@ nfsd4_process_open2(struct svc_rqst *rqstp, struct svc_fh *current_fh, struct nf
 	 */
 	if (!new_stp) {
 		/* Stateid was found, this is an OPEN upgrade */
+		mutex_lock(&stp->st_mutex);
 		status = nfs4_upgrade_open(rqstp, fp, current_fh, stp, open);
 		if (status) {
 			mutex_unlock(&stp->st_mutex);
 			goto out;
 		}
 	} else {
+		stp = open->op_stp;
+		open->op_stp = NULL;
+		/*
+		 * init_open_stateid() either returns a locked stateid
+		 * it found, or initializes and locks the new one we passed in
+		 */
+		swapstp = init_open_stateid(stp, fp, open);
+		if (swapstp) {
+			nfs4_put_stid(&stp->st_stid);
+			stp = swapstp;
+			status = nfs4_upgrade_open(rqstp, fp, current_fh,
+						stp, open);
+			if (status) {
+				mutex_unlock(&stp->st_mutex);
+				goto out;
+			}
+			goto upgrade_out;
+		}
 		status = nfs4_get_vfs_file(rqstp, fp, current_fh, stp, open);
 		if (status) {
-			stp->st_stid.sc_type = NFS4_CLOSED_STID;
+			mutex_unlock(&stp->st_mutex);
 			release_open_stateid(stp);
 			mutex_unlock(&stp->st_mutex);
 			goto out;
@@ -5060,9 +5077,15 @@ static __be32 nfs4_seqid_op_checks(struct nfsd4_compound_state *cstate, stateid_
 	status = nfsd4_check_seqid(cstate, sop, seqid);
 	if (status)
 		return status;
-	status = nfsd4_lock_ol_stateid(stp);
-	if (status != nfs_ok)
-		return status;
+	if (stp->st_stid.sc_type == NFS4_CLOSED_STID
+		|| stp->st_stid.sc_type == NFS4_REVOKED_DELEG_STID)
+		/*
+		 * "Closed" stateid's exist *only* to return
+		 * nfserr_replay_me from the previous step, and
+		 * revoked delegations are kept only for free_stateid.
+		 */
+		return nfserr_bad_stateid;
+	mutex_lock(&stp->st_mutex);
 	status = check_stateid_generation(stateid, &stp->st_stid.sc_stateid, nfsd4_has_session(cstate));
 	if (status == nfs_ok)
 		status = nfs4_check_fh(current_fh, &stp->st_stid);
@@ -5282,6 +5305,7 @@ nfsd4_close(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 
 	stp->st_stid.sc_type = NFS4_CLOSED_STID;
 	nfs4_inc_and_copy_stateid(&close->cl_stateid, &stp->st_stid);
+	mutex_unlock(&stp->st_mutex);
 
 	nfsd4_close_open_stateid(stp);
 	mutex_unlock(&stp->st_mutex);
@@ -5706,6 +5730,8 @@ nfsd4_lock(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 			goto out;
 		status = lookup_or_create_lock_state(cstate, open_stp, lock,
 							&lock_stp, &new);
+		if (status == nfs_ok)
+			mutex_lock(&lock_stp->st_mutex);
 	} else {
 		status = nfs4_preprocess_seqid_op(cstate,
 				       lock->lk_old_lock_seqid,

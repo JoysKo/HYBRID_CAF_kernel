@@ -1130,7 +1130,12 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 			err = ovl_check_d_type_supported(&workpath);
 			if (err < 0)
 				goto out_put_workdir;
-
+				
+			/*
+			 * We allowed this configuration and don't want to
+			 * break users over kernel upgrade. So warn instead
+			 * of erroring out.
+			 */
 			if (!err) {
 				pr_err("overlayfs: upper fs needs to support d_type.\n");
 				err = -EINVAL;

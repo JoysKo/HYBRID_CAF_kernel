@@ -33,8 +33,8 @@ long do_futex(u32 __user *uaddr, int op, u32 val, ktime_t *timeout,
 
 union futex_key {
 	struct {
-		u64 i_seq;
 		unsigned long pgoff;
+		struct inode *inode;
 		unsigned int offset;
 	} shared;
 	struct {

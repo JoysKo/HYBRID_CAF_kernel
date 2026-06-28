@@ -398,12 +398,6 @@ int build_ntlmssp_auth_blob(unsigned char **pbuffer,
 		goto setup_ntlmv2_ret;
 	}
 	*pbuffer = kmalloc(size_of_ntlmssp_blob(ses), GFP_KERNEL);
-	if (!*pbuffer) {
-		rc = -ENOMEM;
-		cifs_dbg(VFS, "Error %d during NTLMSSP allocation\n", rc);
-		*buflen = 0;
-		goto setup_ntlmv2_ret;
-	}
 	sec_blob = (AUTHENTICATE_MESSAGE *)*pbuffer;
 
 	memcpy(sec_blob->Signature, NTLMSSP_SIGNATURE, 8);
@@ -430,11 +424,6 @@ int build_ntlmssp_auth_blob(unsigned char **pbuffer,
 	sec_blob->NtChallengeResponse.BufferOffset =
 				cpu_to_le32(tmp - *pbuffer);
 	if (ses->user_name != NULL) {
-		rc = setup_ntlmv2_rsp(ses, nls_cp);
-		if (rc) {
-			cifs_dbg(VFS, "Error %d during NTLMSSP authentication\n", rc);
-			goto setup_ntlmv2_ret;
-		}
 		memcpy(tmp, ses->auth_key.response + CIFS_SESS_KEY_SIZE,
 				ses->auth_key.len - CIFS_SESS_KEY_SIZE);
 		tmp += ses->auth_key.len - CIFS_SESS_KEY_SIZE;

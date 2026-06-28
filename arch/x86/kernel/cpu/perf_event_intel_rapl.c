@@ -683,6 +683,91 @@ static int rapl_check_hw_unit(void)
 	for (i = 0; i < NR_RAPL_DOMAINS; i++)
 		rapl_hw_unit[i] = (msr_rapl_power_unit_bits >> 8) & 0x1FULL;
 
+	/*
+	 * DRAM domain on HSW server and KNL has fixed energy unit which can be
+	 * different than the unit from power unit MSR. See
+	 * "Intel Xeon Processor E5-1600 and E5-2600 v3 Product Families, V2
+	 * of 2. Datasheet, September 2014, Reference Number: 330784-001 "
+	 */
+	if (apply_quirk)
+		rapl_hw_unit[RAPL_IDX_RAM_NRG_STAT] = 16;
+
+	/*
+	 * Calculate the timer rate:
+	 * Use reference of 200W for scaling the timeout to avoid counter
+	 * overflows. 200W = 200 Joules/sec
+	 * Divide interval by 2 to avoid lockstep (2 * 100)
+	 * if hw unit is 32, then we use 2 ms 1/200/2
+	 */
+	rapl_timer_ms = 2;
+	if (rapl_hw_unit[0] < 32) {
+		rapl_timer_ms = (1000 / (2 * 100));
+		rapl_timer_ms *= (1ULL << (32 - rapl_hw_unit[0] - 1));
+	}
+	return 0;
+}
+
+static void __init rapl_advertise(void)
+{
+	int i;
+
+	pr_info("API unit is 2^-32 Joules, %d fixed counters, %llu ms ovfl timer\n",
+		hweight32(rapl_cntr_mask), rapl_timer_ms);
+
+	for (i = 0; i < NR_RAPL_DOMAINS; i++) {
+		if (rapl_cntr_mask & (1 << i)) {
+			pr_info("hw unit of domain %s 2^-%d Joules\n",
+				rapl_domain_names[i], rapl_hw_unit[i]);
+		}
+	}
+}
+
+static int __init rapl_prepare_cpus(void)
+{
+	unsigned int cpu, pkg;
+	int ret;
+
+	for_each_online_cpu(cpu) {
+		pkg = topology_logical_package_id(cpu);
+		if (rapl_pmus->pmus[pkg])
+			continue;
+
+		ret = rapl_cpu_prepare(cpu);
+		if (ret)
+			return ret;
+		rapl_cpu_init(cpu);
+	}
+	return 0;
+}
+
+static void __init cleanup_rapl_pmus(void)
+{
+	int i;
+
+	for (i = 0; i < rapl_pmus->maxpkg; i++)
+		kfree(rapl_pmus->pmus[i]);
+	kfree(rapl_pmus);
+}
+
+static int __init init_rapl_pmus(void)
+{
+	int maxpkg = topology_max_packages();
+	size_t size;
+
+	size = sizeof(*rapl_pmus) + maxpkg * sizeof(struct rapl_pmu *);
+	rapl_pmus = kzalloc(size, GFP_KERNEL);
+	if (!rapl_pmus)
+		return -ENOMEM;
+
+	rapl_pmus->maxpkg		= maxpkg;
+	rapl_pmus->pmu.attr_groups	= rapl_attr_groups;
+	rapl_pmus->pmu.task_ctx_nr	= perf_invalid_context;
+	rapl_pmus->pmu.event_init	= rapl_pmu_event_init;
+	rapl_pmus->pmu.add		= rapl_pmu_event_add;
+	rapl_pmus->pmu.del		= rapl_pmu_event_del;
+	rapl_pmus->pmu.start		= rapl_pmu_event_start;
+	rapl_pmus->pmu.stop		= rapl_pmu_event_stop;
+	rapl_pmus->pmu.read		= rapl_pmu_event_read;
 	return 0;
 }
 

@@ -55,6 +55,31 @@
  * writes. This set of operations was added specifically for MIPS and
  * should only be used there.
  */
+
+#define DWC2_TRACE_SCHEDULER		no_printk
+#define DWC2_TRACE_SCHEDULER_VB		no_printk
+
+/* Detailed scheduler tracing, but won't overwhelm console */
+#define dwc2_sch_dbg(hsotg, fmt, ...)					\
+	DWC2_TRACE_SCHEDULER(pr_fmt("%s: SCH: " fmt),			\
+			     dev_name(hsotg->dev), ##__VA_ARGS__)
+
+/* Verbose scheduler tracing */
+#define dwc2_sch_vdbg(hsotg, fmt, ...)					\
+	DWC2_TRACE_SCHEDULER_VB(pr_fmt("%s: SCH: " fmt),		\
+				dev_name(hsotg->dev), ##__VA_ARGS__)
+
+#ifdef CONFIG_MIPS
+/*
+ * There are some MIPS machines that can run in either big-endian
+ * or little-endian mode and that use the dwc2 register without
+ * a byteswap in both ways.
+ * Unlike other architectures, MIPS apparently does not require a
+ * barrier before the __raw_writel() to synchronize with DMA but does
+ * require the barrier after the __raw_writel() to serialize a set of
+ * writes. This set of operations was added specifically for MIPS and
+ * should only be used there.
+ */
 static inline u32 dwc2_readl(const void __iomem *addr)
 {
 	u32 value = __raw_readl(addr);

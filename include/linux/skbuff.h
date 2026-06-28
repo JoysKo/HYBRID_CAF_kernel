@@ -2809,6 +2809,7 @@ static inline unsigned char *skb_push_rcsum(struct sk_buff *skb,
 }
 
 int pskb_trim_rcsum_slow(struct sk_buff *skb, unsigned int len);
+
 /**
  *	pskb_trim_rcsum - trim received skb and update checksum
  *	@skb: buffer to trim
