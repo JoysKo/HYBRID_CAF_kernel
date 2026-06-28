@@ -41,9 +41,12 @@ static bool __read_mostly pat_disabled = !IS_ENABLED(CONFIG_X86_PAT);
 static bool __read_mostly pat_initialized;
 static bool __read_mostly init_cm_done;
 
+static int __read_mostly __pat_enabled = IS_ENABLED(CONFIG_X86_PAT);
+static void init_cache_modes(void);
+
 void pat_disable(const char *reason)
 {
-	if (pat_disabled)
+	if (!__pat_enabled)
 		return;
 
 	if (boot_cpu_done) {
@@ -51,8 +54,10 @@ void pat_disable(const char *reason)
 		return;
 	}
 
-	pat_disabled = true;
+	__pat_enabled = 0;
 	pr_info("x86/PAT: %s\n", reason);
+
+	init_cache_modes();
 }
 
 static int __init nopat(char *str)
@@ -242,9 +247,10 @@ static void pat_ap_init(u64 pat)
 	wrmsrl(MSR_IA32_CR_PAT, pat);
 }
 
-void init_cache_modes(void)
+static void init_cache_modes(void)
 {
 	u64 pat = 0;
+	static int init_cm_done;
 
 	if (init_cm_done)
 		return;
@@ -286,6 +292,8 @@ void init_cache_modes(void)
 	}
 
 	__init_cache_modes(pat);
+
+	init_cm_done = 1;
 }
 
 /**
@@ -303,8 +311,10 @@ void pat_init(void)
 	u64 pat;
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 
-	if (pat_disabled)
+	if (!pat_enabled()) {
+		init_cache_modes();
 		return;
+	}
 
 	if ((c->x86_vendor == X86_VENDOR_INTEL) &&
 	    (((c->x86 == 0x6) && (c->x86_model <= 0xd)) ||
