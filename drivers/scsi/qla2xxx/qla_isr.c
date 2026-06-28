@@ -2540,6 +2540,14 @@ void qla24xx_process_response_queue(struct scsi_qla_host *vha,
 	if (!vha->flags.online)
 		return;
 
+	if (rsp->msix && rsp->msix->cpuid != smp_processor_id()) {
+		/* if kernel does not notify qla of IRQ's CPU change,
+		 * then set it here.
+		 */
+		rsp->msix->cpuid = smp_processor_id();
+		ha->tgt.rspq_vector_cpuid = rsp->msix->cpuid;
+	}
+
 	while (rsp->ring_ptr->signature != RESPONSE_PROCESSED) {
 		pkt = (struct sts_entry_24xx *)rsp->ring_ptr;
 

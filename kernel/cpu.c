@@ -1305,6 +1305,8 @@ static struct cpuhp_step cpuhp_bp_states[] = {
 		.teardown		= takedown_cpu,
 		.cant_stop		= true,
 	},
+#else
+	[CPUHP_BRINGUP_CPU] = { },
 #endif
 };
 

@@ -6,6 +6,7 @@ endif
 
 header-y += devlink.h
 header-y += if_macsec.h
+header-y += lirc.h
 header-y += rio_mport_cdev.h
 
 ifeq ($(wildcard $(srctree)/arch/$(SRCARCH)/include/uapi/asm/kvm.h),)

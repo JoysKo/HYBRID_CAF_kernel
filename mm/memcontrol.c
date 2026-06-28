@@ -4202,30 +4202,20 @@ static struct cftype mem_cgroup_legacy_files[] = {
 
 static DEFINE_IDR(mem_cgroup_idr);
 
-static void mem_cgroup_id_get_many(struct mem_cgroup *memcg, unsigned int n)
+static void mem_cgroup_id_get(struct mem_cgroup *memcg)
 {
-	atomic_add(n, &memcg->id.ref);
+	atomic_inc(&memcg->id.ref);
 }
 
-static void mem_cgroup_id_put_many(struct mem_cgroup *memcg, unsigned int n)
+static void mem_cgroup_id_put(struct mem_cgroup *memcg)
 {
-	if (atomic_sub_and_test(n, &memcg->id.ref)) {
+	if (atomic_dec_and_test(&memcg->id.ref)) {
 		idr_remove(&mem_cgroup_idr, memcg->id.id);
 		memcg->id.id = 0;
 
 		/* Memcg ID pins CSS */
 		css_put(&memcg->css);
 	}
-}
-
-static inline void mem_cgroup_id_get(struct mem_cgroup *memcg)
-{
-	mem_cgroup_id_get_many(memcg, 1);
-}
-
-static inline void mem_cgroup_id_put(struct mem_cgroup *memcg)
-{
-	mem_cgroup_id_put_many(memcg, 1);
 }
 
 /**
@@ -4286,6 +4276,12 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	memcg = kzalloc(size, GFP_KERNEL);
 	if (!memcg)
 		return NULL;
+
+	memcg->id.id = idr_alloc(&mem_cgroup_idr, NULL,
+				 1, MEM_CGROUP_ID_MAX,
+				 GFP_KERNEL);
+	if (memcg->id.id < 0)
+		goto fail;
 
 	memcg->stat = alloc_percpu(struct mem_cgroup_stat_cpu);
 	if (!memcg->stat)
@@ -4386,12 +4382,12 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	INIT_LIST_HEAD(&memcg->cgwb_list);
 #endif
 	idr_replace(&mem_cgroup_idr, memcg, memcg->id.id);
-	return &memcg->css;
-
-free_out:
-	idr_remove(&mem_cgroup_idr, memcg->id.id);
-	__mem_cgroup_free(memcg);
-	return ERR_PTR(error);
+	return memcg;
+fail:
+	if (memcg->id.id > 0)
+		idr_remove(&mem_cgroup_idr, memcg->id.id);
+	mem_cgroup_free(memcg);
+	return NULL;
 }
 
 static int
@@ -4441,17 +4437,30 @@ mem_cgroup_css_online(struct cgroup_subsys_state *css)
 	}
 	mutex_unlock(&memcg_create_mutex);
 
-	ret = memcg_init_kmem(memcg, &memory_cgrp_subsys);
-	if (ret)
-		return ret;
+	/* The following stuff does not apply to the root */
+	if (!parent) {
+		root_mem_cgroup = memcg;
+		return &memcg->css;
+	}
 
-	/*
-	 * Make sure the memcg is initialized: mem_cgroup_iter()
-	 * orders reading memcg->initialized against its callers
-	 * reading the memcg members.
-	 */
-	smp_store_release(&memcg->initialized, 1);
+	error = memcg_online_kmem(memcg);
+	if (error)
+		goto fail;
 
+	if (cgroup_subsys_on_dfl(memory_cgrp_subsys) && !cgroup_memory_nosocket)
+		static_branch_inc(&memcg_sockets_enabled_key);
+
+	return &memcg->css;
+fail:
+	mem_cgroup_free(memcg);
+	return ERR_PTR(-ENOMEM);
+}
+
+static int mem_cgroup_css_online(struct cgroup_subsys_state *css)
+{
+	/* Online state pins memcg ID, memcg ID pins CSS */
+	mem_cgroup_id_get(mem_cgroup_from_css(css));
+	css_get(css);
 	return 0;
 }
 
@@ -5723,7 +5732,9 @@ void mem_cgroup_uncharge_list(struct list_head *page_list)
 void mem_cgroup_replace_page(struct page *oldpage, struct page *newpage)
 {
 	struct mem_cgroup *memcg;
-	int isolated;
+	unsigned int nr_pages;
+	bool compound;
+	unsigned long flags;
 
 	VM_BUG_ON_PAGE(!PageLocked(oldpage), oldpage);
 	VM_BUG_ON_PAGE(!PageLocked(newpage), newpage);
@@ -5743,9 +5754,113 @@ void mem_cgroup_replace_page(struct page *oldpage, struct page *newpage)
 	if (!memcg)
 		return;
 
-	lock_page_lru(oldpage, &isolated);
-	oldpage->mem_cgroup = NULL;
-	unlock_page_lru(oldpage, isolated);
+	/* Force-charge the new page. The old one will be freed soon */
+	compound = PageTransHuge(newpage);
+	nr_pages = compound ? hpage_nr_pages(newpage) : 1;
+
+	page_counter_charge(&memcg->memory, nr_pages);
+	if (do_memsw_account())
+		page_counter_charge(&memcg->memsw, nr_pages);
+	css_get_many(&memcg->css, nr_pages);
+
+	commit_charge(newpage, memcg, false);
+
+	local_irq_save(flags);
+	mem_cgroup_charge_statistics(memcg, newpage, compound, nr_pages);
+	memcg_check_events(memcg, newpage);
+	local_irq_restore(flags);
+}
+
+DEFINE_STATIC_KEY_FALSE(memcg_sockets_enabled_key);
+EXPORT_SYMBOL(memcg_sockets_enabled_key);
+
+void sock_update_memcg(struct sock *sk)
+{
+	struct mem_cgroup *memcg;
+
+	/* Socket cloning can throw us here with sk_cgrp already
+	 * filled. It won't however, necessarily happen from
+	 * process context. So the test for root memcg given
+	 * the current task's memcg won't help us in this case.
+	 *
+	 * Respecting the original socket's memcg is a better
+	 * decision in this case.
+	 */
+	if (sk->sk_memcg) {
+		BUG_ON(mem_cgroup_is_root(sk->sk_memcg));
+		css_get(&sk->sk_memcg->css);
+		return;
+	}
+
+	rcu_read_lock();
+	memcg = mem_cgroup_from_task(current);
+	if (memcg == root_mem_cgroup)
+		goto out;
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) && !memcg->tcpmem_active)
+		goto out;
+	if (css_tryget_online(&memcg->css))
+		sk->sk_memcg = memcg;
+out:
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL(sock_update_memcg);
+
+void sock_release_memcg(struct sock *sk)
+{
+	WARN_ON(!sk->sk_memcg);
+	css_put(&sk->sk_memcg->css);
+}
+
+/**
+ * mem_cgroup_charge_skmem - charge socket memory
+ * @memcg: memcg to charge
+ * @nr_pages: number of pages to charge
+ *
+ * Charges @nr_pages to @memcg. Returns %true if the charge fit within
+ * @memcg's configured limit, %false if the charge had to be forced.
+ */
+bool mem_cgroup_charge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	gfp_t gfp_mask = GFP_KERNEL;
+
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		struct page_counter *fail;
+
+		if (page_counter_try_charge(&memcg->tcpmem, nr_pages, &fail)) {
+			memcg->tcpmem_pressure = 0;
+			return true;
+		}
+		page_counter_charge(&memcg->tcpmem, nr_pages);
+		memcg->tcpmem_pressure = 1;
+		return false;
+	}
+
+	/* Don't block in the packet receive path */
+	if (in_softirq())
+		gfp_mask = GFP_NOWAIT;
+
+	this_cpu_add(memcg->stat->count[MEMCG_SOCK], nr_pages);
+
+	if (try_charge(memcg, gfp_mask, nr_pages) == 0)
+		return true;
+
+	try_charge(memcg, gfp_mask|__GFP_NOFAIL, nr_pages);
+	return false;
+}
+
+/**
+ * mem_cgroup_uncharge_skmem - uncharge socket memory
+ * @memcg - memcg to uncharge
+ * @nr_pages - number of pages to uncharge
+ */
+void mem_cgroup_uncharge_skmem(struct mem_cgroup *memcg, unsigned int nr_pages)
+{
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys)) {
+		page_counter_uncharge(&memcg->tcpmem, nr_pages);
+		return;
+	}
+
+	this_cpu_sub(memcg->stat->count[MEMCG_SOCK], nr_pages);
 
 	commit_charge(newpage, memcg, true);
 }
@@ -5832,13 +5947,8 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 	if (!memcg)
 		return;
 
-	/*
-	 * In case the memcg owning these pages has been offlined and doesn't
-	 * have an ID allocated to it anymore, charge the closest online
-	 * ancestor for the swap instead and transfer the memory+swap charge.
-	 */
-	swap_memcg = mem_cgroup_id_get_online(memcg);
-	oldid = swap_cgroup_record(entry, mem_cgroup_id(swap_memcg));
+	mem_cgroup_id_get(memcg);
+	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg));
 	VM_BUG_ON_PAGE(oldid, page);
 	mem_cgroup_swap_statistics(swap_memcg, true);
 
@@ -5865,6 +5975,42 @@ void mem_cgroup_swapout(struct page *page, swp_entry_t entry)
 
 	if (!mem_cgroup_is_root(memcg))
 		css_put(&memcg->css);
+}
+
+/*
+ * mem_cgroup_try_charge_swap - try charging a swap entry
+ * @page: page being added to swap
+ * @entry: swap entry to charge
+ *
+ * Try to charge @entry to the memcg that @page belongs to.
+ *
+ * Returns 0 on success, -ENOMEM on failure.
+ */
+int mem_cgroup_try_charge_swap(struct page *page, swp_entry_t entry)
+{
+	struct mem_cgroup *memcg;
+	struct page_counter *counter;
+	unsigned short oldid;
+
+	if (!cgroup_subsys_on_dfl(memory_cgrp_subsys) || !do_swap_account)
+		return 0;
+
+	memcg = page->mem_cgroup;
+
+	/* Readahead page, never charged */
+	if (!memcg)
+		return 0;
+
+	if (!mem_cgroup_is_root(memcg) &&
+	    !page_counter_try_charge(&memcg->swap, 1, &counter))
+		return -ENOMEM;
+
+	mem_cgroup_id_get(memcg);
+	oldid = swap_cgroup_record(entry, mem_cgroup_id(memcg));
+	VM_BUG_ON_PAGE(oldid, page);
+	mem_cgroup_swap_statistics(memcg, true);
+
+	return 0;
 }
 
 /**

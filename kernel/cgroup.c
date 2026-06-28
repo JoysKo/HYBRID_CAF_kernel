@@ -1545,7 +1545,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 {
 	struct cgroup *dcgrp = &dst_root->cgrp;
 	struct cgroup_subsys *ss;
-	int ssid, ret;
+	int ssid, i, ret;
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -1585,22 +1585,9 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 		css->cgroup = dcgrp;
 
 		spin_lock_irq(&css_set_lock);
-		WARN_ON(!list_empty(&dcgrp->e_csets[ss->id]));
-		list_for_each_entry_safe(cset, cset_pos, &scgrp->e_csets[ss->id],
-					 e_cset_node[ss->id]) {
+		hash_for_each(css_set_table, i, cset, hlist)
 			list_move_tail(&cset->e_cset_node[ss->id],
 				       &dcgrp->e_csets[ss->id]);
-			/*
-			 * all css_sets of scgrp together in same order to dcgrp,
-			 * patch in-flight iterators to preserve correct iteration.
-			 * since the iterator is always advanced right away and
-			 * finished when it->cset_pos meets it->cset_head, so only
-			 * update it->cset_head is enough here.
-			 */
-			list_for_each_entry(it, &cset->task_iters, iters_node)
-				if (it->cset_head == &scgrp->e_csets[ss->id])
-					it->cset_head = &dcgrp->e_csets[ss->id];
-		}
 		spin_unlock_irq(&css_set_lock);
 
 		/* default hierarchy doesn't enable controllers by default */
@@ -1637,10 +1624,10 @@ static int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 	if (!buf)
 		return -ENOMEM;
 
-	spin_lock_bh(&css_set_lock);
+	spin_lock_irq(&css_set_lock);
 	ns_cgroup = current_cgns_cgroup_from_root(kf_cgroot);
 	len = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, PATH_MAX);
-	spin_unlock_bh(&css_set_lock);
+	spin_unlock_irq(&css_set_lock);
 
 	if (len >= PATH_MAX)
 		len = -ERANGE;
@@ -2261,11 +2248,11 @@ out_mount:
 		struct cgroup *cgrp;
 
 		mutex_lock(&cgroup_mutex);
-		spin_lock_bh(&css_set_lock);
+		spin_lock_irq(&css_set_lock);
 
 		cgrp = cset_cgroup_from_root(ns->root_cset, root);
 
-		spin_unlock_bh(&css_set_lock);
+		spin_unlock_irq(&css_set_lock);
 		mutex_unlock(&cgroup_mutex);
 
 		nsdentry = kernfs_node_dentry(cgrp->kn, dentry->d_sb);
@@ -2338,11 +2325,11 @@ int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 	int ret;
 
 	mutex_lock(&cgroup_mutex);
-	spin_lock_bh(&css_set_lock);
+	spin_lock_irq(&css_set_lock);
 
 	ret = cgroup_path_ns_locked(cgrp, buf, buflen, ns);
 
-	spin_unlock_bh(&css_set_lock);
+	spin_unlock_irq(&css_set_lock);
 	mutex_unlock(&cgroup_mutex);
 
 	return ret;

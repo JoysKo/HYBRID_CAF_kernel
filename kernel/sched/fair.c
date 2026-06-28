@@ -767,7 +767,6 @@ void init_entity_runnable_average(struct sched_entity *se)
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
-static int update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq);
 static void attach_entity_cfs_rq(struct sched_entity *se);
 static void attach_entity_load_avg(struct cfs_rq *cfs_rq, struct sched_entity *se);
 
@@ -3735,7 +3734,7 @@ static inline void check_schedstat_required(void)
 			trace_sched_stat_iowait_enabled()  ||
 			trace_sched_stat_blocked_enabled() ||
 			trace_sched_stat_runtime_enabled())  {
-		pr_warn_once("Scheduler tracepoints stat_sleep, stat_iowait, "
+		printk_deferred_once("Scheduler tracepoints stat_sleep, stat_iowait, "
 			     "stat_blocked and stat_runtime require the "
 			     "kernel parameter schedstats=enabled or "
 			     "kernel.sched_schedstats=1\n");
