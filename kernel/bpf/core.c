@@ -517,6 +517,9 @@ struct bpf_prog *bpf_jit_blind_constants(struct bpf_prog *prog)
 
 	return clone;
 }
+
+int bpf_jit_harden __read_mostly;
+
 #endif /* CONFIG_BPF_JIT */
 
 /* Base function for offset calculation. Needs to go into .text section,
@@ -1308,6 +1311,11 @@ const struct bpf_func_proto * __weak bpf_get_trace_printk_proto(void)
 	return NULL;
 }
 
+const struct bpf_func_proto * __weak bpf_get_event_output_proto(void)
+{
+	return NULL;
+}
+
 u64 __weak
 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
 		 void *ctx, u64 ctx_size, bpf_ctx_copy_t ctx_copy)
@@ -1325,10 +1333,7 @@ const struct bpf_func_proto bpf_tail_call_proto = {
 	.arg3_type	= ARG_ANYTHING,
 };
 
-/* Stub for JITs that only support cBPF. eBPF programs are interpreted.
- * It is encouraged to implement bpf_int_jit_compile() instead, so that
- * eBPF and implicitly also cBPF can get JITed!
- */
+/* For classic BPF JITs that don't implement bpf_int_jit_compile(). */
 struct bpf_prog * __weak bpf_int_jit_compile(struct bpf_prog *prog)
 {
 	return prog;
