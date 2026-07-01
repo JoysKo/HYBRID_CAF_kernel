@@ -392,9 +392,6 @@ struct tc_cls_u32_offload {
 	};
 };
 
-/* tca flags definitions */
-#define TCA_CLS_FLAGS_SKIP_HW 1
-
 static inline bool tc_should_offload(struct net_device *dev, u32 flags)
 {
 	if (!(dev->features & NETIF_F_HW_TC))
@@ -404,6 +401,23 @@ static inline bool tc_should_offload(struct net_device *dev, u32 flags)
 		return false;
 
 	if (!dev->netdev_ops->ndo_setup_tc)
+		return false;
+
+	return true;
+}
+
+static inline bool tc_skip_sw(u32 flags)
+{
+	return (flags & TCA_CLS_FLAGS_SKIP_SW) ? true : false;
+}
+
+/* SKIP_HW and SKIP_SW are mutually exclusive flags. */
+static inline bool tc_flags_valid(u32 flags)
+{
+	if (flags & ~(TCA_CLS_FLAGS_SKIP_HW | TCA_CLS_FLAGS_SKIP_SW))
+		return false;
+
+	if (!(flags ^ (TCA_CLS_FLAGS_SKIP_HW | TCA_CLS_FLAGS_SKIP_SW)))
 		return false;
 
 	return true;
@@ -421,6 +435,33 @@ struct tc_cls_flower_offload {
 	struct fl_flow_key *mask;
 	struct fl_flow_key *key;
 	struct tcf_exts *exts;
+};
+
+enum tc_matchall_command {
+	TC_CLSMATCHALL_REPLACE,
+	TC_CLSMATCHALL_DESTROY,
+};
+
+struct tc_cls_matchall_offload {
+	enum tc_matchall_command command;
+	struct tcf_exts *exts;
+	unsigned long cookie;
+};
+
+enum tc_clsbpf_command {
+	TC_CLSBPF_ADD,
+	TC_CLSBPF_REPLACE,
+	TC_CLSBPF_DESTROY,
+	TC_CLSBPF_STATS,
+};
+
+struct tc_cls_bpf_offload {
+	enum tc_clsbpf_command command;
+	struct tcf_exts *exts;
+	struct bpf_prog *prog;
+	const char *name;
+	bool exts_integrated;
+	u32 gen_flags;
 };
 
 #endif

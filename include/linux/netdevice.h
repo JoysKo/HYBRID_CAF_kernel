@@ -52,6 +52,7 @@
 #include <uapi/linux/netdevice.h>
 #include <uapi/linux/if_bonding.h>
 #include <uapi/linux/pkt_cls.h>
+#include <linux/hashtable.h>
 
 struct netpoll_info;
 struct device;
@@ -797,6 +798,8 @@ enum {
 	TC_SETUP_MQPRIO,
 	TC_SETUP_CLSU32,
 	TC_SETUP_CLSFLOWER,
+	TC_SETUP_MATCHALL,
+	TC_SETUP_CLSBPF,
 };
 
 struct tc_cls_u32_offload;
@@ -807,6 +810,8 @@ struct tc_to_netdev {
 		u8 tc;
 		struct tc_cls_u32_offload *cls_u32;
 		struct tc_cls_flower_offload *cls_flower;
+		struct tc_cls_matchall_offload *cls_mall;
+		struct tc_cls_bpf_offload *cls_bpf;
 	};
 };
 
@@ -3268,6 +3273,21 @@ struct sk_buff *dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev,
 int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 int dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 bool is_skb_forwardable(struct net_device *dev, struct sk_buff *skb);
+
+static __always_inline int ____dev_forward_skb(struct net_device *dev,
+					       struct sk_buff *skb)
+{
+	if (skb_orphan_frags(skb, GFP_ATOMIC) ||
+	    unlikely(!is_skb_forwardable(dev, skb))) {
+		atomic_long_inc(&dev->rx_dropped);
+		kfree_skb(skb);
+		return NET_RX_DROP;
+	}
+
+	skb_scrub_packet(skb, true);
+	skb->priority = 0;
+	return 0;
+}
 
 extern int		netdev_budget;
 
