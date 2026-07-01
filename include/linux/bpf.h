@@ -234,7 +234,6 @@ u64 bpf_get_stackid(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 bool bpf_prog_array_compatible(struct bpf_array *array, const struct bpf_prog *fp);
 
 const struct bpf_func_proto *bpf_get_trace_printk_proto(void);
-const struct bpf_func_proto *bpf_get_event_output_proto(void);
 
 typedef unsigned long (*bpf_ctx_copy_t)(void *dst, const void *src,
 					unsigned long off, unsigned long len);
@@ -332,6 +331,7 @@ int bpf_percpu_hash_update(struct bpf_map *map, void *key, void *value,
 			   u64 flags);
 int bpf_percpu_array_update(struct bpf_map *map, void *key, void *value,
 			    u64 flags);
+
 int bpf_stackmap_copy(struct bpf_map *map, void *key, void *value);
 
 int bpf_stackmap_copy(struct bpf_map *map, void *key, void *value);
@@ -378,12 +378,12 @@ static inline struct bpf_prog *bpf_prog_get_type(u32 ufd,
 {
 	return ERR_PTR(-EOPNOTSUPP);
 }
-
-static inline void bpf_prog_put(struct bpf_prog *prog)
+static inline struct bpf_prog *bpf_prog_add(struct bpf_prog *prog, int i)
 {
+	return ERR_PTR(-EOPNOTSUPP);
 }
 
-static inline void bpf_prog_put_rcu(struct bpf_prog *prog)
+static inline void bpf_prog_put(struct bpf_prog *prog)
 {
 }
 

@@ -422,7 +422,6 @@ static void htab_elem_free(struct bpf_htab *htab, struct htab_elem *l)
 	if (htab->map.map_type == BPF_MAP_TYPE_PERCPU_HASH)
 		free_percpu(htab_elem_get_ptr(l, htab->map.key_size));
 	kfree(l);
-
 }
 
 static void htab_elem_free_rcu(struct rcu_head *head)
@@ -461,13 +460,9 @@ static struct htab_elem *alloc_htab_elem(struct bpf_htab *htab, void *key,
 	int err = 0;
 
 	if (prealloc) {
-		struct pcpu_freelist_node *l;
-
-		l = pcpu_freelist_pop(&htab->freelist);
-		if (!l)
+		l_new = (struct htab_elem *)pcpu_freelist_pop(&htab->freelist);
+		if (!l_new)
 			err = -E2BIG;
-		else
-			l_new = container_of(l, struct htab_elem, fnode);
 	} else {
 		if (atomic_inc_return(&htab->count) > htab->map.max_entries) {
 			atomic_dec(&htab->count);
@@ -748,7 +743,7 @@ static void htab_map_free(struct bpf_map *map)
 		pcpu_freelist_destroy(&htab->freelist);
 	}
 	free_percpu(htab->extra_elems);
-	bpf_map_area_free(htab->buckets);
+	kvfree(htab->buckets);
 	kfree(htab);
 }
 
