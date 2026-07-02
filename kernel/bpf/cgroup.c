@@ -384,8 +384,33 @@ cleanup:
 }
 
 /**
- * __cgroup_bpf_run_filter() - Run a program for packet filtering
- * @sk: The socket sending or receiving traffic
+ * __cgroup_bpf_update() - Update the pinned program of a cgroup, and
+ *                         propagate the change to descendants
+ * @cgrp: The cgroup which descendants to traverse
+ * @parent: The parent of @cgrp, or %NULL if @cgrp is the root
+ * @prog: A new program to pin
+ * @type: Type of pinning operation (ingress/egress)
+ *
+ * This is a compatibility wrapper for the 4.10 API. It translates
+ * single-program updates into the 4.14 multi-program API.
+ *
+ * Must be called with cgroup_mutex held.
+ */
+int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
+			struct bpf_prog *prog, enum bpf_attach_type type,
+			bool new_overridable)
+{
+	u32 flags = new_overridable ? BPF_F_ALLOW_OVERRIDE : 0;
+
+	if (prog)
+		return __cgroup_bpf_attach(cgrp, prog, type, flags);
+	else
+		return __cgroup_bpf_detach(cgrp, NULL, type, flags);
+}
+
+/**
+ * __cgroup_bpf_run_filter_skb() - Run a program for packet filtering
+ * @sk: The socken sending or receiving traffic
  * @skb: The skb that is being sent or received
  * @type: The type of program to be exectuted
  *
@@ -398,9 +423,9 @@ cleanup:
  * This function will return %-EPERM if any if an attached program was found
  * and if it returned != 1 during execution. In all other cases, 0 is returned.
  */
-int __cgroup_bpf_run_filter(struct sock *sk,
-			    struct sk_buff *skb,
-			    enum bpf_attach_type type)
+int __cgroup_bpf_run_filter_skb(struct sock *sk,
+				struct sk_buff *skb,
+				enum bpf_attach_type type)
 {
 	unsigned int offset = skb->data - skb_network_header(skb);
 	struct sock *save_sk;
@@ -423,7 +448,7 @@ int __cgroup_bpf_run_filter(struct sock *sk,
 	skb->sk = save_sk;
 	return ret == 1 ? 0 : -EPERM;
 }
-EXPORT_SYMBOL(__cgroup_bpf_run_filter);
+EXPORT_SYMBOL(__cgroup_bpf_run_filter_skb);
 
 /**
  * __cgroup_bpf_run_filter_sk() - Run a program on a sock
@@ -445,12 +470,11 @@ int __cgroup_bpf_run_filter_sk(struct sock *sk,
 	struct bpf_prog *prog;
 	int ret = 0;
 
-
 	rcu_read_lock();
 
 	prog = rcu_dereference(cgrp->bpf.effective[type]->progs[0]);
 	if (prog)
-		ret = BPF_PROG_RUN(prog, (const struct sk_buff *)sk) == 1 ? 0 : -EPERM;
+		ret = bpf_prog_run_save_cb(prog, (struct sk_buff *)sk) == 1 ? 0 : -EPERM;
 
 	rcu_read_unlock();
 

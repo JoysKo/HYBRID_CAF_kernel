@@ -56,7 +56,6 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	bool unpriv = !capable(CAP_SYS_ADMIN);
 	u64 cost, array_size, mask64;
 	struct bpf_array *array;
-	int ret;
 
 	/* check sanity of attributes */
 	if (attr->max_entries == 0 || attr->key_size != 4 ||
@@ -64,7 +63,7 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	    attr->map_flags & ~ARRAY_CREATE_FLAG_MASK)
 		return ERR_PTR(-EINVAL);
 
-	if (attr->value_size >= 1 << (KMALLOC_SHIFT_MAX - 1))
+	if (attr->value_size > KMALLOC_MAX_SIZE)
 		/* if value_size is bigger, the user space won't be able to
 		 * access the elements.
 		 */
@@ -110,14 +109,13 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	}
 	cost = round_up(cost, PAGE_SIZE) >> PAGE_SHIFT;
 
-	ret = bpf_map_precharge_memlock(cost);
-	if (ret < 0)
-		return ERR_PTR(ret);
+	/* bpf_map_charge_memlock will be done by caller (map_create) */
 
 	/* allocate all map elements and zero-initialize them */
 	array = bpf_map_area_alloc(array_size);
 	if (!array)
 		return ERR_PTR(-ENOMEM);
+
 	array->index_mask = index_mask;
 	array->map.unpriv_array = unpriv;
 
@@ -130,13 +128,18 @@ static struct bpf_map *array_map_alloc(union bpf_attr *attr)
 	array->map.pages = cost;
 	array->elem_size = elem_size;
 
-	if (percpu &&
-	    (elem_size > PCPU_MIN_UNIT_SIZE ||
-	     bpf_array_alloc_percpu(array))) {
+	if (!percpu)
+		goto out;
+
+	array_size += (u64) attr->max_entries * elem_size * num_possible_cpus();
+
+	if (array_size >= U32_MAX - PAGE_SIZE ||
+	    elem_size > PCPU_MIN_UNIT_SIZE || bpf_array_alloc_percpu(array)) {
 		bpf_map_area_free(array);
 		return ERR_PTR(-ENOMEM);
 	}
 
+out:
 	return &array->map;
 }
 
