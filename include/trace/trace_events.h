@@ -299,6 +299,10 @@ TRACE_MAKE_SYSTEM_STR();
 #undef __print_hex
 #define __print_hex(buf, buf_len) trace_print_hex_seq(p, buf, buf_len)
 
+#undef __print_hex_str
+#define __print_hex_str(buf, buf_len)					\
+	trace_print_hex_seq(p, buf, buf_len)
+
 #undef __print_array
 #define __print_array(array, count, el_size)				\
 	({								\

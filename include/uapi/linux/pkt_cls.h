@@ -153,6 +153,8 @@ enum {
 /* tca flags definitions */
 #define TCA_CLS_FLAGS_SKIP_HW	(1 << 0)
 #define TCA_CLS_FLAGS_SKIP_SW	(1 << 1)
+#define TCA_CLS_FLAGS_IN_HW	(1 << 2) /* filter is offloaded to HW */
+#define TCA_CLS_FLAGS_NOT_IN_HW (1 << 3) /* filter isn't offloaded to HW */
 
 /* U32 filters */
 
