@@ -88,6 +88,13 @@ enum {
 #define TC_ACT_QUEUED		5
 #define TC_ACT_REPEAT		6
 #define TC_ACT_REDIRECT		7
+#define TC_ACT_TRAP		8 /* For hw path, this means "trap to cpu"
+				   * and don't further process the frame
+				   * in hardware. For sw path, this is
+				   * equivalent of TC_ACT_STOLEN - drop
+				   * the skb and act like everything
+				   * is alright.
+				   */
 #define TC_ACT_JUMP		0x10000000
 
 /* Action type identifiers*/
@@ -395,6 +402,7 @@ enum {
 	TCA_BPF_FLAGS,
 	TCA_BPF_FLAGS_GEN,
 	TCA_BPF_TAG,
+	TCA_BPF_ID,
 	__TCA_BPF_MAX,
 };
 

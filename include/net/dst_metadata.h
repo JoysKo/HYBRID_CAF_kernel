@@ -5,10 +5,22 @@
 #include <net/ip_tunnels.h>
 #include <net/dst.h>
 
+enum metadata_type {
+	METADATA_IP_TUNNEL,
+	METADATA_HW_PORT_MUX,
+};
+
+struct hw_port_info {
+	struct net_device *lower_dev;
+	u32 port_id;
+};
+
 struct metadata_dst {
 	struct dst_entry		dst;
+	enum metadata_type		type;
 	union {
 		struct ip_tunnel_info	tun_info;
+		struct hw_port_info	port_info;
 	} u;
 };
 
@@ -44,6 +56,33 @@ static inline bool skb_valid_dst(const struct sk_buff *skb)
 	struct dst_entry *dst = skb_dst(skb);
 
 	return dst && !(dst->flags & DST_METADATA);
+}
+
+static inline int skb_metadata_dst_cmp(const struct sk_buff *skb_a,
+				       const struct sk_buff *skb_b)
+{
+	const struct metadata_dst *a, *b;
+
+	if (!(skb_a->_skb_refdst | skb_b->_skb_refdst))
+		return 0;
+
+	a = (const struct metadata_dst *) skb_dst(skb_a);
+	b = (const struct metadata_dst *) skb_dst(skb_b);
+
+	if (!a != !b || a->type != b->type)
+		return 1;
+
+	switch (a->type) {
+	case METADATA_HW_PORT_MUX:
+		return memcmp(&a->u.port_info, &b->u.port_info,
+			      sizeof(a->u.port_info));
+	case METADATA_IP_TUNNEL:
+		return memcmp(&a->u.tun_info, &b->u.tun_info,
+			      sizeof(a->u.tun_info) +
+					 a->u.tun_info.options_len);
+	default:
+		return 1;
+	}
 }
 
 void metadata_dst_free(struct metadata_dst *);

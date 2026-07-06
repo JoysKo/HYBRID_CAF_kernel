@@ -248,6 +248,7 @@ struct tcf_proto {
 	struct Qdisc		*q;
 	void			*data;
 	const struct tcf_proto_ops	*ops;
+	struct tcf_chain	*chain;
 	struct rcu_head		rcu;
 };
 
@@ -257,6 +258,19 @@ struct qdisc_skb_cb {
 	u16			tc_classid;
 #define QDISC_CB_PRIV_LEN 20
 	unsigned char		data[QDISC_CB_PRIV_LEN];
+};
+
+struct tcf_chain {
+	struct tcf_proto __rcu *filter_chain;
+	struct tcf_proto __rcu **p_filter_chain;
+	struct list_head list;
+	struct tcf_block *block;
+	u32 index; /* chain index */
+	unsigned int refcnt;
+};
+
+struct tcf_block {
+	struct list_head chain_list;
 };
 
 static inline void qdisc_cb_private_validate(const struct sk_buff *skb, int sz)
