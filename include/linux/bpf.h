@@ -35,6 +35,7 @@ struct bpf_map_ops {
 	void *(*map_fd_get_ptr)(struct bpf_map *map, struct file *map_file,
 				int fd);
 	void (*map_fd_put_ptr)(void *ptr);
+	u32 (*map_gen_lookup)(struct bpf_map *map, struct bpf_insn *insn_buf);
 };
 
 struct bpf_map {
@@ -61,6 +62,7 @@ struct bpf_map {
 #ifdef CONFIG_SECURITY
 	void *security;
 #endif
+	struct bpf_map *inner_map_meta; // <-- новое поле из 4.12
 };
 
 struct bpf_map_type_list {
@@ -179,12 +181,8 @@ struct bpf_verifier_ops {
 				  const struct bpf_insn *src,
 				  struct bpf_insn *dst,
 				  struct bpf_prog *prog);
-};
-
-struct bpf_prog_type_list {
-	struct list_head list_node;
-	const struct bpf_verifier_ops *ops;
-	enum bpf_prog_type type;
+	int (*test_run)(struct bpf_prog *prog, const union bpf_attr *kattr,
+			union bpf_attr __user *uattr);
 };
 
 struct bpf_prog_aux {
@@ -299,11 +297,21 @@ _out:							\
 #define BPF_PROG_RUN_ARRAY_CHECK(array, ctx, func)	\
 	__BPF_PROG_RUN_ARRAY(array, ctx, func, true)
 
+int bpf_prog_test_run_xdp(struct bpf_prog *prog, const union bpf_attr *kattr,
+			  union bpf_attr __user *uattr);
+int bpf_prog_test_run_skb(struct bpf_prog *prog, const union bpf_attr *kattr,
+			  union bpf_attr __user *uattr);
+
 #ifdef CONFIG_BPF_SYSCALL
 DECLARE_PER_CPU(int, bpf_prog_active);
 
-void bpf_register_prog_type(struct bpf_prog_type_list *tl);
-void bpf_register_map_type(struct bpf_map_type_list *tl);
+#define BPF_PROG_TYPE(_id, _ops) \
+	extern const struct bpf_verifier_ops _ops;
+#define BPF_MAP_TYPE(_id, _ops) \
+	extern const struct bpf_map_ops _ops;
+#include <linux/bpf_types.h>
+#undef BPF_PROG_TYPE
+#undef BPF_MAP_TYPE
 
 extern const struct file_operations bpf_map_fops;
 extern const struct file_operations bpf_prog_fops;
@@ -348,6 +356,8 @@ int bpf_stackmap_copy(struct bpf_map *map, void *key, void *value);
 int bpf_fd_array_map_update_elem(struct bpf_map *map, struct file *map_file,
 				 void *key, void *value, u64 map_flags);
 void bpf_fd_array_map_clear(struct bpf_map *map);
+int bpf_fd_htab_map_update_elem(struct bpf_map *map, struct file *map_file,
+				void *key, void *value, u64 map_flags);
 
 int bpf_get_file_flag(int flags);
 
@@ -373,10 +383,6 @@ int bpf_check(struct bpf_prog **fp, union bpf_attr *attr);
 struct bpf_prog *bpf_prog_get_type_path(const char *name, enum bpf_prog_type type);
 
 #else
-static inline void bpf_register_prog_type(struct bpf_prog_type_list *tl)
-{
-}
-
 static inline struct bpf_prog *bpf_prog_get(u32 ufd)
 {
 	return ERR_PTR(-EOPNOTSUPP);

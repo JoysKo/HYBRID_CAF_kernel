@@ -410,7 +410,7 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 
 /**
  * __cgroup_bpf_run_filter_skb() - Run a program for packet filtering
- * @sk: The socken sending or receiving traffic
+ * @sk: The socket sending or receiving traffic
  * @skb: The skb that is being sent or received
  * @type: The type of program to be exectuted
  *

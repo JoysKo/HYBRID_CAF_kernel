@@ -7,6 +7,7 @@
 #include <stdarg.h>
 
 #include <linux/atomic.h>
+#include <linux/refcount.h>
 #include <linux/compat.h>
 #include <linux/skbuff.h>
 #include <linux/linkage.h>
@@ -456,7 +457,7 @@ struct bpf_prog {
 };
 
 struct sk_filter {
-	atomic_t	refcnt;
+	refcount_t	refcnt;
 	struct rcu_head	rcu;
 	struct bpf_prog	*prog;
 };
@@ -772,6 +773,11 @@ static inline bool bpf_jit_is_ebpf(void)
 # else
 	return false;
 # endif
+}
+
+static inline bool ebpf_jit_enabled(void)
+{
+	return bpf_jit_enable && bpf_jit_is_ebpf();
 }
 
 static inline bool bpf_prog_ebpf_jited(const struct bpf_prog *fp)
