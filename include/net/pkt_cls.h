@@ -17,6 +17,8 @@ struct tcf_walker {
 int register_tcf_proto_ops(struct tcf_proto_ops *ops);
 int unregister_tcf_proto_ops(struct tcf_proto_ops *ops);
 
+bool tcf_queue_work(struct work_struct *work);
+
 static inline unsigned long
 __cls_set_class(unsigned long *clp, unsigned long cl)
 {
@@ -60,6 +62,7 @@ struct tcf_exts {
 #ifdef CONFIG_NET_CLS_ACT
 	__u32	type; /* for backward compat(TCA_OLD_COMPAT) */
 	struct list_head actions;
+	struct net *net;
 #endif
 	/* Map to export classifier specific extension TLV types to the
 	 * generic extensions API. Unsupported extensions must be set to 0.
@@ -76,6 +79,28 @@ static inline void tcf_exts_init(struct tcf_exts *exts, int action, int police)
 #endif
 	exts->action = action;
 	exts->police = police;
+}
+
+/* Return false if the netns is being destroyed in cleanup_net(). Callers
+ * need to do cleanup synchronously in this case, otherwise may race with
+ * tc_action_net_exit(). Return true for other cases.
+ */
+static inline bool tcf_exts_get_net(struct tcf_exts *exts)
+{
+#ifdef CONFIG_NET_CLS_ACT
+	exts->net = maybe_get_net(exts->net);
+	return exts->net != NULL;
+#else
+	return true;
+#endif
+}
+
+static inline void tcf_exts_put_net(struct tcf_exts *exts)
+{
+#ifdef CONFIG_NET_CLS_ACT
+	if (exts->net)
+		put_net(exts->net);
+#endif
 }
 
 /**
@@ -358,6 +383,23 @@ tcf_match_indev(struct sk_buff *skb, int ifindex)
 }
 #endif /* CONFIG_NET_CLS_IND */
 
+struct tc_cls_common_offload {
+	u32 chain_index;
+	__be16 protocol;
+	u32 prio;
+	u32 classid;
+};
+
+static inline void
+tc_cls_common_offload_init(struct tc_cls_common_offload *cls_common,
+			   const struct tcf_proto *tp)
+{
+	cls_common->chain_index = tp->chain->index;
+	cls_common->protocol = tp->protocol;
+	cls_common->prio = tp->prio;
+	cls_common->classid = tp->classid;
+}
+
 struct tc_cls_u32_knode {
 	struct tcf_exts *exts;
 	struct tc_u32_sel *sel;
@@ -461,6 +503,7 @@ enum tc_clsbpf_command {
 };
 
 struct tc_cls_bpf_offload {
+	struct tc_cls_common_offload common;
 	enum tc_clsbpf_command command;
 	struct tcf_exts *exts;
 	struct bpf_prog *prog;

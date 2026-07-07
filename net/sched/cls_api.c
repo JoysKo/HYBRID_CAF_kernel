@@ -76,6 +76,8 @@ out:
 }
 EXPORT_SYMBOL(register_tcf_proto_ops);
 
+static struct workqueue_struct *tc_filter_wq;
+
 int unregister_tcf_proto_ops(struct tcf_proto_ops *ops)
 {
 	struct tcf_proto_ops *t;
@@ -103,6 +105,11 @@ static int tfilter_notify(struct net *net, struct sk_buff *oskb,
 			  struct nlmsghdr *n, struct tcf_proto *tp,
 			  unsigned long fh, int event);
 
+bool tcf_queue_work(struct work_struct *work)
+{
+	return queue_work(tc_filter_wq, work);
+}
+EXPORT_SYMBOL(tcf_queue_work);
 
 /* Select new prio value from the range, managed by kernel. */
 

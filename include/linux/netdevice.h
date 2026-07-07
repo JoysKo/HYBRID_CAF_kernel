@@ -62,6 +62,7 @@ struct wireless_dev;
 /* 802.15.4 specific */
 struct wpan_dev;
 struct mpls_dev;
+struct xdp_buff;
 
 void netdev_set_default_ethtool_ops(struct net_device *dev,
 				    const struct ethtool_ops *ops);
@@ -802,6 +803,26 @@ enum {
 	TC_SETUP_CLSBPF,
 };
 
+/* These structures hold the attributes of xdp state that are being passed
+ * to the netdevice through the xdp op.
+ */
+enum xdp_netdev_command {
+	/* Set or clear a bpf program used in the earliest stages of packet
+	 * rx. The prog will have been loaded as BPF_PROG_TYPE_XDP. The callee
+	 * is responsible for calling bpf_prog_put on any old progs that are
+	 * stored. In case of error, the callee need not release the new prog
+	 * reference, but on success it takes ownership and must bpf_prog_put
+	 * when it is no longer used.
+	 */
+	XDP_SETUP_PROG,
+	XDP_SETUP_PROG_HW,
+	/* Check if a bpf program is set on the device.  The callee should
+	 * set @prog_attached to one of XDP_ATTACHED_* values, note that "true"
+	 * is equivalent to XDP_ATTACHED_DRV.
+	 */
+	XDP_QUERY_PROG,
+};
+
 struct tc_cls_u32_offload;
 
 struct tc_to_netdev {
@@ -815,6 +836,22 @@ struct tc_to_netdev {
 	};
 };
 
+struct netdev_xdp {
+	enum xdp_netdev_command command;
+	union {
+		/* XDP_SETUP_PROG */
+		struct {
+			u32 flags;
+			struct bpf_prog *prog;
+			struct netlink_ext_ack *extack;
+		};
+		/* XDP_QUERY_PROG */
+		struct {
+			u8 prog_attached;
+			u32 prog_id;
+		};
+	};
+};
 
 /*
  * This structure defines the management hooks for network devices.
@@ -1302,6 +1339,11 @@ struct net_device_ops {
 						       struct sk_buff *skb);
 	void			(*ndo_set_rx_headroom)(struct net_device *dev,
 						       int needed_headroom);
+	int			(*ndo_xdp)(struct net_device *dev,
+					   struct netdev_xdp *xdp);
+	int			(*ndo_xdp_xmit)(struct net_device *dev,
+						struct xdp_buff *xdp);
+	void			(*ndo_xdp_flush)(struct net_device *dev);
 };
 
 /**

@@ -12,7 +12,7 @@
 #include "percpu_freelist.h"
 
 #define STACK_CREATE_FLAG_MASK \
-	(BPF_F_RDONLY | BPF_F_WRONLY)
+	(BPF_F_RDONLY | BPF_F_WRONLY | BPF_F_NUMA_NODE)
 
 struct stack_map_bucket {
 	struct pcpu_freelist_node fnode;
@@ -35,7 +35,8 @@ static int prealloc_elems_and_freelist(struct bpf_stack_map *smap)
 			(u64)smap->map.value_size;
 	int err;
 
-	smap->elems = bpf_map_area_alloc(elem_size * smap->map.max_entries);
+	smap->elems = bpf_map_area_alloc(elem_size * smap->map.max_entries,
+					 smap->map.numa_node);
 	if (!smap->elems)
 		return -ENOMEM;
 
@@ -81,7 +82,7 @@ static struct bpf_map *stack_map_alloc(union bpf_attr *attr)
 	if (cost >= U32_MAX - PAGE_SIZE)
 		return ERR_PTR(-E2BIG);
 
-	smap = bpf_map_area_alloc(cost);
+	smap = bpf_map_area_alloc(cost, bpf_map_attr_numa_node(attr));
 	if (!smap)
 		return ERR_PTR(-ENOMEM);
 
@@ -97,6 +98,7 @@ static struct bpf_map *stack_map_alloc(union bpf_attr *attr)
 	smap->map.map_flags = attr->map_flags;
 	smap->n_buckets = n_buckets;
 	smap->map.pages = round_up(cost, PAGE_SIZE) >> PAGE_SHIFT;
+	smap->map.numa_node = bpf_map_attr_numa_node(attr);
 
 	err = bpf_map_precharge_memlock(smap->map.pages);
 	if (err)
