@@ -370,12 +370,11 @@ out:
 	putname(pname);
 	return ret;
 }
-EXPORT_SYMBOL_GPL(bpf_obj_get_user);
 
 static struct bpf_prog *__get_prog_inode(struct inode *inode, enum bpf_prog_type type)
 {
 	struct bpf_prog *prog;
-	int ret = inode_permission(inode, MAY_READ);
+	int ret = inode_permission(inode, MAY_READ | MAY_WRITE);
 	if (ret)
 		return ERR_PTR(ret);
 
@@ -389,6 +388,9 @@ static struct bpf_prog *__get_prog_inode(struct inode *inode, enum bpf_prog_type
 	ret = security_bpf_prog(prog);
 	if (ret < 0)
 		return ERR_PTR(ret);
+
+	if (!bpf_prog_get_ok(prog, &type, false))
+		return ERR_PTR(-EINVAL);
 
 	return bpf_prog_inc(prog);
 }

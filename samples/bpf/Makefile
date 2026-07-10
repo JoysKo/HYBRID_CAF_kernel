@@ -66,6 +66,7 @@ always += test_overhead_tp_kern.o
 always += test_overhead_kprobe_kern.o
 always += parse_varlen.o parse_simple.o parse_ldabs.o
 always += test_cgrp2_tc_kern.o
+always += xdp_redirect_cpu_kern.o
 
 HOSTCFLAGS += -I$(objtree)/usr/include
 

@@ -45,6 +45,33 @@ static DEFINE_PER_CPU(struct idr_layer *, idr_preload_head);
 static DEFINE_PER_CPU(int, idr_preload_cnt);
 static DEFINE_SPINLOCK(simple_ida_lock);
 
+int idr_alloc_cmn(struct idr *idr, void *ptr, unsigned long *index,
+		  unsigned long start, unsigned long end, gfp_t gfp,
+		  bool ext)
+{
+	struct radix_tree_iter iter;
+	void __rcu **slot;
+
+	if (WARN_ON_ONCE(radix_tree_is_internal_node(ptr)))
+		return -EINVAL;
+
+	radix_tree_iter_init(&iter, start);
+	if (ext)
+		slot = idr_get_free_ext(&idr->idr_rt, &iter, gfp, end);
+	else
+		slot = idr_get_free(&idr->idr_rt, &iter, gfp, end);
+	if (IS_ERR(slot))
+		return PTR_ERR(slot);
+
+	radix_tree_iter_replace(&idr->idr_rt, &iter, slot, ptr);
+	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
+
+	if (index)
+		*index = iter.index;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(idr_alloc_cmn);
+
 /* the maximum ID which can be allocated given idr->layers */
 static int idr_max(int layers)
 {
@@ -821,6 +848,25 @@ void *idr_replace(struct idr *idp, void *ptr, int id)
 	return old_p;
 }
 EXPORT_SYMBOL(idr_replace);
+
+void *idr_replace_ext(struct idr *idr, void *ptr, unsigned long id)
+{
+	struct radix_tree_node *node;
+	void __rcu **slot = NULL;
+	void *entry;
+
+	if (WARN_ON_ONCE(radix_tree_is_internal_node(ptr)))
+		return ERR_PTR(-EINVAL);
+
+	entry = __radix_tree_lookup(&idr->idr_rt, id, &node, &slot);
+	if (!slot || radix_tree_tag_get(&idr->idr_rt, id, IDR_FREE))
+		return ERR_PTR(-ENOENT);
+
+	__radix_tree_replace(&idr->idr_rt, node, slot, ptr, NULL);
+
+	return entry;
+}
+EXPORT_SYMBOL(idr_replace_ext);
 
 void __init idr_init_cache(void)
 {

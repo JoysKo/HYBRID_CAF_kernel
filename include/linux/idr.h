@@ -12,6 +12,7 @@
 #ifndef __IDR_H__
 #define __IDR_H__
 
+#include <linux/radix-tree.h>
 #include <linux/types.h>
 #include <linux/bitops.h>
 #include <linux/init.h>
@@ -47,7 +48,18 @@ struct idr {
 	spinlock_t		lock;
 	int			id_free_cnt;
 	struct idr_layer	*id_free;
+	struct radix_tree_root	idr_rt;
+	unsigned int		idr_next;
 };
+
+/*
+ * The IDR API does not expose the tagging functionality of the radix tree
+ * to users.  Use tag 0 to track whether a node has free space below it.
+ */
+#define IDR_FREE	0
+
+/* Set the IDR flag and the IDR_FREE tag */
+#define IDR_RT_MARKER		((__force gfp_t)(3 << __GFP_BITS_SHIFT))
 
 #define IDR_INIT(name)							\
 {									\
@@ -75,6 +87,19 @@ struct idr {
 /*
  * This is what we export.
  */
+ 
+ int idr_alloc_cmn(struct idr *idr, void *ptr, unsigned long *index,
+		  unsigned long start, unsigned long end, gfp_t gfp,
+		  bool ext);
+ 
+ static inline int idr_alloc_ext(struct idr *idr, void *ptr,
+				unsigned long *index,
+				unsigned long start,
+				unsigned long end,
+				gfp_t gfp)
+{
+	return idr_alloc_cmn(idr, ptr, index, start, end, gfp, true);
+}
 
 void *idr_find_slowpath(struct idr *idp, int id);
 void idr_preload(gfp_t gfp_mask);
@@ -84,10 +109,16 @@ int idr_for_each(struct idr *idp,
 		 int (*fn)(int id, void *p, void *data), void *data);
 void *idr_get_next(struct idr *idp, int *nextid);
 void *idr_replace(struct idr *idp, void *ptr, int id);
+void *idr_replace_ext(struct idr *idr, void *ptr, unsigned long id);
 void idr_remove(struct idr *idp, int id);
 void idr_destroy(struct idr *idp);
 void idr_init(struct idr *idp);
 bool idr_is_empty(struct idr *idp);
+
+static inline void *idr_remove_ext(struct idr *idr, unsigned long id)
+{
+	return radix_tree_delete_item(&idr->idr_rt, id, NULL);
+}
 
 /**
  * idr_preload_end - end preload section started with idr_preload()

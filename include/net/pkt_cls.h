@@ -17,6 +17,12 @@ struct tcf_walker {
 int register_tcf_proto_ops(struct tcf_proto_ops *ops);
 int unregister_tcf_proto_ops(struct tcf_proto_ops *ops);
 
+enum tcf_block_binder_type {
+	TCF_BLOCK_BINDER_TYPE_UNSPEC,
+	TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS,
+	TCF_BLOCK_BINDER_TYPE_CLSACT_EGRESS,
+};
+
 bool tcf_queue_work(struct work_struct *work);
 
 static inline unsigned long
@@ -383,6 +389,20 @@ tcf_match_indev(struct sk_buff *skb, int ifindex)
 }
 #endif /* CONFIG_NET_CLS_IND */
 
+int tc_setup_cb_call(struct tcf_block *block, struct tcf_exts *exts,
+		     enum tc_setup_type type, void *type_data, bool err_stop);
+
+enum tc_block_command {
+	TC_BLOCK_BIND,
+	TC_BLOCK_UNBIND,
+};
+
+struct tc_block_offload {
+	enum tc_block_command command;
+	enum tcf_block_binder_type binder_type;
+	struct tcf_block *block;
+};
+
 struct tc_cls_common_offload {
 	u32 chain_index;
 	__be16 protocol;
@@ -446,6 +466,11 @@ static inline bool tc_should_offload(struct net_device *dev, u32 flags)
 		return false;
 
 	return true;
+}
+
+static inline bool tc_skip_hw(u32 flags)
+{
+	return (flags & TCA_CLS_FLAGS_SKIP_HW) ? true : false;
 }
 
 static inline bool tc_skip_sw(u32 flags)

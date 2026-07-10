@@ -3673,6 +3673,15 @@ void free_kmem_pages(unsigned long addr, unsigned int order)
 	}
 }
 
+void page_frag_free(void *addr)
+{
+	struct page *page = virt_to_head_page(addr);
+
+	if (unlikely(put_page_testzero(page)))
+		__free_pages_ok(page, compound_order(page));
+}
+EXPORT_SYMBOL(page_frag_free);
+
 static void *make_alloc_exact(unsigned long addr, unsigned int order,
 		size_t size)
 {

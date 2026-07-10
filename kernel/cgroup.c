@@ -65,6 +65,7 @@
 #include <linux/nsproxy.h>
 #include <linux/file.h>
 #include <net/sock.h>
+#include <linux/bpf-cgroup.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/cgroup.h>
@@ -6576,6 +6577,12 @@ static __init int cgroup_namespaces_init(void)
 	return 0;
 }
 subsys_initcall(cgroup_namespaces_init);
+
+int cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
+		     union bpf_attr __user *uattr)
+{
+	return __cgroup_bpf_query(cgrp, attr, uattr);
+}
 
 #ifdef CONFIG_CGROUP_BPF
 int cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
