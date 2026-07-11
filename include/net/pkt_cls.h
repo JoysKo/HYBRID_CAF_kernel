@@ -525,6 +525,7 @@ enum tc_clsbpf_command {
 	TC_CLSBPF_REPLACE,
 	TC_CLSBPF_DESTROY,
 	TC_CLSBPF_STATS,
+	TC_CLSBPF_OFFLOAD,
 };
 
 struct tc_cls_bpf_offload {

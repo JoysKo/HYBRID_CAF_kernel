@@ -557,6 +557,30 @@ static const struct seq_operations kallsyms_op = {
 	.show = s_show
 };
 
+/*
+ * We show kallsyms information even to normal users if we've enabled
+ * kernel profiling and are explicitly not paranoid (so kptr_restrict
+ * is clear, and sysctl_perf_event_paranoid isn't set).
+ *
+ * Otherwise, require CAP_SYSLOG (assuming kptr_restrict isn't set to
+ * block even that).
+ */
+int kallsyms_show_value(void)
+{
+	switch (kptr_restrict) {
+	case 0:
+		if (kallsyms_for_perf())
+			return 1;
+	/* fallthrough */
+	case 1:
+		if (has_capability_noaudit(current, CAP_SYSLOG))
+			return 1;
+	/* fallthrough */
+	default:
+		return 0;
+	}
+}
+
 static int kallsyms_open(struct inode *inode, struct file *file)
 {
 	/*

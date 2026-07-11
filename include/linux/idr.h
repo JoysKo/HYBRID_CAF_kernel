@@ -49,6 +49,7 @@ struct idr {
 	int			id_free_cnt;
 	struct idr_layer	*id_free;
 	struct radix_tree_root	idr_rt;
+	unsigned int		idr_base;
 	unsigned int		idr_next;
 };
 
@@ -104,6 +105,8 @@ struct idr {
 void *idr_find_slowpath(struct idr *idp, int id);
 void idr_preload(gfp_t gfp_mask);
 int idr_alloc(struct idr *idp, void *ptr, int start, int end, gfp_t gfp_mask);
+int __must_check idr_alloc_u32(struct idr *, void *ptr, u32 *id,
+				unsigned long max, gfp_t);
 int idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_mask);
 int idr_for_each(struct idr *idp,
 		 int (*fn)(int id, void *p, void *data), void *data);
