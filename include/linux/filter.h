@@ -492,6 +492,7 @@ struct bpf_prog {
 				xdp_adjust_head:1; /* Adjusting pkt head? */
 	kmemcheck_bitfield_end(meta);
 	enum bpf_prog_type	type;		/* Type of BPF program */
+	enum bpf_attach_type	expected_attach_type; /* For some prog types */
 	u32			len;		/* Number of filter blocks */
 	u32			jited_len;	/* Size of jited insns in bytes */
 	u8			tag[BPF_TAG_SIZE];
@@ -581,6 +582,24 @@ struct xdp_buff {
 	void *data_meta;
 	void *data_hard_start;
 	struct xdp_rxq_info *rxq;
+};
+
+struct sk_msg_buff {
+	void *data;
+	void *data_end;
+	__u32 apply_bytes;
+	__u32 cork_bytes;
+	int sg_copybreak;
+	int sg_start;
+	int sg_curr;
+	int sg_end;
+	struct scatterlist sg_data[MAX_SKB_FRAGS];
+	bool sg_copy[MAX_SKB_FRAGS];
+	__u32 key;
+	__u32 flags;
+	struct bpf_map *map;
+	struct sk_buff *skb;
+	struct list_head list;
 };
 
 /* Compute the linear packet data range [data, data_end) which
@@ -1103,6 +1122,16 @@ struct bpf_sock_ops_kern {
 					 * sock_ops_convert_ctx_access
 					 * as temporary storage of a register.
 					 */
+};
+
+struct bpf_sock_addr_kern {
+	struct sock *sk;
+	struct sockaddr *uaddr;
+	/* Temporary "register" to make indirect stores to nested structures
+	 * defined above. We need three registers to make such a store, but
+	 * only two (src and dst) are available at convert_ctx_access time
+	 */
+	u64 tmp_reg;
 };
 
 #endif /* __LINUX_FILTER_H__ */
