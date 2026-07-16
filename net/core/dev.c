@@ -3612,6 +3612,182 @@ drop:
 	return NET_RX_DROP;
 }
 
+static struct netdev_rx_queue *netif_get_rxqueue(struct sk_buff *skb)
+{
+	struct net_device *dev = skb->dev;
+	struct netdev_rx_queue *rxqueue;
+
+	rxqueue = dev->_rx;
+
+	if (skb_rx_queue_recorded(skb)) {
+		u16 index = skb_get_rx_queue(skb);
+
+		if (unlikely(index >= dev->real_num_rx_queues)) {
+			WARN_ONCE(dev->real_num_rx_queues > 1,
+				  "%s received packet on queue %u, but number "
+				  "of RX queues is %u\n",
+				  dev->name, index, dev->real_num_rx_queues);
+
+			return rxqueue; /* Return first rxqueue */
+		}
+		rxqueue += index;
+	}
+	return rxqueue;
+}
+
+static u32 netif_receive_generic_xdp(struct sk_buff *skb,
+				     struct xdp_buff *xdp,
+				     struct bpf_prog *xdp_prog)
+{
+	struct netdev_rx_queue *rxqueue;
+	void *orig_data, *orig_data_end;
+	u32 metalen, act = XDP_DROP;
+	int hlen, off;
+	u32 mac_len;
+
+	/* Reinjected packets coming from act_mirred or similar should
+	 * not get XDP generic processing.
+	 */
+	if (skb_cloned(skb))
+		return XDP_PASS;
+
+	/* XDP packets must be linear and must have sufficient headroom
+	 * of XDP_PACKET_HEADROOM bytes. This is the guarantee that also
+	 * native XDP provides, thus we need to do it here as well.
+	 */
+	if (skb_is_nonlinear(skb) ||
+	    skb_headroom(skb) < XDP_PACKET_HEADROOM) {
+		int hroom = XDP_PACKET_HEADROOM - skb_headroom(skb);
+		int troom = skb->tail + skb->data_len - skb->end;
+
+		/* In case we have to go down the path and also linearize,
+		 * then lets do the pskb_expand_head() work just once here.
+		 */
+		if (pskb_expand_head(skb,
+				     hroom > 0 ? ALIGN(hroom, NET_SKB_PAD) : 0,
+				     troom > 0 ? troom + 128 : 0, GFP_ATOMIC))
+			goto do_drop;
+		if (skb_linearize(skb))
+			goto do_drop;
+	}
+
+	/* The XDP program wants to see the packet starting at the MAC
+	 * header.
+	 */
+	mac_len = skb->data - skb_mac_header(skb);
+	hlen = skb_headlen(skb) + mac_len;
+	xdp->data = skb->data - mac_len;
+	xdp->data_meta = xdp->data;
+	xdp->data_end = xdp->data + hlen;
+	xdp->data_hard_start = skb->data - skb_headroom(skb);
+	orig_data_end = xdp->data_end;
+	orig_data = xdp->data;
+
+	rxqueue = netif_get_rxqueue(skb);
+	xdp->rxq = &rxqueue->xdp_rxq;
+
+	act = bpf_prog_run_xdp(xdp_prog, xdp);
+
+	off = xdp->data - orig_data;
+	if (off > 0)
+		__skb_pull(skb, off);
+	else if (off < 0)
+		__skb_push(skb, -off);
+	skb->mac_header += off;
+
+	/* check if bpf_xdp_adjust_tail was used. it can only "shrink"
+	 * pckt.
+	 */
+	off = orig_data_end - xdp->data_end;
+	if (off != 0) {
+		skb_set_tail_pointer(skb, xdp->data_end - xdp->data);
+		skb->len -= off;
+
+	}
+
+	switch (act) {
+	case XDP_REDIRECT:
+	case XDP_TX:
+		__skb_push(skb, mac_len);
+		break;
+	case XDP_PASS:
+		metalen = xdp->data - xdp->data_meta;
+		if (metalen)
+			skb_metadata_set(skb, metalen);
+		break;
+	default:
+		bpf_warn_invalid_xdp_action(act);
+		/* fall through */
+	case XDP_ABORTED:
+		//trace_xdp_exception(skb->dev, xdp_prog, act);
+		/* fall through */
+	case XDP_DROP:
+	do_drop:
+		kfree_skb(skb);
+		break;
+	}
+
+	return act;
+}
+
+/* When doing generic XDP we have to bypass the qdisc layer and the
+ * network taps in order to match in-driver-XDP behavior.
+ */
+void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog)
+{
+	struct net_device *dev = skb->dev;
+	struct netdev_queue *txq;
+	bool free_skb = true;
+	int cpu, rc;
+
+	txq = netdev_pick_tx(dev, skb, NULL);
+	cpu = smp_processor_id();
+	HARD_TX_LOCK(dev, txq, cpu);
+	if (!netif_xmit_stopped(txq)) {
+		rc = netdev_start_xmit(skb, dev, txq, 0);
+		if (dev_xmit_complete(rc))
+			free_skb = false;
+	}
+	HARD_TX_UNLOCK(dev, txq);
+	if (free_skb) {
+		//trace_xdp_exception(dev, xdp_prog, XDP_TX);
+		kfree_skb(skb);
+	}
+}
+EXPORT_SYMBOL_GPL(generic_xdp_tx);
+
+static DEFINE_STATIC_KEY_FALSE(generic_xdp_needed_key);
+
+int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb)
+{
+	if (xdp_prog) {
+		struct xdp_buff xdp;
+		u32 act;
+		int err;
+
+		act = netif_receive_generic_xdp(skb, &xdp, xdp_prog);
+		if (act != XDP_PASS) {
+			switch (act) {
+			case XDP_REDIRECT:
+				err = xdp_do_generic_redirect(skb->dev, skb,
+							      &xdp, xdp_prog);
+				if (err)
+					goto out_redir;
+				break;
+			case XDP_TX:
+				generic_xdp_tx(skb, xdp_prog);
+				break;
+			}
+			return XDP_DROP;
+		}
+	}
+	return XDP_PASS;
+out_redir:
+	kfree_skb(skb);
+	return XDP_DROP;
+}
+EXPORT_SYMBOL_GPL(do_xdp_generic);
+
 static int netif_rx_internal(struct sk_buff *skb)
 {
 	int ret;
@@ -8038,3 +8214,5 @@ out:
 }
 
 subsys_initcall(net_dev_init);
+
+void __compiletime_assert_116(void) {}

@@ -94,6 +94,72 @@ struct rt6key {
 
 struct fib6_table;
 
+struct rt6_exception_bucket {
+	struct hlist_head	chain;
+	int			depth;
+};
+
+struct rt6_exception {
+	struct hlist_node	hlist;
+	struct rt6_info		*rt6i;
+	unsigned long		stamp;
+	struct rcu_head		rcu;
+};
+
+#define FIB6_EXCEPTION_BUCKET_SIZE_SHIFT 10
+#define FIB6_EXCEPTION_BUCKET_SIZE (1 << FIB6_EXCEPTION_BUCKET_SIZE_SHIFT)
+#define FIB6_MAX_DEPTH 5
+
+struct fib6_nh {
+	struct in6_addr		nh_gw;
+	struct net_device	*nh_dev;
+	struct lwtunnel_state	*nh_lwtstate;
+
+	unsigned int		nh_flags;
+	atomic_t		nh_upper_bound;
+	int			nh_weight;
+};
+
+struct fib6_info {
+	struct fib6_table		*fib6_table;
+	struct fib6_info __rcu		*fib6_next;
+	struct fib6_node __rcu		*fib6_node;
+
+	/* Multipath routes:
+	 * siblings is a list of fib6_info that have the the same metric/weight,
+	 * destination, but not the same gateway. nsiblings is just a cache
+	 * to speed up lookup.
+	 */
+	struct list_head		fib6_siblings;
+	unsigned int			fib6_nsiblings;
+
+	atomic_t			fib6_ref;
+	unsigned long			expires;
+	struct dst_metrics		*fib6_metrics;
+#define fib6_pmtu		fib6_metrics->metrics[RTAX_MTU-1]
+
+	struct rt6key			fib6_dst;
+	u32				fib6_flags;
+	struct rt6key			fib6_src;
+	struct rt6key			fib6_prefsrc;
+
+	struct rt6_info * __percpu	*rt6i_pcpu;
+	struct rt6_exception_bucket __rcu *rt6i_exception_bucket;
+
+	u32				fib6_metric;
+	u8				fib6_protocol;
+	u8				fib6_type;
+	u8				exception_bucket_flushed:1,
+					should_flush:1,
+					dst_nocount:1,
+					dst_nopolicy:1,
+					dst_host:1,
+					unused:3;
+
+	struct fib6_nh			fib6_nh;
+	struct rcu_head			rcu;
+};
+
 struct rt6_info {
 	struct dst_entry		dst;
 

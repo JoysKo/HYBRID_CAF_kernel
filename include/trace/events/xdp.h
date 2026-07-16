@@ -136,6 +136,13 @@ DEFINE_EVENT_PRINT(xdp_redirect_template, xdp_redirect_map_err,
 		  __entry->map_id, __entry->map_index)
 );
 
+#ifndef __DEVMAP_OBJ_TYPE
+#define __DEVMAP_OBJ_TYPE
+struct _bpf_dtab_netdev {
+	struct net_device *dev;
+};
+#endif /* __DEVMAP_OBJ_TYPE */
+
 #define _trace_xdp_redirect_map(dev, xdp, fwd, map, idx)		\
 	 trace_xdp_redirect_map(dev, xdp, fwd ? fwd->ifindex : 0,	\
 				0, map, idx)

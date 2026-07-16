@@ -53,6 +53,7 @@ struct netns_ipv6 {
 #endif
 	struct xt_table		*ip6table_nat;
 #endif
+	struct fib6_info	*fib6_null_entry;
 	struct rt6_info         *ip6_null_entry;
 	struct rt6_statistics   *rt6_stats;
 	struct timer_list       ip6_fib_timer;
@@ -85,6 +86,7 @@ struct netns_ipv6 {
 #endif
 	atomic_t		dev_addr_genid;
 	atomic_t		fib6_sernum;
+	struct seg6_pernet_data *seg6_data;
 };
 
 #if IS_ENABLED(CONFIG_NF_DEFRAG_IPV6)

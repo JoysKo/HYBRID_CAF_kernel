@@ -27,6 +27,18 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Daniel Borkmann <dborkman@redhat.com>");
 MODULE_DESCRIPTION("TC BPF based classifier");
 
+#ifndef INIT_RCU_WORK
+#define INIT_RCU_WORK(_work, _func) \
+	do { \
+		INIT_WORK(&(_work)->work, (_func)); \
+	} while (0)
+#endif
+
+static inline bool queue_rcu_work(struct workqueue_struct *wq, struct rcu_work *rwork)
+{
+	return queue_work(wq, &rwork->work);
+}
+
 #define CLS_BPF_NAME_LEN	256
 #define CLS_BPF_SUPPORTED_GEN_FLAGS		\
 	(TCA_CLS_FLAGS_SKIP_HW | TCA_CLS_FLAGS_SKIP_SW)
@@ -50,10 +62,7 @@ struct cls_bpf_prog {
 	struct sock_filter *bpf_ops;
 	const char *bpf_name;
 	struct tcf_proto *tp;
-	union {
-		struct work_struct work;
-		struct rcu_head rcu;
-	};
+	struct rcu_work rwork;
 };
 
 static const struct nla_policy bpf_policy[TCA_BPF_MAX + 1] = {
@@ -270,19 +279,12 @@ static void __cls_bpf_delete_prog(struct cls_bpf_prog *prog)
 
 static void cls_bpf_delete_prog_work(struct work_struct *work)
 {
-	struct cls_bpf_prog *prog = container_of(work, struct cls_bpf_prog, work);
-
+	struct cls_bpf_prog *prog = container_of(to_rcu_work(work),
+						 struct cls_bpf_prog,
+						 rwork);
 	rtnl_lock();
 	__cls_bpf_delete_prog(prog);
 	rtnl_unlock();
-}
-
-static void cls_bpf_delete_prog_rcu(struct rcu_head *rcu)
-{
-	struct cls_bpf_prog *prog = container_of(rcu, struct cls_bpf_prog, rcu);
-
-	INIT_WORK(&prog->work, cls_bpf_delete_prog_work);
-	tcf_queue_work(&prog->work);
 }
 
 static void __cls_bpf_delete(struct tcf_proto *tp, struct cls_bpf_prog *prog)
@@ -293,9 +295,10 @@ static void __cls_bpf_delete(struct tcf_proto *tp, struct cls_bpf_prog *prog)
 	cls_bpf_stop_offload(tp, prog);
 	list_del_rcu(&prog->link);
 	tcf_unbind_filter(tp, &prog->res);
-	if (tcf_exts_get_net(&prog->exts))
-		call_rcu(&prog->rcu, cls_bpf_delete_prog_rcu);
-	else
+	if (tcf_exts_get_net(&prog->exts)) {
+		INIT_RCU_WORK(&prog->rwork, cls_bpf_delete_prog_work);
+		queue_rcu_work(system_wq, &prog->rwork);
+	} else
 		__cls_bpf_delete_prog(prog);
 }
 
@@ -514,7 +517,8 @@ static int cls_bpf_change(struct net *net, struct sk_buff *in_skb,
 		list_replace_rcu(&oldprog->link, &prog->link);
 		tcf_unbind_filter(tp, &oldprog->res);
 		tcf_exts_get_net(&oldprog->exts);
-		call_rcu(&oldprog->rcu, cls_bpf_delete_prog_rcu);
+		INIT_RCU_WORK(&oldprog->rwork, cls_bpf_delete_prog_work);
+		queue_rcu_work(system_wq, &oldprog->rwork);
 	} else {
 		list_add_rcu(&prog->link, &head->plist);
 	}

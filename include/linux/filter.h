@@ -17,8 +17,10 @@
 #include <linux/capability.h>
 #include <linux/cryptohash.h>
 #include <linux/kallsyms.h>
+#include <linux/if_vlan.h>
 
 #include <net/sch_generic.h>
+#include <net/xdp.h>
 
 #include <asm/cacheflush.h>
 
@@ -45,7 +47,9 @@ struct bpf_prog_aux;
 /* Additional register mappings for converted user programs. */
 #define BPF_REG_A	BPF_REG_0
 #define BPF_REG_X	BPF_REG_7
-#define BPF_REG_TMP	BPF_REG_8
+#define BPF_REG_TMP	BPF_REG_2	/* scratch reg */
+#define BPF_REG_D	BPF_REG_8	/* data, callee-saved */
+#define BPF_REG_H	BPF_REG_9	/* hlen, callee-saved */
 
 /* Kernel hidden auxiliary/helper register for hardening step.
  * Only used by eBPF JITs. It's nothing more than a temporary
@@ -307,7 +311,20 @@ struct bpf_prog_aux;
 		.off   = OFF,					\
 		.imm   = IMM })
 
+/* Unconditional jumps, goto pc + off16 */
+
+#define BPF_JMP_A(OFF)						\
+	((struct bpf_insn) {					\
+		.code  = BPF_JMP | BPF_JA,			\
+		.dst_reg = 0,					\
+		.src_reg = 0,					\
+		.off   = OFF,					\
+		.imm   = 0 })
+
 /* Function call */
+
+#define BPF_CAST_CALL(x)					\
+		((u64 (*)(u64, u64, u64, u64, u64))(x))
 
 #define BPF_EMIT_CALL(FUNC)					\
 	((struct bpf_insn) {					\
@@ -489,6 +506,7 @@ struct bpf_prog {
 				blinded:1,	/* Was blinded */
 				is_func:1,	/* program is a bpf function */
 				kprobe_override:1, /* Do we override a kprobe? */
+				has_callchain_buf:1, /* callchain buffer allocated? */
 				xdp_adjust_head:1; /* Adjusting pkt head? */
 	kmemcheck_bitfield_end(meta);
 	enum bpf_prog_type	type;		/* Type of BPF program */
@@ -576,14 +594,6 @@ struct bpf_skb_data_end {
 	void *data_end;
 };
 
-struct xdp_buff {
-	void *data;
-	void *data_end;
-	void *data_meta;
-	void *data_hard_start;
-	struct xdp_rxq_info *rxq;
-};
-
 struct sk_msg_buff {
 	void *data;
 	void *data_end;
@@ -597,6 +607,8 @@ struct sk_msg_buff {
 	bool sg_copy[MAX_SKB_FRAGS];
 	__u32 key;
 	__u32 flags;
+	struct sock *sk_redir;
+	struct sock *sk;
 	struct bpf_map *map;
 	struct sk_buff *skb;
 	struct list_head list;
@@ -715,6 +727,16 @@ static inline bool bpf_prog_was_classic(const struct bpf_prog *prog)
 	 * have an unspec program type.
 	 */
 	return prog->type == BPF_PROG_TYPE_UNSPEC;
+}
+
+static inline u32 bpf_ctx_off_adjust_machine(u32 size)
+{
+	const u32 size_machine = sizeof(unsigned long);
+
+	if (size > size_machine && size % size_machine == 0)
+		size = size_machine;
+
+	return size;
 }
 
 static inline bool
@@ -846,7 +868,22 @@ static inline bool bpf_dump_raw_ok(void)
 
 struct bpf_prog *bpf_patch_insn_single(struct bpf_prog *prog, u32 off,
 				       const struct bpf_insn *patch, u32 len);
-				
+
+static inline int xdp_ok_fwd_dev(const struct net_device *fwd,
+				 unsigned int pktlen)
+{
+	unsigned int len;
+
+	if (unlikely(!(fwd->flags & IFF_UP)))
+		return -ENETDOWN;
+
+	len = fwd->mtu + fwd->hard_header_len + VLAN_HLEN;
+	if (pktlen > len)
+		return -EMSGSIZE;
+
+	return 0;
+}
+
 /* The pair of xdp_do_redirect and xdp_do_flush_map MUST be called in the
  * same cpu context. Further for best results no more than a single map
  * for the do_redirect/do_flush pair should be used. This limitation is
@@ -854,7 +891,7 @@ struct bpf_prog *bpf_patch_insn_single(struct bpf_prog *prog, u32 off,
  * This does not appear to be a real limitation for existing software.
  */
 int xdp_do_generic_redirect(struct net_device *dev, struct sk_buff *skb,
-			    struct bpf_prog *prog);
+			    struct xdp_buff *xdp, struct bpf_prog *xdp_prog);
 int xdp_do_redirect(struct net_device *dev,
 		    struct xdp_buff *xdp,
 		    struct bpf_prog *prog);
@@ -1032,6 +1069,9 @@ static inline void bpf_prog_kallsyms_del(struct bpf_prog *fp)
 }
 #endif /* CONFIG_BPF_JIT */
 
+void bpf_prog_kallsyms_del_subprogs(struct bpf_prog *fp);
+void bpf_prog_kallsyms_del_all(struct bpf_prog *fp);
+
 #define BPF_ANC		BIT(15)
 
 static inline bool bpf_needs_clear_a(const struct sock_filter *first)
@@ -1132,6 +1172,7 @@ struct bpf_sock_addr_kern {
 	 * only two (src and dst) are available at convert_ctx_access time
 	 */
 	u64 tmp_reg;
+	void *t_ctx;	/* Attach type specific context. */
 };
 
 #endif /* __LINUX_FILTER_H__ */

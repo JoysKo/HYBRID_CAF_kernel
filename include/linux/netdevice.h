@@ -46,6 +46,7 @@
 #include <net/dcbnl.h>
 #endif
 #include <net/netprio_cgroup.h>
+#include <net/xdp.h>
 
 #include <linux/netdev_features.h>
 #include <linux/neighbour.h>
@@ -708,6 +709,7 @@ struct netdev_rx_queue {
 #endif
 	struct kobject			kobj;
 	struct net_device		*dev;
+	struct xdp_rxq_info		xdp_rxq;
 } ____cacheline_aligned_in_smp;
 
 /*
@@ -3295,6 +3297,8 @@ static inline void dev_consume_skb_any(struct sk_buff *skb)
 	__dev_kfree_skb_any(skb, SKB_REASON_CONSUMED);
 }
 
+void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog);
+int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb);
 int netif_rx(struct sk_buff *skb);
 int netif_rx_ni(struct sk_buff *skb);
 int netif_receive_skb(struct sk_buff *skb);

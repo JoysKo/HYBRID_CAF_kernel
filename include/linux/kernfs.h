@@ -96,6 +96,21 @@ struct kernfs_elem_attr {
 	struct kernfs_node	*notify_next;	/* for kernfs_notify() */
 };
 
+/* represent a kernfs node */
+union kernfs_node_id {
+	struct {
+		/*
+		 * blktrace will export this struct as a simplified 'struct
+		 * fid' (which is a big data struction), so userspace can use
+		 * it to find kernfs node. The layout must match the first two
+		 * fields of 'struct fid' exactly.
+		 */
+		u32		ino;
+		u32		generation;
+	};
+	u64			id;
+};
+
 /*
  * kernfs_node - the building block of kernfs hierarchy.  Each and every
  * kernfs node is represented by single kernfs_node.  Most fields are
@@ -132,6 +147,7 @@ struct kernfs_node {
 
 	void			*priv;
 
+	union kernfs_node_id	id;
 	unsigned short		flags;
 	umode_t			mode;
 	unsigned int		ino;
