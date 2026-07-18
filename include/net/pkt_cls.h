@@ -392,6 +392,9 @@ tcf_match_indev(struct sk_buff *skb, int ifindex)
 int tc_setup_cb_call(struct tcf_block *block, struct tcf_exts *exts,
 		     enum tc_setup_type type, void *type_data, bool err_stop);
 
+typedef int (*tc_setup_cb_t)(struct tcf_block *block, struct tcf_exts *exts,
+			     enum tc_setup_type type, void *type_data, bool err_stop);
+
 enum tc_block_command {
 	TC_BLOCK_BIND,
 	TC_BLOCK_UNBIND,

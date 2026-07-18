@@ -89,14 +89,10 @@ int bpf_create_map_xattr(const struct bpf_create_map_attr *create_attr)
 	       min(name_len, BPF_OBJ_NAME_LEN - 1));
 	attr.numa_node = create_attr->numa_node;
 	attr.btf_fd = create_attr->btf_fd;
-<<<<<<< ours
-	attr.btf_key_id = create_attr->btf_key_id;
-	attr.btf_value_id = create_attr->btf_value_id;
-=======
 	attr.btf_key_type_id = create_attr->btf_key_type_id;
 	attr.btf_value_type_id = create_attr->btf_value_type_id;
 	attr.map_ifindex = create_attr->map_ifindex;
->>>>>>> theirs
+	attr.inner_map_fd = create_attr->inner_map_fd;
 
 	return sys_bpf(BPF_MAP_CREATE, &attr, sizeof(attr));
 }
@@ -648,8 +644,6 @@ retry:
 
 	return fd;
 }
-<<<<<<< ours
-=======
 
 int bpf_task_fd_query(int pid, int fd, __u32 flags, char *buf, __u32 *buf_len,
 		      __u32 *prog_id, __u32 *fd_type, __u64 *probe_offset,
@@ -673,4 +667,3 @@ int bpf_task_fd_query(int pid, int fd, __u32 flags, char *buf, __u32 *buf_len,
 
 	return err;
 }
->>>>>>> theirs
