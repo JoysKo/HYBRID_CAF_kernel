@@ -27,18 +27,27 @@
 #include <linux/string.h>
 #include <linux/module.h>
 
+#ifdef CONFIG_FORCE_FAST_CHARGE
 int force_fast_charge = 1;
+#else
+int force_fast_charge = 0;
+#endif
 
 static int __init get_fastcharge_opt(char *ffc)
 {
-	if (strcmp(ffc, "0") == 0) {
-		force_fast_charge = 0;
-	} else if (strcmp(ffc, "1") == 0) {
-		force_fast_charge = 1;
-	} else {
-		force_fast_charge = 0;
-	}
-	return 1;
+#ifdef CONFIG_FORCE_FAST_CHARGE
+    // Если опция включена в конфиге, всегда держим быструю зарядку
+    force_fast_charge = 1;
+#else
+    if (strcmp(ffc, "0") == 0) {
+        force_fast_charge = 0;
+    } else if (strcmp(ffc, "1") == 0) {
+        force_fast_charge = 1;
+    } else {
+        force_fast_charge = 0;
+    }
+#endif
+    return 1;
 }
 
 __setup("ffc=", get_fastcharge_opt);
