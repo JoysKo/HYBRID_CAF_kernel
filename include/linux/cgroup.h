@@ -549,36 +549,6 @@ static inline bool cgroup_is_descendant(struct cgroup *cgrp,
 	return cgrp->ancestor_ids[ancestor->level] == ancestor->id;
 }
 
-/**
- * cgroup_ancestor - find ancestor of cgroup
- * @cgrp: cgroup to find ancestor of
- * @ancestor_level: level of ancestor to find starting from root
- *
- * Find ancestor of cgroup at specified level starting from root if it exists
- * and return pointer to it. Return NULL if @cgrp doesn't have ancestor at
- * @ancestor_level.
- *
- * This function is safe to call as long as @cgrp is accessible.
- */
-static inline struct cgroup *cgroup_ancestor(struct cgroup *cgrp,
-					     int ancestor_level)
-{
-	struct cgroup *ptr;
-
-	if (cgrp->level < ancestor_level)
-		return NULL;
-
-	for (ptr = cgrp;
-	     ptr && ptr->level > ancestor_level;
-	     ptr = cgroup_parent(ptr))
-		;
-
-	if (ptr && ptr->level == ancestor_level)
-		return ptr;
-
-	return NULL;
-}
-
 /* no synchronization, the result can only be used as a hint */
 static inline bool cgroup_is_populated(struct cgroup *cgrp)
 {

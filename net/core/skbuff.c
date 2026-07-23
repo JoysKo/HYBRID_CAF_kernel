@@ -4725,9 +4725,3 @@ failure:
 	return NULL;
 }
 EXPORT_SYMBOL(alloc_skb_with_frags);
-
-/* Заглушки для compiletime_assert, связанные с изменением размера gso_type */
-void __compiletime_assert_60(void) {}
-void __compiletime_assert_61(void) {}
-void __compiletime_assert_62(void) {}
-void __compiletime_assert_71(void) {}

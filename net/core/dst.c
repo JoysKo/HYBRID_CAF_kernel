@@ -408,19 +408,6 @@ void metadata_dst_free(struct metadata_dst *md_dst)
 	kfree(md_dst);
 }
 
-void metadata_dst_free_percpu(struct metadata_dst __percpu *md_dst)
-{
-	int cpu;
-
-	for_each_possible_cpu(cpu) {
-		struct metadata_dst *one_md_dst = per_cpu_ptr(md_dst, cpu);
-		if (one_md_dst)
-			kfree(one_md_dst);
-	}
-	free_percpu(md_dst);
-}
-EXPORT_SYMBOL_GPL(metadata_dst_free_percpu);
-
 struct metadata_dst __percpu *metadata_dst_alloc_percpu(u8 optslen, gfp_t flags)
 {
 	int cpu;

@@ -17,14 +17,6 @@ struct tcf_walker {
 int register_tcf_proto_ops(struct tcf_proto_ops *ops);
 int unregister_tcf_proto_ops(struct tcf_proto_ops *ops);
 
-enum tcf_block_binder_type {
-	TCF_BLOCK_BINDER_TYPE_UNSPEC,
-	TCF_BLOCK_BINDER_TYPE_CLSACT_INGRESS,
-	TCF_BLOCK_BINDER_TYPE_CLSACT_EGRESS,
-};
-
-bool tcf_queue_work(struct work_struct *work);
-
 static inline unsigned long
 __cls_set_class(unsigned long *clp, unsigned long cl)
 {
@@ -68,7 +60,6 @@ struct tcf_exts {
 #ifdef CONFIG_NET_CLS_ACT
 	__u32	type; /* for backward compat(TCA_OLD_COMPAT) */
 	struct list_head actions;
-	struct net *net;
 #endif
 	/* Map to export classifier specific extension TLV types to the
 	 * generic extensions API. Unsupported extensions must be set to 0.
@@ -85,28 +76,6 @@ static inline void tcf_exts_init(struct tcf_exts *exts, int action, int police)
 #endif
 	exts->action = action;
 	exts->police = police;
-}
-
-/* Return false if the netns is being destroyed in cleanup_net(). Callers
- * need to do cleanup synchronously in this case, otherwise may race with
- * tc_action_net_exit(). Return true for other cases.
- */
-static inline bool tcf_exts_get_net(struct tcf_exts *exts)
-{
-#ifdef CONFIG_NET_CLS_ACT
-	exts->net = maybe_get_net(exts->net);
-	return exts->net != NULL;
-#else
-	return true;
-#endif
-}
-
-static inline void tcf_exts_put_net(struct tcf_exts *exts)
-{
-#ifdef CONFIG_NET_CLS_ACT
-	if (exts->net)
-		put_net(exts->net);
-#endif
 }
 
 /**
@@ -389,40 +358,6 @@ tcf_match_indev(struct sk_buff *skb, int ifindex)
 }
 #endif /* CONFIG_NET_CLS_IND */
 
-int tc_setup_cb_call(struct tcf_block *block, struct tcf_exts *exts,
-		     enum tc_setup_type type, void *type_data, bool err_stop);
-
-typedef int (*tc_setup_cb_t)(struct tcf_block *block, struct tcf_exts *exts,
-			     enum tc_setup_type type, void *type_data, bool err_stop);
-
-enum tc_block_command {
-	TC_BLOCK_BIND,
-	TC_BLOCK_UNBIND,
-};
-
-struct tc_block_offload {
-	enum tc_block_command command;
-	enum tcf_block_binder_type binder_type;
-	struct tcf_block *block;
-};
-
-struct tc_cls_common_offload {
-	u32 chain_index;
-	__be16 protocol;
-	u32 prio;
-	u32 classid;
-};
-
-static inline void
-tc_cls_common_offload_init(struct tc_cls_common_offload *cls_common,
-			   const struct tcf_proto *tp)
-{
-	cls_common->chain_index = tp->chain->index;
-	cls_common->protocol = tp->protocol;
-	cls_common->prio = tp->prio;
-	cls_common->classid = tp->classid;
-}
-
 struct tc_cls_u32_knode {
 	struct tcf_exts *exts;
 	struct tc_u32_sel *sel;
@@ -457,6 +392,9 @@ struct tc_cls_u32_offload {
 	};
 };
 
+/* tca flags definitions */
+#define TCA_CLS_FLAGS_SKIP_HW 1
+
 static inline bool tc_should_offload(struct net_device *dev, u32 flags)
 {
 	if (!(dev->features & NETIF_F_HW_TC))
@@ -471,33 +409,6 @@ static inline bool tc_should_offload(struct net_device *dev, u32 flags)
 	return true;
 }
 
-static inline bool tc_skip_hw(u32 flags)
-{
-	return (flags & TCA_CLS_FLAGS_SKIP_HW) ? true : false;
-}
-
-static inline bool tc_skip_sw(u32 flags)
-{
-	return (flags & TCA_CLS_FLAGS_SKIP_SW) ? true : false;
-}
-
-/* SKIP_HW and SKIP_SW are mutually exclusive flags. */
-static inline bool tc_flags_valid(u32 flags)
-{
-	if (flags & ~(TCA_CLS_FLAGS_SKIP_HW | TCA_CLS_FLAGS_SKIP_SW))
-		return false;
-
-	if (!(flags ^ (TCA_CLS_FLAGS_SKIP_HW | TCA_CLS_FLAGS_SKIP_SW)))
-		return false;
-
-	return true;
-}
-
-static inline bool tc_in_hw(u32 flags)
-{
-	return (flags & TCA_CLS_FLAGS_IN_HW) ? true : false;
-}
-
 enum tc_fl_command {
 	TC_CLSFLOWER_REPLACE,
 	TC_CLSFLOWER_DESTROY,
@@ -510,35 +421,6 @@ struct tc_cls_flower_offload {
 	struct fl_flow_key *mask;
 	struct fl_flow_key *key;
 	struct tcf_exts *exts;
-};
-
-enum tc_matchall_command {
-	TC_CLSMATCHALL_REPLACE,
-	TC_CLSMATCHALL_DESTROY,
-};
-
-struct tc_cls_matchall_offload {
-	enum tc_matchall_command command;
-	struct tcf_exts *exts;
-	unsigned long cookie;
-};
-
-enum tc_clsbpf_command {
-	TC_CLSBPF_ADD,
-	TC_CLSBPF_REPLACE,
-	TC_CLSBPF_DESTROY,
-	TC_CLSBPF_STATS,
-	TC_CLSBPF_OFFLOAD,
-};
-
-struct tc_cls_bpf_offload {
-	struct tc_cls_common_offload common;
-	enum tc_clsbpf_command command;
-	struct tcf_exts *exts;
-	struct bpf_prog *prog;
-	const char *name;
-	bool exts_integrated;
-	u32 gen_flags;
 };
 
 #endif

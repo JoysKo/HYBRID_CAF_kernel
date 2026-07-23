@@ -187,29 +187,6 @@
 #endif
 #endif /* atomic_xchg_relaxed */
 
-#ifndef atomic_try_cmpxchg
-
-#define __atomic_try_cmpxchg(type, _p, _po, _n)				\
-({									\
-	typeof(_po) __po = (_po);					\
-	typeof(*(_po)) __r, __o = *__po;				\
-	__r = atomic_cmpxchg##type((_p), __o, (_n));			\
-	if (unlikely(__r != __o))					\
-		*__po = __r;						\
-	likely(__r == __o);						\
-})
-
-#define atomic_try_cmpxchg(_p, _po, _n)		__atomic_try_cmpxchg(, _p, _po, _n)
-#define atomic_try_cmpxchg_relaxed(_p, _po, _n)	__atomic_try_cmpxchg(_relaxed, _p, _po, _n)
-#define atomic_try_cmpxchg_acquire(_p, _po, _n)	__atomic_try_cmpxchg(_acquire, _p, _po, _n)
-#define atomic_try_cmpxchg_release(_p, _po, _n)	__atomic_try_cmpxchg(_release, _p, _po, _n)
-
-#else /* atomic_try_cmpxchg */
-#define atomic_try_cmpxchg_relaxed	atomic_try_cmpxchg
-#define atomic_try_cmpxchg_acquire	atomic_try_cmpxchg
-#define atomic_try_cmpxchg_release	atomic_try_cmpxchg
-#endif /* atomic_try_cmpxchg */
-
 /* atomic_cmpxchg_relaxed */
 #ifndef atomic_cmpxchg_relaxed
 #define  atomic_cmpxchg_relaxed		atomic_cmpxchg
@@ -455,29 +432,6 @@
 #define  xchg(...)			__atomic_op_fence(xchg, __VA_ARGS__)
 #endif
 #endif /* xchg_relaxed */
-
-/**
- * atomic_fetch_add_unless - add unless the number is already a given value
- * @v: pointer of type atomic_t
- * @a: the amount to add to v...
- * @u: ...unless v is equal to u.
- *
- * Atomically adds @a to @v, if @v was not already @u.
- * Returns the original value of @v.
- */
-#ifndef atomic_fetch_add_unless
-static inline int atomic_fetch_add_unless(atomic_t *v, int a, int u)
-{
-	int c = atomic_read(v);
-
-	do {
-		if (unlikely(c == u))
-			break;
-	} while (!atomic_try_cmpxchg(v, &c, c + a));
-
-	return c;
-}
-#endif
 
 /**
  * atomic_add_unless - add unless the number is already a given value

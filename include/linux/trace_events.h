@@ -589,12 +589,6 @@ event_trigger_unlock_commit_regs(struct trace_event_file *file,
 unsigned int trace_call_bpf(struct trace_event_call *call, void *ctx);
 int perf_event_attach_bpf_prog(struct perf_event *event, struct bpf_prog *prog);
 void perf_event_detach_bpf_prog(struct perf_event *event);
-int bpf_probe_register(struct bpf_raw_event_map *btp, struct bpf_prog *prog);
-int bpf_probe_unregister(struct bpf_raw_event_map *btp, struct bpf_prog *prog);
-struct bpf_raw_event_map *bpf_find_raw_tracepoint(const char *name);
-int bpf_get_perf_event_info(const struct perf_event *event, u32 *prog_id,
-			    u32 *fd_type, const char **buf,
-			    u64 *probe_offset, u64 *probe_addr);
 #else
 static inline unsigned int trace_call_bpf(struct trace_event_call *call, void *ctx)
 {
@@ -609,25 +603,6 @@ perf_event_attach_bpf_prog(struct perf_event *event, struct bpf_prog *prog)
 
 static inline void perf_event_detach_bpf_prog(struct perf_event *event) { }
 
-static inline int bpf_probe_register(struct bpf_raw_event_map *btp, struct bpf_prog *p)
-{
-	return -EOPNOTSUPP;
-}
-static inline int bpf_probe_unregister(struct bpf_raw_event_map *btp, struct bpf_prog *p)
-{
-	return -EOPNOTSUPP;
-}
-static inline struct bpf_raw_event_map *bpf_find_raw_tracepoint(const char *name)
-{
-	return NULL;
-}
-static inline int bpf_get_perf_event_info(const struct perf_event *event,
-					  u32 *prog_id, u32 *fd_type,
-					  const char **buf, u64 *probe_offset,
-					  u64 *probe_addr)
-{
-	return -EOPNOTSUPP;
-}
 #endif
 
 enum {

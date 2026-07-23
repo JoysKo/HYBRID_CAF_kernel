@@ -45,84 +45,6 @@ static DEFINE_PER_CPU(struct idr_layer *, idr_preload_head);
 static DEFINE_PER_CPU(int, idr_preload_cnt);
 static DEFINE_SPINLOCK(simple_ida_lock);
 
-/**
- * idr_alloc_u32() - Allocate an ID.
- * @idr: IDR handle.
- * @ptr: Pointer to be associated with the new ID.
- * @nextid: Pointer to an ID.
- * @max: The maximum ID to allocate (inclusive).
- * @gfp: Memory allocation flags.
- *
- * Allocates an unused ID in the range specified by @nextid and @max.
- * Note that @max is inclusive whereas the @end parameter to idr_alloc()
- * is exclusive.  The new ID is assigned to @nextid before the pointer
- * is inserted into the IDR, so if @nextid points into the object pointed
- * to by @ptr, a concurrent lookup will not find an uninitialised ID.
- *
- * The caller should provide their own locking to ensure that two
- * concurrent modifications to the IDR are not possible.  Read-only
- * accesses to the IDR may be done under the RCU read lock or may
- * exclude simultaneous writers.
- *
- * Return: 0 if an ID was allocated, -ENOMEM if memory allocation failed,
- * or -ENOSPC if no free IDs could be found.  If an error occurred,
- * @nextid is unchanged.
- */
-int idr_alloc_u32(struct idr *idr, void *ptr, u32 *nextid,
-			unsigned long max, gfp_t gfp)
-{
-	struct radix_tree_iter iter;
-	void __rcu **slot;
-	unsigned int base = idr->idr_base;
-	unsigned int id = *nextid;
-
-	if (WARN_ON_ONCE(radix_tree_is_internal_node(ptr)))
-		return -EINVAL;
-	if (WARN_ON_ONCE(!(idr->idr_rt.gfp_mask & ROOT_IS_IDR)))
-		idr->idr_rt.gfp_mask |= IDR_RT_MARKER;
-
-	id = (id < base) ? 0 : id - base;
-	radix_tree_iter_init(&iter, id);
-	slot = idr_get_free(&idr->idr_rt, &iter, gfp, max - base);
-	if (IS_ERR(slot))
-		return PTR_ERR(slot);
-
-	*nextid = iter.index + base;
-	/* there is a memory barrier inside radix_tree_iter_replace() */
-	radix_tree_iter_replace(&idr->idr_rt, &iter, slot, ptr);
-	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(idr_alloc_u32);
-
-int idr_alloc_cmn(struct idr *idr, void *ptr, unsigned long *index,
-		  unsigned long start, unsigned long end, gfp_t gfp,
-		  bool ext)
-{
-	struct radix_tree_iter iter;
-	void __rcu **slot;
-
-	if (WARN_ON_ONCE(radix_tree_is_internal_node(ptr)))
-		return -EINVAL;
-
-	radix_tree_iter_init(&iter, start);
-	if (ext)
-		slot = idr_get_free_ext(&idr->idr_rt, &iter, gfp, end);
-	else
-		slot = idr_get_free(&idr->idr_rt, &iter, gfp, end);
-	if (IS_ERR(slot))
-		return PTR_ERR(slot);
-
-	radix_tree_iter_replace(&idr->idr_rt, &iter, slot, ptr);
-	radix_tree_iter_tag_clear(&idr->idr_rt, &iter, IDR_FREE);
-
-	if (index)
-		*index = iter.index;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(idr_alloc_cmn);
-
 /* the maximum ID which can be allocated given idr->layers */
 static int idr_max(int layers)
 {
@@ -899,25 +821,6 @@ void *idr_replace(struct idr *idp, void *ptr, int id)
 	return old_p;
 }
 EXPORT_SYMBOL(idr_replace);
-
-void *idr_replace_ext(struct idr *idr, void *ptr, unsigned long id)
-{
-	struct radix_tree_node *node;
-	void __rcu **slot = NULL;
-	void *entry;
-
-	if (WARN_ON_ONCE(radix_tree_is_internal_node(ptr)))
-		return ERR_PTR(-EINVAL);
-
-	entry = __radix_tree_lookup(&idr->idr_rt, id, &node, &slot);
-	if (!slot || radix_tree_tag_get(&idr->idr_rt, id, IDR_FREE))
-		return ERR_PTR(-ENOENT);
-
-	__radix_tree_replace(&idr->idr_rt, node, slot, ptr, NULL);
-
-	return entry;
-}
-EXPORT_SYMBOL(idr_replace_ext);
 
 void __init idr_init_cache(void)
 {

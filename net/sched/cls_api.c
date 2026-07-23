@@ -76,8 +76,6 @@ out:
 }
 EXPORT_SYMBOL(register_tcf_proto_ops);
 
-static struct workqueue_struct *tc_filter_wq;
-
 int unregister_tcf_proto_ops(struct tcf_proto_ops *ops)
 {
 	struct tcf_proto_ops *t;
@@ -105,11 +103,6 @@ static int tfilter_notify(struct net *net, struct sk_buff *oskb,
 			  struct nlmsghdr *n, struct tcf_proto *tp,
 			  unsigned long fh, int event);
 
-bool tcf_queue_work(struct work_struct *work)
-{
-	return queue_work(tc_filter_wq, work);
-}
-EXPORT_SYMBOL(tcf_queue_work);
 
 /* Select new prio value from the range, managed by kernel. */
 
@@ -633,13 +626,6 @@ int tcf_exts_dump_stats(struct sk_buff *skb, struct tcf_exts *exts)
 	return 0;
 }
 EXPORT_SYMBOL(tcf_exts_dump_stats);
-
-int tc_setup_cb_call(struct tcf_block *block, struct tcf_exts *exts,
-		     enum tc_setup_type type, void *type_data, bool err_stop)
-{
-	return 0;
-}
-EXPORT_SYMBOL(tc_setup_cb_call);
 
 static int __init tc_filter_init(void)
 {

@@ -213,7 +213,7 @@ err_tt:
 err_orig:
 	batadv_purge_outstanding_packets(bat_priv, NULL);
 	atomic_set(&bat_priv->mesh_state, BATADV_MESH_INACTIVE);
-err:
+
 	return ret;
 }
 
@@ -483,7 +483,6 @@ err_out:
 static void batadv_recv_handler_init(void)
 {
 	int i;
-	char (*__temp_size_check)[sizeof(struct batadv_icmp_packet_rr)] = 1;
 
 	for (i = 0; i < ARRAY_SIZE(batadv_rx_handler); i++)
 		batadv_rx_handler[i] = batadv_recv_unhandled_packet;
@@ -496,7 +495,7 @@ static void batadv_recv_handler_init(void)
 	BUILD_BUG_ON(sizeof(struct batadv_ogm_packet) != 24);
 	BUILD_BUG_ON(sizeof(struct batadv_icmp_header) != 20);
 	BUILD_BUG_ON(sizeof(struct batadv_icmp_packet) != 20);
-	// BUILD_BUG_ON(sizeof(struct batadv_icmp_packet_rr) != 116);
+	BUILD_BUG_ON(sizeof(struct batadv_icmp_packet_rr) != 116);
 	BUILD_BUG_ON(sizeof(struct batadv_unicast_packet) != 10);
 	BUILD_BUG_ON(sizeof(struct batadv_unicast_4addr_packet) != 18);
 	BUILD_BUG_ON(sizeof(struct batadv_frag_packet) != 20);

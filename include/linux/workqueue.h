@@ -120,14 +120,6 @@ struct delayed_work {
 	int cpu;
 };
 
-struct rcu_work {
-	struct work_struct work;
-	struct rcu_head rcu;
-
-	/* target workqueue ->rcu uses to queue ->work */
-	struct workqueue_struct *wq;
-};
-
 /*
  * A struct for workqueue attributes.  This can be used to change
  * attributes of an unbound workqueue.
@@ -145,11 +137,6 @@ struct workqueue_attrs {
 static inline struct delayed_work *to_delayed_work(struct work_struct *work)
 {
 	return container_of(work, struct delayed_work, work);
-}
-
-static inline struct rcu_work *to_rcu_work(struct work_struct *work)
-{
-	return container_of(work, struct rcu_work, work);
 }
 
 struct execute_work {

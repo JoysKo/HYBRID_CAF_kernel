@@ -46,14 +46,12 @@
 #include <net/dcbnl.h>
 #endif
 #include <net/netprio_cgroup.h>
-#include <net/xdp.h>
 
 #include <linux/netdev_features.h>
 #include <linux/neighbour.h>
 #include <uapi/linux/netdevice.h>
 #include <uapi/linux/if_bonding.h>
 #include <uapi/linux/pkt_cls.h>
-#include <linux/hashtable.h>
 
 struct netpoll_info;
 struct device;
@@ -63,7 +61,6 @@ struct wireless_dev;
 /* 802.15.4 specific */
 struct wpan_dev;
 struct mpls_dev;
-struct xdp_buff;
 
 void netdev_set_default_ethtool_ops(struct net_device *dev,
 				    const struct ethtool_ops *ops);
@@ -709,7 +706,6 @@ struct netdev_rx_queue {
 #endif
 	struct kobject			kobj;
 	struct net_device		*dev;
-	struct xdp_rxq_info		xdp_rxq;
 } ____cacheline_aligned_in_smp;
 
 /*
@@ -799,47 +795,9 @@ typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
  */
 enum {
 	TC_SETUP_MQPRIO,
-	TC_SETUP_MATCHALL,
-};
-
-enum tc_setup_type {
-	TC_SETUP_QDISC_MQPRIO = TC_SETUP_MQPRIO,
 	TC_SETUP_CLSU32,
 	TC_SETUP_CLSFLOWER,
-	TC_SETUP_CLSMATCHALL = TC_SETUP_MATCHALL,
-	TC_SETUP_CLSBPF,
-	TC_SETUP_BLOCK,
-	TC_SETUP_QDISC_CBS,
-	TC_SETUP_QDISC_RED,
 };
-
-/* These structures hold the attributes of bpf state that are being passed
- * to the netdevice through the bpf op.
- */
-enum bpf_netdev_command {
-	/* Set or clear a bpf program used in the earliest stages of packet
-	 * rx. The prog will have been loaded as BPF_PROG_TYPE_XDP. The callee
-	 * is responsible for calling bpf_prog_put on any old progs that are
-	 * stored. In case of error, the callee need not release the new prog
-	 * reference, but on success it takes ownership and must bpf_prog_put
-	 * when it is no longer used.
-	 */
-	XDP_SETUP_PROG,
-	XDP_SETUP_PROG_HW,
-	/* Check if a bpf program is set on the device.  The callee should
-	 * set @prog_attached to one of XDP_ATTACHED_* values, note that "true"
-	 * is equivalent to XDP_ATTACHED_DRV.
-	 */
-	XDP_QUERY_PROG,
-	/* BPF program for offload callbacks, invoked at program load time. */
-	BPF_OFFLOAD_VERIFIER_PREP,
-	BPF_OFFLOAD_TRANSLATE,
-	BPF_OFFLOAD_DESTROY,
-	BPF_OFFLOAD_MAP_ALLOC,
-	BPF_OFFLOAD_MAP_FREE,
-};
-
-#define xdp_netdev_command bpf_netdev_command
 
 struct tc_cls_u32_offload;
 
@@ -849,38 +807,9 @@ struct tc_to_netdev {
 		u8 tc;
 		struct tc_cls_u32_offload *cls_u32;
 		struct tc_cls_flower_offload *cls_flower;
-		struct tc_cls_matchall_offload *cls_mall;
-		struct tc_cls_bpf_offload *cls_bpf;
 	};
 };
 
-struct netdev_bpf {
-	enum bpf_netdev_command command;
-	union {
-		/* XDP_SETUP_PROG */
-		struct {
-			u32 flags;
-			struct bpf_prog *prog;
-			struct netlink_ext_ack *extack;
-		};
-		/* XDP_QUERY_PROG */
-		struct {
-			u8 prog_attached;
-			u32 prog_id;
-		};
-		/* BPF_OFFLOAD_VERIFIER_PREP */
-		struct {
-			struct bpf_prog *prog;
-			const struct bpf_ext_analyzer_ops *ops; /* callee set */
-		} verifier;
-		/* BPF_OFFLOAD_TRANSLATE, BPF_OFFLOAD_DESTROY */
-		struct {
-			struct bpf_prog *prog;
-		} offload;
-	};
-};
-
-#define netdev_xdp netdev_bpf
 
 /*
  * This structure defines the management hooks for network devices.
@@ -1368,14 +1297,7 @@ struct net_device_ops {
 						       struct sk_buff *skb);
 	void			(*ndo_set_rx_headroom)(struct net_device *dev,
 						       int needed_headroom);
-	int			(*ndo_xdp)(struct net_device *dev,
-					   struct netdev_xdp *xdp);
-	int			(*ndo_xdp_xmit)(struct net_device *dev,
-						struct xdp_buff *xdp);
-	void			(*ndo_xdp_flush)(struct net_device *dev);
 };
-
-#define ndo_bpf ndo_xdp
 
 /**
  * enum net_device_priv_flags - &struct net_device priv_flags
@@ -3297,12 +3219,9 @@ static inline void dev_consume_skb_any(struct sk_buff *skb)
 	__dev_kfree_skb_any(skb, SKB_REASON_CONSUMED);
 }
 
-void generic_xdp_tx(struct sk_buff *skb, struct bpf_prog *xdp_prog);
-int do_xdp_generic(struct bpf_prog *xdp_prog, struct sk_buff *skb);
 int netif_rx(struct sk_buff *skb);
 int netif_rx_ni(struct sk_buff *skb);
 int netif_receive_skb(struct sk_buff *skb);
-int netif_receive_skb_core(struct sk_buff *skb);
 gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb);
 void napi_gro_flush(struct napi_struct *napi, bool flush_old);
 struct sk_buff *napi_get_frags(struct napi_struct *napi);
@@ -3349,21 +3268,6 @@ struct sk_buff *dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev,
 int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 int dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 bool is_skb_forwardable(struct net_device *dev, struct sk_buff *skb);
-
-static __always_inline int ____dev_forward_skb(struct net_device *dev,
-					       struct sk_buff *skb)
-{
-	if (skb_orphan_frags(skb, GFP_ATOMIC) ||
-	    unlikely(!is_skb_forwardable(dev, skb))) {
-		atomic_long_inc(&dev->rx_dropped);
-		kfree_skb(skb);
-		return NET_RX_DROP;
-	}
-
-	skb_scrub_packet(skb, true);
-	skb->priority = 0;
-	return 0;
-}
 
 extern int		netdev_budget;
 

@@ -222,11 +222,6 @@ struct sk_buff;
 #endif
 extern int sysctl_max_skb_frags;
 
-/* Set skb_shinfo(skb)->gso_size to this in case you want skb_segment to
- * segment using its current segmentation instead.
- */
-#define GSO_BY_FRAGS	0xFFFF
-
 typedef struct skb_frag_struct skb_frag_t;
 
 struct skb_frag_struct {
@@ -338,11 +333,10 @@ struct ubuf_info {
 struct skb_shared_info {
 	unsigned char	nr_frags;
 	__u8		tx_flags;
-	__u8		meta_len;
 	unsigned short	gso_size;
 	/* Warning: this field is not always filled in (UFO)! */
 	unsigned short	gso_segs;
-	unsigned int  gso_type;
+	unsigned short  gso_type;
 	struct sk_buff	*frag_list;
 	struct skb_shared_hwtstamps hwtstamps;
 	u32		tskey;
@@ -384,14 +378,13 @@ enum {
 
 enum {
 	SKB_GSO_TCPV4 = 1 << 0,
+	SKB_GSO_UDP = 1 << 1,
 
 	/* This indicates the skb is from an untrusted source. */
-	SKB_GSO_DODGY = 1 << 1,
+	SKB_GSO_DODGY = 1 << 2,
 
 	/* This indicates the tcp segment has CWR set. */
-	SKB_GSO_TCP_ECN = 1 << 2,
-
-	SKB_GSO_TCP_FIXEDID = 1 << 3,
+	SKB_GSO_TCP_ECN = 1 << 3,
 
 	SKB_GSO_TCPV6 = 1 << 4,
 
@@ -409,15 +402,7 @@ enum {
 
 	SKB_GSO_UDP_TUNNEL_CSUM = 1 << 11,
 
-	SKB_GSO_PARTIAL = 1 << 12,
-
-	SKB_GSO_TUNNEL_REMCSUM = 1 << 13,
-
-	SKB_GSO_SCTP = 1 << 14,
-
-	SKB_GSO_ESP = 1 << 15,
-
-	SKB_GSO_UDP = 1 << 16,
+	SKB_GSO_TUNNEL_REMCSUM = 1 << 12,
 };
 
 #if BITS_PER_LONG > 32
@@ -2043,11 +2028,6 @@ static inline unsigned char *skb_mac_header(const struct sk_buff *skb)
 	return skb->head + skb->mac_header;
 }
 
-static inline u32 skb_mac_header_len(const struct sk_buff *skb)
-{
-	return skb->network_header - skb->mac_header;
-}
-
 static inline int skb_mac_header_was_set(const struct sk_buff *skb)
 {
 	return skb->mac_header != (typeof(skb->mac_header))~0U;
@@ -3094,69 +3074,6 @@ static inline ktime_t net_invalid_timestamp(void)
 	return ktime_set(0, 0);
 }
 
-static inline u8 skb_metadata_len(const struct sk_buff *skb)
-{
-	return skb_shinfo(skb)->meta_len;
-}
-
-static inline void *skb_metadata_end(const struct sk_buff *skb)
-{
-	return skb_mac_header(skb);
-}
-
-static inline bool __skb_metadata_differs(const struct sk_buff *skb_a,
-					  const struct sk_buff *skb_b,
-					  u8 meta_len)
-{
-	const void *a = skb_metadata_end(skb_a);
-	const void *b = skb_metadata_end(skb_b);
-	/* Using more efficient varaiant than plain call to memcmp(). */
-#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) && BITS_PER_LONG == 64
-	u64 diffs = 0;
-
-	switch (meta_len) {
-#define __it(x, op) (x -= sizeof(u##op))
-#define __it_diff(a, b, op) (*(u##op *)__it(a, op)) ^ (*(u##op *)__it(b, op))
-	case 32: diffs |= __it_diff(a, b, 64);
-	case 24: diffs |= __it_diff(a, b, 64);
-	case 16: diffs |= __it_diff(a, b, 64);
-	case  8: diffs |= __it_diff(a, b, 64);
-		break;
-	case 28: diffs |= __it_diff(a, b, 64);
-	case 20: diffs |= __it_diff(a, b, 64);
-	case 12: diffs |= __it_diff(a, b, 64);
-	case  4: diffs |= __it_diff(a, b, 32);
-		break;
-	}
-	return diffs;
-#else
-	return memcmp(a - meta_len, b - meta_len, meta_len);
-#endif
-}
-
-static inline bool skb_metadata_differs(const struct sk_buff *skb_a,
-					const struct sk_buff *skb_b)
-{
-	u8 len_a = skb_metadata_len(skb_a);
-	u8 len_b = skb_metadata_len(skb_b);
-
-	if (!(len_a | len_b))
-		return false;
-
-	return len_a != len_b ?
-	       true : __skb_metadata_differs(skb_a, skb_b, len_a);
-}
-
-static inline void skb_metadata_set(struct sk_buff *skb, u8 meta_len)
-{
-	skb_shinfo(skb)->meta_len = meta_len;
-}
-
-static inline void skb_metadata_clear(struct sk_buff *skb)
-{
-	skb_metadata_set(skb, 0);
-}
-
 struct sk_buff *skb_clone_sk(struct sk_buff *skb);
 
 #ifdef CONFIG_NETWORK_PHY_TIMESTAMPING
@@ -3709,33 +3626,11 @@ static inline bool skb_is_gso_v6(const struct sk_buff *skb)
 	return skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6;
 }
 
-/* Note: Should be called only if skb_is_gso(skb) is true */
-static inline bool skb_is_gso_sctp(const struct sk_buff *skb)
-{
-	return skb_shinfo(skb)->gso_type & SKB_GSO_SCTP;
-}
-
 static inline void skb_gso_reset(struct sk_buff *skb)
 {
 	skb_shinfo(skb)->gso_size = 0;
 	skb_shinfo(skb)->gso_segs = 0;
 	skb_shinfo(skb)->gso_type = 0;
-}
-
-static inline void skb_increase_gso_size(struct skb_shared_info *shinfo,
-					 u16 increment)
-{
-	if (WARN_ON_ONCE(shinfo->gso_size == GSO_BY_FRAGS))
-		return;
-	shinfo->gso_size += increment;
-}
-
-static inline void skb_decrease_gso_size(struct skb_shared_info *shinfo,
-					 u16 decrement)
-{
-	if (WARN_ON_ONCE(shinfo->gso_size == GSO_BY_FRAGS))
-		return;
-	shinfo->gso_size -= decrement;
 }
 
 void __skb_warn_lro_forwarding(const struct sk_buff *skb);

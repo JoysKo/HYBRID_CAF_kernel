@@ -220,13 +220,13 @@ static int udp_reuseport_add_sock(struct sock *sk, struct udp_hslot *hslot,
 		    (sk2->sk_bound_dev_if == sk->sk_bound_dev_if) &&
 		    sk2->sk_reuseport && uid_eq(uid, sock_i_uid(sk2)) &&
 		    (*saddr_same)(sk, sk2, false)) {
-			return reuseport_add_sock(sk, sk2, NULL);
+			return reuseport_add_sock(sk, sk2);
 		}
 	}
 
 	/* Initial allocation may have already happened via setsockopt */
 	if (!rcu_access_pointer(sk->sk_reuseport_cb))
-		return reuseport_alloc(sk, false);
+		return reuseport_alloc(sk);
 	return 0;
 }
 

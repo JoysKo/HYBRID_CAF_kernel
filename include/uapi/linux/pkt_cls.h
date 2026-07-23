@@ -88,13 +88,6 @@ enum {
 #define TC_ACT_QUEUED		5
 #define TC_ACT_REPEAT		6
 #define TC_ACT_REDIRECT		7
-#define TC_ACT_TRAP		8 /* For hw path, this means "trap to cpu"
-				   * and don't further process the frame
-				   * in hardware. For sw path, this is
-				   * equivalent of TC_ACT_STOLEN - drop
-				   * the skb and act like everything
-				   * is alright.
-				   */
 #define TC_ACT_JUMP		0x10000000
 
 /* Action type identifiers*/
@@ -156,12 +149,6 @@ enum {
 };
 
 #define TCA_POLICE_MAX (__TCA_POLICE_MAX - 1)
-
-/* tca flags definitions */
-#define TCA_CLS_FLAGS_SKIP_HW	(1 << 0)
-#define TCA_CLS_FLAGS_SKIP_SW	(1 << 1)
-#define TCA_CLS_FLAGS_IN_HW	(1 << 2) /* filter is offloaded to HW */
-#define TCA_CLS_FLAGS_NOT_IN_HW (1 << 3) /* filter isn't offloaded to HW */
 
 /* U32 filters */
 
@@ -400,9 +387,6 @@ enum {
 	TCA_BPF_FD,
 	TCA_BPF_NAME,
 	TCA_BPF_FLAGS,
-	TCA_BPF_FLAGS_GEN,
-	TCA_BPF_TAG,
-	TCA_BPF_ID,
 	__TCA_BPF_MAX,
 };
 
