@@ -52,13 +52,13 @@ MODULE_AUTHOR("Paul E. McKenney <paulmck@linux.vnet.ibm.com>");
 
 #define PERF_FLAG "-perf:"
 #define PERFOUT_STRING(s) \
-	pr_alert("%s" PERF_FLAG " %s\n", perf_type, s)
+	pr_alert("%s" PERF_FLAG s "\n", perf_type)
 #define VERBOSE_PERFOUT_STRING(s) \
 	do { if (verbose) pr_alert("%s" PERF_FLAG " %s\n", perf_type, s); } while (0)
 #define VERBOSE_PERFOUT_ERRSTRING(s) \
 	do { if (verbose) pr_alert("%s" PERF_FLAG "!!! %s\n", perf_type, s); } while (0)
 
-torture_param(bool, gp_exp, false, "Use expedited GP wait primitives");
+torture_param(bool, gp_exp, true, "Use expedited GP wait primitives");
 torture_param(int, holdoff, 10, "Holdoff time before test start (s)");
 torture_param(int, nreaders, -1, "Number of RCU reader threads");
 torture_param(int, nwriters, -1, "Number of RCU updater threads");
@@ -96,7 +96,12 @@ static int rcu_perf_writer_state;
 #define MAX_MEAS 10000
 #define MIN_MEAS 100
 
-static int perf_runnable = IS_ENABLED(MODULE);
+#if defined(MODULE) || defined(CONFIG_RCU_PERF_TEST_RUNNABLE)
+#define RCUPERF_RUNNABLE_INIT 1
+#else
+#define RCUPERF_RUNNABLE_INIT 0
+#endif
+static int perf_runnable = RCUPERF_RUNNABLE_INIT;
 module_param(perf_runnable, int, 0444);
 MODULE_PARM_DESC(perf_runnable, "Start rcuperf at boot");
 
@@ -358,6 +363,8 @@ rcu_perf_writer(void *arg)
 	u64 *wdpp = writer_durations[me];
 
 	VERBOSE_PERFOUT_STRING("rcu_perf_writer task started");
+	WARN_ON(rcu_gp_is_expedited() && !rcu_gp_is_normal() && !gp_exp);
+	WARN_ON(rcu_gp_is_normal() && gp_exp);
 	WARN_ON(!wdpp);
 	set_cpus_allowed_ptr(current, cpumask_of(me % nr_cpu_ids));
 	sp.sched_priority = 1;
@@ -400,8 +407,9 @@ rcu_perf_writer(void *arg)
 			sp.sched_priority = 0;
 			sched_setscheduler_nocheck(current,
 						   SCHED_NORMAL, &sp);
-			pr_alert("%s%s rcu_perf_writer %ld has %d measurements\n",
-				 perf_type, PERF_FLAG, me, MIN_MEAS);
+			pr_alert("%s" PERF_FLAG
+				 "rcu_perf_writer %ld has %d measurements\n",
+				 perf_type, me, MIN_MEAS);
 			if (atomic_inc_return(&n_rcu_perf_writer_finished) >=
 			    nrealwriters) {
 				schedule_timeout_interruptible(10);
@@ -621,16 +629,6 @@ rcu_perf_init(void)
 	if (!writer_tasks || !writer_durations || !writer_n_durations) {
 		VERBOSE_PERFOUT_ERRSTRING("out of memory");
 		firsterr = -ENOMEM;
-		goto unwind;
-	}
-	if (rcu_gp_is_expedited() && !rcu_gp_is_normal() && !gp_exp) {
-		VERBOSE_PERFOUT_ERRSTRING("All grace periods expedited, no normal ones to measure!");
-		firsterr = -EINVAL;
-		goto unwind;
-	}
-	if (rcu_gp_is_normal() && gp_exp) {
-		VERBOSE_PERFOUT_ERRSTRING("All grace periods normal, no expedited ones to measure!");
-		firsterr = -EINVAL;
 		goto unwind;
 	}
 	for (i = 0; i < nrealwriters; i++) {

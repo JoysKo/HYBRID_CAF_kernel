@@ -250,7 +250,7 @@ struct rcu_node {
 	raw_spinlock_t fqslock ____cacheline_internodealigned_in_smp;
 
 	spinlock_t exp_lock ____cacheline_internodealigned_in_smp;
-	unsigned long exp_seq_rq;
+	atomic_long_t exp_seq_rq;
 	wait_queue_head_t exp_wq[4];
 } ____cacheline_internodealigned_in_smp;
 
@@ -376,7 +376,6 @@ struct rcu_data {
 #ifdef CONFIG_RCU_FAST_NO_HZ
 	struct rcu_head oom_head;
 #endif /* #ifdef CONFIG_RCU_FAST_NO_HZ */
-	atomic_long_t exp_workdone0;	/* # done by workqueue. */
 	atomic_long_t exp_workdone1;	/* # done by others #1. */
 	atomic_long_t exp_workdone2;	/* # done by others #2. */
 	atomic_long_t exp_workdone3;	/* # done by others #3. */
