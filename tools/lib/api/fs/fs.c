@@ -302,6 +302,19 @@ int filename__read_ull(const char *filename, unsigned long long *value)
 	return err;
 }
 
+int procfs__read_str(const char *entry, char **buf, size_t *sizep)
+{
+	char path[PATH_MAX];
+	const char *procfs = procfs__mountpoint();
+
+	if (!procfs)
+		return -1;
+
+	snprintf(path, sizeof(path), "%s/%s", procfs, entry);
+
+	return filename__read_str(path, buf, sizep);
+}
+
 int sysfs__read_ull(const char *entry, unsigned long long *value)
 {
 	char path[PATH_MAX];

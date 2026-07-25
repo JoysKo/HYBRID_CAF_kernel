@@ -30,6 +30,7 @@
 #include <linux/module.h>
 #include <linux/memory.h>
 #include <linux/memory_hotplug.h>
+#include <linux/memremap.h>
 #include <linux/nmi.h>
 #include <linux/gfp.h>
 #include <linux/kcore.h>
@@ -396,16 +397,6 @@ void __init cleanup_highmap(void)
 			continue;
 		if (vaddr < (unsigned long) _text || vaddr > end)
 			set_pmd(pmd, __pmd(0));
-		else if (kaiser_enabled) {
-			/*
-			 * level2_kernel_pgt is initialized with _PAGE_GLOBAL:
-			 * clear that now.  This is not important, so long as
-			 * CR4.PGE remains clear, but it removes an anomaly.
-			 * Physical mapping setup below avoids _PAGE_GLOBAL
-			 * by use of massage_pgprot() inside pfn_pte() etc.
-			 */
-			set_pmd(pmd, pmd_clear_flags(*pmd, _PAGE_GLOBAL));
-		}
 	}
 }
 
@@ -725,6 +716,12 @@ static void __meminit free_pagetable(struct page *page, int order)
 {
 	unsigned long magic;
 	unsigned int nr_pages = 1 << order;
+	struct vmem_altmap *altmap = to_vmem_altmap((unsigned long) page);
+
+	if (altmap) {
+		vmem_altmap_free(altmap, nr_pages);
+		return;
+	}
 
 	/* bootmem page has reserved flag */
 	if (PageReserved(page)) {
@@ -1028,13 +1025,19 @@ int __ref arch_remove_memory(u64 start, u64 size)
 {
 	unsigned long start_pfn = start >> PAGE_SHIFT;
 	unsigned long nr_pages = size >> PAGE_SHIFT;
+	struct page *page = pfn_to_page(start_pfn);
+	struct vmem_altmap *altmap;
 	struct zone *zone;
 	int ret;
 
-	zone = page_zone(pfn_to_page(start_pfn));
-	kernel_physical_mapping_remove(start, start + size);
+	/* With altmap the first mapped page is offset from @start */
+	altmap = to_vmem_altmap((unsigned long) page);
+	if (altmap)
+		page += vmem_altmap_offset(altmap);
+	zone = page_zone(page);
 	ret = __remove_pages(zone, start_pfn, nr_pages);
 	WARN_ON_ONCE(ret);
+	kernel_physical_mapping_remove(start, start + size);
 
 	return ret;
 }
@@ -1179,21 +1182,21 @@ int kern_addr_valid(unsigned long addr)
 		return 0;
 
 	pud = pud_offset(pgd, addr);
-	if (!pud_present(*pud))
+	if (pud_none(*pud))
 		return 0;
 
 	if (pud_large(*pud))
 		return pfn_valid(pud_pfn(*pud));
 
 	pmd = pmd_offset(pud, addr);
-	if (!pmd_present(*pmd))
+	if (pmd_none(*pmd))
 		return 0;
 
 	if (pmd_large(*pmd))
 		return pfn_valid(pmd_pfn(*pmd));
 
 	pte = pte_offset_kernel(pmd, addr);
-	if (!pte_present(*pte))
+	if (pte_none(*pte))
 		return 0;
 
 	return pfn_valid(pte_pfn(*pte));
@@ -1230,7 +1233,7 @@ static void __meminitdata *p_start, *p_end;
 static int __meminitdata node_start;
 
 static int __meminit vmemmap_populate_hugepages(unsigned long start,
-						unsigned long end, int node)
+		unsigned long end, int node, struct vmem_altmap *altmap)
 {
 	unsigned long addr;
 	unsigned long next;
@@ -1253,7 +1256,7 @@ static int __meminit vmemmap_populate_hugepages(unsigned long start,
 		if (pmd_none(*pmd)) {
 			void *p;
 
-			p = vmemmap_alloc_block_buf(PMD_SIZE, node);
+			p = __vmemmap_alloc_block_buf(PMD_SIZE, node, altmap);
 			if (p) {
 				pte_t entry;
 
@@ -1274,7 +1277,8 @@ static int __meminit vmemmap_populate_hugepages(unsigned long start,
 				addr_end = addr + PMD_SIZE;
 				p_end = p + PMD_SIZE;
 				continue;
-			}
+			} else if (altmap)
+				return -ENOMEM; /* no fallback */
 		} else if (pmd_large(*pmd)) {
 			vmemmap_verify((pte_t *)pmd, node, addr, next);
 			continue;
@@ -1288,11 +1292,16 @@ static int __meminit vmemmap_populate_hugepages(unsigned long start,
 
 int __meminit vmemmap_populate(unsigned long start, unsigned long end, int node)
 {
+	struct vmem_altmap *altmap = to_vmem_altmap(start);
 	int err;
 
 	if (cpu_has_pse)
-		err = vmemmap_populate_hugepages(start, end, node);
-	else
+		err = vmemmap_populate_hugepages(start, end, node, altmap);
+	else if (altmap) {
+		pr_err_once("%s: no cpu support for altmap allocations\n",
+				__func__);
+		err = -ENOMEM;
+	} else
 		err = vmemmap_populate_basepages(start, end, node);
 	if (!err)
 		sync_global_pgds(start, end - 1, 0);

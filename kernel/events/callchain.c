@@ -32,12 +32,12 @@ static DEFINE_MUTEX(callchain_mutex);
 static struct callchain_cpus_entries *callchain_cpus_entries;
 
 
-__weak void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry,
+__weak void perf_callchain_kernel(struct perf_callchain_entry *entry,
 				  struct pt_regs *regs)
 {
 }
 
-__weak void perf_callchain_user(struct perf_callchain_entry_ctx *entry,
+__weak void perf_callchain_user(struct perf_callchain_entry *entry,
 				struct pt_regs *regs)
 {
 }
@@ -179,7 +179,6 @@ get_perf_callchain(struct pt_regs *regs, u32 init_nr, bool kernel, bool user,
 		   u32 max_stack, bool crosstask, bool add_mark)
 {
 	struct perf_callchain_entry *entry;
-	struct perf_callchain_entry_ctx ctx;
 	int rctx;
 
 	entry = get_callchain_entry(&rctx);
@@ -189,15 +188,12 @@ get_perf_callchain(struct pt_regs *regs, u32 init_nr, bool kernel, bool user,
 	if (!entry)
 		goto exit_put;
 
-	ctx.entry     = entry;
-	ctx.max_stack = max_stack;
-
 	entry->nr = init_nr;
 
 	if (kernel && !user_mode(regs)) {
 		if (add_mark)
-			perf_callchain_store(&ctx, PERF_CONTEXT_KERNEL);
-		perf_callchain_kernel(&ctx, regs);
+			perf_callchain_store(entry, PERF_CONTEXT_KERNEL);
+		perf_callchain_kernel(entry, regs);
 	}
 
 	if (user) {
@@ -213,8 +209,8 @@ get_perf_callchain(struct pt_regs *regs, u32 init_nr, bool kernel, bool user,
 				goto exit_put;
 
 			if (add_mark)
-				perf_callchain_store(&ctx, PERF_CONTEXT_USER);
-			perf_callchain_user(&ctx, regs);
+				perf_callchain_store(entry, PERF_CONTEXT_USER);
+			perf_callchain_user(entry, regs);
 		}
 	}
 

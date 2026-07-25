@@ -55,7 +55,7 @@ static inline void k8_check_syscfg_dram_mod_en(void)
 
 	rdmsr(MSR_K8_SYSCFG, lo, hi);
 	if (lo & K8_MTRRFIXRANGE_DRAM_MODIFY) {
-		printk(KERN_ERR FW_WARN "MTRR: CPU %u: SYSCFG[MtrrFixDramModEn]"
+		pr_err(FW_WARN "MTRR: CPU %u: SYSCFG[MtrrFixDramModEn]"
 		       " not cleared by BIOS, clearing this bit\n",
 		       smp_processor_id());
 		lo &= ~K8_MTRRFIXRANGE_DRAM_MODIFY;
@@ -166,6 +166,9 @@ static u8 mtrr_type_lookup_variable(u64 start, u64 end, u64 *partial_end,
 	*repeat = 0;
 	*uniform = 1;
 
+	/* Make end inclusive instead of exclusive */
+	end--;
+
 	prev_match = MTRR_TYPE_INVALID;
 	for (i = 0; i < num_var_ranges; ++i) {
 		unsigned short start_state, end_state, inclusive;
@@ -256,9 +259,6 @@ u8 mtrr_type_lookup(u64 start, u64 end, u8 *uniform)
 	u8 type, prev_type, is_uniform = 1, dummy;
 	int repeat;
 	u64 partial_end;
-
-	/* Make end inclusive instead of exclusive */
-	end--;
 
 	if (!mtrr_state_set)
 		return MTRR_TYPE_INVALID;
@@ -444,24 +444,11 @@ static void __init print_mtrr_state(void)
 		pr_debug("TOM2: %016llx aka %lldM\n", mtrr_tom2, mtrr_tom2>>20);
 }
 
-/* PAT setup for BP. We need to go through sync steps here */
-void __init mtrr_bp_pat_init(void)
-{
-	unsigned long flags;
-
-	local_irq_save(flags);
-	prepare_set();
-
-	pat_init();
-
-	post_set();
-	local_irq_restore(flags);
-}
-
 /* Grab all of the MTRR state for this CPU into *state */
 bool __init get_mtrr_state(void)
 {
 	struct mtrr_var_range *vrs;
+	unsigned long flags;
 	unsigned lo, dummy;
 	unsigned int i;
 
@@ -494,6 +481,15 @@ bool __init get_mtrr_state(void)
 
 	mtrr_state_set = 1;
 
+	/* PAT setup for BP. We need to go through sync steps here */
+	local_irq_save(flags);
+	prepare_set();
+
+	pat_init();
+
+	post_set();
+	local_irq_restore(flags);
+
 	return !!(mtrr_state.enabled & MTRR_STATE_MTRR_ENABLED);
 }
 
@@ -505,14 +501,14 @@ void __init mtrr_state_warn(void)
 	if (!mask)
 		return;
 	if (mask & MTRR_CHANGE_MASK_FIXED)
-		pr_warning("mtrr: your CPUs had inconsistent fixed MTRR settings\n");
+		pr_warn("mtrr: your CPUs had inconsistent fixed MTRR settings\n");
 	if (mask & MTRR_CHANGE_MASK_VARIABLE)
-		pr_warning("mtrr: your CPUs had inconsistent variable MTRR settings\n");
+		pr_warn("mtrr: your CPUs had inconsistent variable MTRR settings\n");
 	if (mask & MTRR_CHANGE_MASK_DEFTYPE)
-		pr_warning("mtrr: your CPUs had inconsistent MTRRdefType settings\n");
+		pr_warn("mtrr: your CPUs had inconsistent MTRRdefType settings\n");
 
-	printk(KERN_INFO "mtrr: probably your BIOS does not setup all CPUs.\n");
-	printk(KERN_INFO "mtrr: corrected configuration.\n");
+	pr_info("mtrr: probably your BIOS does not setup all CPUs.\n");
+	pr_info("mtrr: corrected configuration.\n");
 }
 
 /*
@@ -523,8 +519,7 @@ void __init mtrr_state_warn(void)
 void mtrr_wrmsr(unsigned msr, unsigned a, unsigned b)
 {
 	if (wrmsr_safe(msr, a, b) < 0) {
-		printk(KERN_ERR
-			"MTRR: CPU %u: Writing MSR %x to %x:%x failed\n",
+		pr_err("MTRR: CPU %u: Writing MSR %x to %x:%x failed\n",
 			smp_processor_id(), msr, a, b);
 	}
 }
@@ -611,7 +606,7 @@ static void generic_get_mtrr(unsigned int reg, unsigned long *base,
 		tmp |= ~((1ULL<<(hi - 1)) - 1);
 
 		if (tmp != mask) {
-			printk(KERN_WARNING "mtrr: your BIOS has configured an incorrect mask, fixing it.\n");
+			pr_warn("mtrr: your BIOS has configured an incorrect mask, fixing it.\n");
 			add_taint(TAINT_FIRMWARE_WORKAROUND, LOCKDEP_STILL_OK);
 			mask = tmp;
 		}
@@ -860,15 +855,15 @@ int generic_validate_add_page(unsigned long base, unsigned long size,
 	 */
 	if (is_cpu(INTEL) && boot_cpu_data.x86 == 6 &&
 	    boot_cpu_data.x86_model == 1 &&
-	    boot_cpu_data.x86_stepping <= 7) {
+	    boot_cpu_data.x86_mask <= 7) {
 		if (base & ((1 << (22 - PAGE_SHIFT)) - 1)) {
-			pr_warning("mtrr: base(0x%lx000) is not 4 MiB aligned\n", base);
+			pr_warn("mtrr: base(0x%lx000) is not 4 MiB aligned\n", base);
 			return -EINVAL;
 		}
 		if (!(base + size < 0x70000 || base > 0x7003F) &&
 		    (type == MTRR_TYPE_WRCOMB
 		     || type == MTRR_TYPE_WRBACK)) {
-			pr_warning("mtrr: writable mtrr between 0x70000000 and 0x7003FFFF may hang the CPU.\n");
+			pr_warn("mtrr: writable mtrr between 0x70000000 and 0x7003FFFF may hang the CPU.\n");
 			return -EINVAL;
 		}
 	}
@@ -882,7 +877,7 @@ int generic_validate_add_page(unsigned long base, unsigned long size,
 	     lbase = lbase >> 1, last = last >> 1)
 		;
 	if (lbase != last) {
-		pr_warning("mtrr: base(0x%lx000) is not aligned on a size(0x%lx000) boundary\n", base, size);
+		pr_warn("mtrr: base(0x%lx000) is not aligned on a size(0x%lx000) boundary\n", base, size);
 		return -EINVAL;
 	}
 	return 0;

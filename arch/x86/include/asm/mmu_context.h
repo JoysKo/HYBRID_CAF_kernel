@@ -11,9 +11,6 @@
 #include <asm/tlbflush.h>
 #include <asm/paravirt.h>
 #include <asm/mpx.h>
-
-extern atomic64_t last_mm_ctx_id;
-
 #ifndef CONFIG_PARAVIRT
 static inline void paravirt_activate_mm(struct mm_struct *prev,
 					struct mm_struct *next)
@@ -101,8 +98,10 @@ static inline void load_mm_ldt(struct mm_struct *mm)
 
 static inline void enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
 {
+#ifdef CONFIG_SMP
 	if (this_cpu_read(cpu_tlbstate.state) == TLBSTATE_OK)
 		this_cpu_write(cpu_tlbstate.state, TLBSTATE_LAZY);
+#endif
 }
 
 static inline int init_new_context(struct task_struct *tsk,
@@ -163,8 +162,8 @@ static inline void switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		/* Stop flush ipis for the previous mm */
 		cpumask_clear_cpu(cpu, mm_cpumask(prev));
 
-extern void switch_mm(struct mm_struct *prev, struct mm_struct *next,
-		      struct task_struct *tsk);
+		/* Load per-mm CR4 state */
+		load_mm_cr4(next);
 
 #ifdef CONFIG_MODIFY_LDT_SYSCALL
 		/*

@@ -45,7 +45,6 @@
 
 #include <asm/inst.h>
 #include <linux/linkage.h>
-#include <asm/nospec-branch.h>
 
 ## ISCSI CRC 32 Implementation with crc32 and pclmulqdq Instruction
 

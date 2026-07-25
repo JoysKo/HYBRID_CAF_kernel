@@ -639,16 +639,11 @@ static int xts_aesni_setkey(struct crypto_tfm *tfm, const u8 *key,
 			    unsigned int keylen)
 {
 	struct aesni_xts_ctx *ctx = crypto_tfm_ctx(tfm);
-	u32 *flags = &tfm->crt_flags;
 	int err;
 
-	/* key consists of keys of equal size concatenated, therefore
-	 * the length must be even
-	 */
-	if (keylen % 2) {
-		*flags |= CRYPTO_TFM_RES_BAD_KEY_LEN;
-		return -EINVAL;
-	}
+	err = xts_check_key(tfm, key, keylen);
+	if (err)
+		return err;
 
 	/* first half of xts-key is for crypt */
 	err = aes_set_key_common(tfm, ctx->raw_crypt_ctx, key, keylen / 2);
@@ -965,7 +960,7 @@ static int helper_rfc4106_encrypt(struct aead_request *req)
 
 	if (sg_is_last(req->src) &&
 	    req->src->offset + req->src->length <= PAGE_SIZE &&
-	    sg_is_last(req->dst) && req->dst->length &&
+	    sg_is_last(req->dst) &&
 	    req->dst->offset + req->dst->length <= PAGE_SIZE) {
 		one_entry_in_sg = 1;
 		scatterwalk_start(&src_sg_walk, req->src);

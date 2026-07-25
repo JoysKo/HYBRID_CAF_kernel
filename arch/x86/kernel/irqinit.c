@@ -51,7 +51,7 @@ static struct irqaction irq2 = {
 	.flags = IRQF_NO_THREAD,
 };
 
-DEFINE_PER_CPU_USER_MAPPED(vector_irq_t, vector_irq) = {
+DEFINE_PER_CPU(vector_irq_t, vector_irq) = {
 	[0 ... NR_VECTORS - 1] = VECTOR_UNUSED,
 };
 
@@ -77,10 +77,8 @@ void __init init_ISA_irqs(void)
 #endif
 	legacy_pic->init(0);
 
-	for (i = 0; i < nr_legacy_irqs(); i++) {
+	for (i = 0; i < nr_legacy_irqs(); i++)
 		irq_set_chip_and_handler(i, chip, handle_level_irq);
-		irq_set_status_flags(i, IRQ_LEVEL);
-	}
 }
 
 void __init init_IRQ(void)

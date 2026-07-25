@@ -75,6 +75,7 @@
 #include <asm/mach_traps.h>
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
+#include <asm/pat.h>
 #include <asm/cpu.h>
 
 #ifdef CONFIG_ACPI
@@ -434,12 +435,6 @@ static void __init xen_init_cpuid_mask(void)
 		~((1 << X86_FEATURE_MTRR) |  /* disable MTRR */
 		  (1 << X86_FEATURE_ACC));   /* thermal monitoring */
 
-	/*
-	 * Xen PV would need some work to support PCID: CR3 handling as well
-	 * as xen_flush_tlb_others() would need updating.
-	 */
-	cpuid_leaf1_ecx_mask &= ~(1 << (X86_FEATURE_PCID % 32));  /* disable PCID */
-
 	if (!xen_initial_domain())
 		cpuid_leaf1_edx_mask &=
 			~((1 << X86_FEATURE_ACPI));  /* disable ACPI */
@@ -459,12 +454,6 @@ static void __init xen_init_cpuid_mask(void)
 		cpuid_leaf1_ecx_mask &= ~xsave_mask; /* disable XSAVE & OSXSAVE */
 	if (xen_check_mwait())
 		cpuid_leaf1_ecx_set_mask = (1 << (X86_FEATURE_MWAIT % 32));
-}
-
-static void __init xen_init_capabilities(void)
-{
-	if (xen_pv_domain())
-		setup_force_cpu_cap(X86_FEATURE_XENPV);
 }
 
 static void xen_set_debugreg(int reg, unsigned long val)
@@ -862,8 +851,8 @@ static void xen_write_idt_entry(gate_desc *dt, int entrynum, const gate_desc *g)
 	preempt_enable();
 }
 
-static unsigned xen_convert_trap_info(const struct desc_ptr *desc,
-				      struct trap_info *traps, bool full)
+static void xen_convert_trap_info(const struct desc_ptr *desc,
+				  struct trap_info *traps)
 {
 	unsigned in, out, count;
 
@@ -873,18 +862,17 @@ static unsigned xen_convert_trap_info(const struct desc_ptr *desc,
 	for (in = out = 0; in < count; in++) {
 		gate_desc *entry = (gate_desc*)(desc->address) + in;
 
-		if (cvt_gate_to_trap(in, entry, &traps[out]) || full)
+		if (cvt_gate_to_trap(in, entry, &traps[out]))
 			out++;
 	}
-
-	return out;
+	traps[out].address = 0;
 }
 
 void xen_copy_trap_info(struct trap_info *traps)
 {
 	const struct desc_ptr *desc = this_cpu_ptr(&idt_desc);
 
-	xen_convert_trap_info(desc, traps, true);
+	xen_convert_trap_info(desc, traps);
 }
 
 /* Load a new IDT into Xen.  In principle this can be per-CPU, so we
@@ -894,7 +882,6 @@ static void xen_load_idt(const struct desc_ptr *desc)
 {
 	static DEFINE_SPINLOCK(lock);
 	static struct trap_info traps[257];
-	unsigned out;
 
 	trace_xen_cpu_load_idt(desc);
 
@@ -902,8 +889,7 @@ static void xen_load_idt(const struct desc_ptr *desc)
 
 	memcpy(this_cpu_ptr(&idt_desc), desc, sizeof(idt_desc));
 
-	out = xen_convert_trap_info(desc, traps, false);
-	memset(&traps[out], 0, sizeof(traps[0]));
+	xen_convert_trap_info(desc, traps);
 
 	xen_mc_flush();
 	if (HYPERVISOR_set_trap_table(traps))
@@ -1525,6 +1511,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 {
 	struct physdev_set_iopl set_iopl;
 	unsigned long initrd_start = 0;
+	u64 pat;
 	int rc;
 
 	if (!xen_start_info)
@@ -1587,7 +1574,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	xen_init_irq_ops();
 	xen_init_cpuid_mask();
-	xen_init_capabilities();
 
 #ifdef CONFIG_X86_LOCAL_APIC
 	/*
@@ -1632,6 +1618,13 @@ asmlinkage __visible void __init xen_start_kernel(void)
 				   xen_start_info->nr_pages);
 	xen_reserve_special_pages();
 
+	/*
+	 * Modify the cache mode translation tables to match Xen's PAT
+	 * configuration.
+	 */
+	rdmsrl(MSR_IA32_CR_PAT, pat);
+	pat_init_cache_modes(pat);
+
 	/* keep using Xen gdt for now; no urgent need to change it */
 
 #ifdef CONFIG_X86_32
@@ -1662,7 +1655,7 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	cpu_detect(&new_cpu_data);
 	set_cpu_cap(&new_cpu_data, X86_FEATURE_FPU);
 	new_cpu_data.wp_works_ok = 1;
-	new_cpu_data.x86_capability[0] = cpuid_edx(1);
+	new_cpu_data.x86_capability[CPUID_1_EDX] = cpuid_edx(1);
 #endif
 
 	if (xen_start_info->mod_start) {
@@ -1884,6 +1877,14 @@ bool xen_hvm_need_lapic(void)
 }
 EXPORT_SYMBOL_GPL(xen_hvm_need_lapic);
 
+static void xen_set_cpu_features(struct cpuinfo_x86 *c)
+{
+	if (xen_pv_domain()) {
+		clear_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
+		set_cpu_cap(c, X86_FEATURE_XENPV);
+	}
+}
+
 const struct hypervisor_x86 x86_hyper_xen = {
 	.name			= "Xen",
 	.detect			= xen_platform,
@@ -1891,6 +1892,7 @@ const struct hypervisor_x86 x86_hyper_xen = {
 	.init_platform		= xen_hvm_guest_init,
 #endif
 	.x2apic_available	= xen_x2apic_para_available,
+	.set_cpu_features       = xen_set_cpu_features,
 };
 EXPORT_SYMBOL(x86_hyper_xen);
 

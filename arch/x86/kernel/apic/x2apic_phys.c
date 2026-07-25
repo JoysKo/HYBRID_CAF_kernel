@@ -51,8 +51,7 @@ __x2apic_send_IPI_mask(const struct cpumask *mask, int vector, int apic_dest)
 	unsigned long this_cpu;
 	unsigned long flags;
 
-	/* x2apic MSRs are special and need a special fence: */
-	weak_wrmsr_fence();
+	x2apic_wrmsr_fence();
 
 	local_irq_save(flags);
 
@@ -93,10 +92,7 @@ static void init_x2apic_ldr(void)
 
 static int x2apic_phys_probe(void)
 {
-	if (!x2apic_mode)
-		return 0;
-
-	if (x2apic_phys || x2apic_fadt_phys())
+	if (x2apic_mode && (x2apic_phys || x2apic_fadt_phys()))
 		return 1;
 
 	return apic == &apic_x2apic_phys;

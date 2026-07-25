@@ -662,6 +662,19 @@ enabled, otherwise writing to this file will return -EBUSY.
 The default value is 127.
 
 
+perf_event_max_stack:
+
+Controls maximum number of stack frames to copy for (attr.sample_type &
+PERF_SAMPLE_CALLCHAIN) configured events, for instance, when using
+'perf record -g' or 'perf trace --call-graph fp'.
+
+This can only be done when no events are in use that have callchains
+enabled, otherwise writing to this file will return -EBUSY.
+
+The default value is 127.
+
+==============================================================
+
 pid_max:
 
 PID allocation wrap value.  When the kernel's next PID value

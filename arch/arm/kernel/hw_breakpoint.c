@@ -759,7 +759,7 @@ static void watchpoint_handler(unsigned long addr, unsigned int fsr,
 		 * then handle the stepping ourselves since userspace really
 		 * can't help us with this.
 		 */
-		if (watchpoint_fault_on_uaccess(regs, info))
+		if (is_default_overflow_handler(wp))
 			enable_single_step(wp, instruction_pointer(regs));
 
 		perf_bp_event(wp, regs);

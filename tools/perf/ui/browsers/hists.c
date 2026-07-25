@@ -1172,6 +1172,85 @@ static int hists_browser__scnprintf_headers(struct hist_browser *browser, char *
 	return ret;
 }
 
+static int hists_browser__scnprintf_hierarchy_headers(struct hist_browser *browser, char *buf, size_t size)
+{
+	struct hists *hists = browser->hists;
+	struct perf_hpp dummy_hpp = {
+		.buf    = buf,
+		.size   = size,
+	};
+	struct perf_hpp_fmt *fmt;
+	struct perf_hpp_list_node *fmt_node;
+	size_t ret = 0;
+	int column = 0;
+	int indent = hists->nr_hpp_node - 2;
+	bool first_node, first_col;
+
+	ret = scnprintf(buf, size, " ");
+	if (advance_hpp_check(&dummy_hpp, ret))
+		return ret;
+
+	/* the first hpp_list_node is for overhead columns */
+	fmt_node = list_first_entry(&hists->hpp_formats,
+				    struct perf_hpp_list_node, list);
+	perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+		if (column++ < browser->b.horiz_scroll)
+			continue;
+
+		ret = fmt->header(fmt, &dummy_hpp, hists_to_evsel(hists));
+		if (advance_hpp_check(&dummy_hpp, ret))
+			break;
+
+		ret = scnprintf(dummy_hpp.buf, dummy_hpp.size, "  ");
+		if (advance_hpp_check(&dummy_hpp, ret))
+			break;
+	}
+
+	ret = scnprintf(dummy_hpp.buf, dummy_hpp.size, "%*s",
+			indent * HIERARCHY_INDENT, "");
+	if (advance_hpp_check(&dummy_hpp, ret))
+		return ret;
+
+	first_node = true;
+	list_for_each_entry_continue(fmt_node, &hists->hpp_formats, list) {
+		if (!first_node) {
+			ret = scnprintf(dummy_hpp.buf, dummy_hpp.size, " / ");
+			if (advance_hpp_check(&dummy_hpp, ret))
+				break;
+		}
+		first_node = false;
+
+		first_col = true;
+		perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+			char *start;
+
+			if (perf_hpp__should_skip(fmt, hists))
+				continue;
+
+			if (!first_col) {
+				ret = scnprintf(dummy_hpp.buf, dummy_hpp.size, "+");
+				if (advance_hpp_check(&dummy_hpp, ret))
+					break;
+			}
+			first_col = false;
+
+			ret = fmt->header(fmt, &dummy_hpp, hists_to_evsel(hists));
+			dummy_hpp.buf[ret] = '\0';
+
+			start = trim(dummy_hpp.buf);
+			ret = strlen(start);
+
+			if (start != dummy_hpp.buf)
+				memmove(dummy_hpp.buf, start, ret + 1);
+
+			if (advance_hpp_check(&dummy_hpp, ret))
+				break;
+		}
+	}
+
+	return ret;
+}
+
 static void hist_browser__show_headers(struct hist_browser *browser)
 {
 	char headers[1024];
@@ -1416,11 +1495,10 @@ static int hist_browser__fprintf_entry(struct hist_browser *browser,
 	bool first = true;
 	int ret;
 
-	if (symbol_conf.use_callchain)
+	if (symbol_conf.use_callchain) {
 		folded_sign = hist_entry__folded(he);
-
-	if (symbol_conf.use_callchain)
 		printed += fprintf(fp, "%c ", folded_sign);
+	}
 
 	perf_hpp__for_each_format(fmt) {
 		if (perf_hpp__should_skip(fmt, he->hists))
@@ -1588,8 +1666,9 @@ static int hists__browser_title(struct hists *hists,
 	if (hists->uid_filter_str)
 		printed += snprintf(bf + printed, size - printed,
 				    ", UID: %s", hists->uid_filter_str);
-	if (thread)
-		printed += scnprintf(bf + printed, size - printed,
+	if (thread) {
+		if (hists__has(hists, thread)) {
+			printed += scnprintf(bf + printed, size - printed,
 				    ", Thread: %s(%d)",
 				     (thread->comm_set ? thread__comm_str(thread) : ""),
 				    thread->tid);
@@ -1767,15 +1846,25 @@ do_zoom_thread(struct hist_browser *browser, struct popup_action *act)
 {
 	struct thread *thread = act->thread;
 
+	if ((!hists__has(browser->hists, thread) &&
+	     !hists__has(browser->hists, comm)) || thread == NULL)
+		return 0;
+
 	if (browser->hists->thread_filter) {
 		pstack__remove(browser->pstack, &browser->hists->thread_filter);
 		perf_hpp__set_elide(HISTC_THREAD, false);
 		thread__zput(browser->hists->thread_filter);
 		ui_helpline__pop();
 	} else {
-		ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s(%d) thread\"",
-				   thread->comm_set ? thread__comm_str(thread) : "",
-				   thread->tid);
+		if (hists__has(browser->hists, thread)) {
+			ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s(%d) thread\"",
+					   thread->comm_set ? thread__comm_str(thread) : "",
+					   thread->tid);
+		} else {
+			ui_helpline__fpush("To zoom out press ESC or ENTER + \"Zoom out of %s thread\"",
+					   thread->comm_set ? thread__comm_str(thread) : "");
+		}
+
 		browser->hists->thread_filter = thread__get(thread);
 		perf_hpp__set_elide(HISTC_THREAD, false);
 		pstack__push(browser->pstack, &browser->hists->thread_filter);
@@ -1790,13 +1879,23 @@ static int
 add_thread_opt(struct hist_browser *browser, struct popup_action *act,
 	       char **optstr, struct thread *thread)
 {
-	if (thread == NULL)
+	int ret;
+
+	if ((!hists__has(browser->hists, thread) &&
+	     !hists__has(browser->hists, comm)) || thread == NULL)
 		return 0;
 
-	if (asprintf(optstr, "Zoom %s %s(%d) thread",
-		     browser->hists->thread_filter ? "out of" : "into",
-		     thread->comm_set ? thread__comm_str(thread) : "",
-		     thread->tid) < 0)
+	if (hists__has(browser->hists, thread)) {
+		ret = asprintf(optstr, "Zoom %s %s(%d) thread",
+			       browser->hists->thread_filter ? "out of" : "into",
+			       thread->comm_set ? thread__comm_str(thread) : "",
+			       thread->tid);
+	} else {
+		ret = asprintf(optstr, "Zoom %s %s thread",
+			       browser->hists->thread_filter ? "out of" : "into",
+			       thread->comm_set ? thread__comm_str(thread) : "");
+	}
+	if (ret < 0)
 		return 0;
 
 	act->thread = thread;
@@ -1808,6 +1907,9 @@ static int
 do_zoom_dso(struct hist_browser *browser, struct popup_action *act)
 {
 	struct map *map = act->ms.map;
+
+	if (!hists__has(browser->hists, dso) || map == NULL)
+		return 0;
 
 	if (browser->hists->dso_filter) {
 		pstack__remove(browser->pstack, &browser->hists->dso_filter);
@@ -1833,7 +1935,7 @@ static int
 add_dso_opt(struct hist_browser *browser, struct popup_action *act,
 	    char **optstr, struct map *map)
 {
-	if (map == NULL)
+	if (!hists__has(browser->hists, dso) || map == NULL)
 		return 0;
 
 	if (asprintf(optstr, "Zoom %s %s DSO",
@@ -1855,10 +1957,10 @@ do_browse_map(struct hist_browser *browser __maybe_unused,
 }
 
 static int
-add_map_opt(struct hist_browser *browser __maybe_unused,
+add_map_opt(struct hist_browser *browser,
 	    struct popup_action *act, char **optstr, struct map *map)
 {
-	if (map == NULL)
+	if (!hists__has(browser->hists, dso) || map == NULL)
 		return 0;
 
 	if (asprintf(optstr, "Browse map details") < 0)
@@ -1960,6 +2062,9 @@ add_exit_opt(struct hist_browser *browser __maybe_unused,
 static int
 do_zoom_socket(struct hist_browser *browser, struct popup_action *act)
 {
+	if (!hists__has(browser->hists, socket) || act->socket < 0)
+		return 0;
+
 	if (browser->hists->socket_filter > -1) {
 		pstack__remove(browser->pstack, &browser->hists->socket_filter);
 		browser->hists->socket_filter = -1;
@@ -1979,7 +2084,7 @@ static int
 add_socket_opt(struct hist_browser *browser, struct popup_action *act,
 	       char **optstr, int socket_id)
 {
-	if (socket_id < 0)
+	if (!hists__has(browser->hists, socket) || socket_id < 0)
 		return 0;
 
 	if (asprintf(optstr, "Zoom %s Processor Socket %d",
@@ -2126,7 +2231,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 			 */
 			goto out_free_stack;
 		case 'a':
-			if (!sort__has_sym) {
+			if (!hists__has(hists, sym)) {
 				ui_browser__warning(&browser->b, delay_secs * 2,
 			"Annotation is only available for symbolic views, "
 			"include \"sym*\" in --sort to use it.");
@@ -2271,10 +2376,7 @@ static int perf_evsel__hists_browse(struct perf_evsel *evsel, int nr_events,
 			continue;
 		}
 
-		if (!sort__has_sym)
-			goto add_exit_option;
-
-		if (browser->selection == NULL)
+		if (!hists__has(hists, sym) || browser->selection == NULL)
 			goto skip_annotation;
 
 		if (sort__mode == SORT_MODE__BRANCH) {
@@ -2315,10 +2417,12 @@ skip_annotation:
 					     socked_id);
 		/* perf script support */
 		if (browser->he_selection) {
-			nr_options += add_script_opt(browser,
-						     &actions[nr_options],
-						     &options[nr_options],
-						     thread, NULL);
+			if (hists__has(hists, thread) && thread) {
+				nr_options += add_script_opt(browser,
+							     &actions[nr_options],
+							     &options[nr_options],
+							     thread, NULL);
+			}
 			/*
 			 * Note that browser->selection != NULL
 			 * when browser->he_selection is not NULL,
@@ -2328,7 +2432,7 @@ skip_annotation:
 			 *
 			 * See hist_browser__show_entry.
 			 */
-			if (sort__has_sym && browser->selection->sym) {
+			if (hists__has(hists, sym) && browser->selection->sym) {
 				nr_options += add_script_opt(browser,
 							     &actions[nr_options],
 							     &options[nr_options],

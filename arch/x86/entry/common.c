@@ -20,9 +20,7 @@
 #include <linux/export.h>
 #include <linux/context_tracking.h>
 #include <linux/user-return-notifier.h>
-#include <linux/nospec.h>
 #include <linux/uprobes.h>
-#include <linux/syscalls.h>
 
 #include <asm/desc.h>
 #include <asm/traps.h>
@@ -66,16 +64,22 @@ static void do_audit_syscall_entry(struct pt_regs *regs, u32 arch)
 }
 
 /*
- * Returns the syscall nr to run (which should match regs->orig_ax) or -1
- * to skip the syscall.
+ * We can return 0 to resume the syscall or anything else to go to phase
+ * 2.  If we resume the syscall, we need to put something appropriate in
+ * regs->orig_ax.
+ *
+ * NB: We don't have full pt_regs here, but regs->orig_ax and regs->ax
+ * are fully functional.
+ *
+ * For phase 2's benefit, our return value is:
+ * 0:			resume the syscall
+ * 1:			go to phase 2; no seccomp phase 2 needed
+ * anything else:	go to phase 2; pass return value to seccomp
  */
-long syscall_trace_enter(struct pt_regs *regs)
+unsigned long syscall_trace_enter_phase1(struct pt_regs *regs, u32 arch)
 {
-	u32 arch = is_ia32_task() ? AUDIT_ARCH_I386 : AUDIT_ARCH_X86_64;
-
 	struct thread_info *ti = pt_regs_to_thread_info(regs);
 	unsigned long ret = 0;
-	bool emulated = false;
 	u32 work;
 
 	if (IS_ENABLED(CONFIG_DEBUG_ENTRY))
@@ -85,7 +89,9 @@ long syscall_trace_enter(struct pt_regs *regs)
 
 #ifdef CONFIG_SECCOMP
 	/*
-	 * Do seccomp after ptrace, to catch any tracer changes.
+	 * Do seccomp first -- it should minimize exposure of other
+	 * code, and keeping seccomp fast is probably more valuable
+	 * than the rest of this.
 	 */
 	if (work & _TIF_SECCOMP) {
 		struct seccomp_data sd;
@@ -168,12 +174,30 @@ long syscall_trace_enter_phase2(struct pt_regs *regs, u32 arch,
 	}
 #endif
 
+	if (unlikely(work & _TIF_SYSCALL_EMU))
+		ret = -1L;
+
+	if ((ret || test_thread_flag(TIF_SYSCALL_TRACE)) &&
+	    tracehook_report_syscall_entry(regs))
+		ret = -1L;
+
 	if (unlikely(test_thread_flag(TIF_SYSCALL_TRACEPOINT)))
 		trace_sys_enter(regs, regs->orig_ax);
 
 	do_audit_syscall_entry(regs, arch);
 
 	return ret ?: regs->orig_ax;
+}
+
+long syscall_trace_enter(struct pt_regs *regs)
+{
+	u32 arch = is_ia32_task() ? AUDIT_ARCH_I386 : AUDIT_ARCH_X86_64;
+	unsigned long phase1_result = syscall_trace_enter_phase1(regs, arch);
+
+	if (phase1_result == 0)
+		return regs->orig_ax;
+	else
+		return syscall_trace_enter_phase2(regs, arch, phase1_result);
 }
 
 #define EXIT_TO_USERMODE_LOOP_FLAGS				\
@@ -229,8 +253,6 @@ __visible inline void prepare_exit_to_usermode(struct pt_regs *regs)
 	struct thread_info *ti = pt_regs_to_thread_info(regs);
 	u32 cached_flags;
 
-	addr_limit_user_check();
-
 	if (IS_ENABLED(CONFIG_PROVE_LOCKING) && WARN_ON(!irqs_disabled()))
 		local_irq_disable();
 
@@ -253,8 +275,6 @@ __visible inline void prepare_exit_to_usermode(struct pt_regs *regs)
 #endif
 
 	user_enter();
-
-	mds_user_clear_cpu_buffers();
 }
 
 #define SYSCALL_EXIT_WORK_FLAGS				\
@@ -363,7 +383,6 @@ static __always_inline void do_syscall_32_irqs_on(struct pt_regs *regs)
 	}
 
 	if (likely(nr < IA32_NR_syscalls)) {
-		nr = array_index_nospec(nr, IA32_NR_syscalls);
 		/*
 		 * It's possible that a 32-bit syscall implementation
 		 * takes a 64-bit parameter but nonetheless assumes that

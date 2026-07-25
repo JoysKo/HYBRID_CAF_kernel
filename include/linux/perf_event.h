@@ -61,11 +61,6 @@ struct perf_callchain_entry {
 	__u64				ip[0]; /* /proc/sys/kernel/perf_event_max_stack */
 };
 
-struct perf_callchain_entry_ctx {
-	struct perf_callchain_entry *entry;
-	u32			    max_stack;
-};
-
 struct perf_raw_record {
 	u32				size;
 	void				*data;
@@ -156,6 +151,15 @@ struct hw_perf_event {
 	 */
 	struct task_struct		*target;
 
+	/*
+	 * PMU would store hardware filter configuration
+	 * here.
+	 */
+	void				*addr_filters;
+
+	/* Last sync'ed generation of filters */
+	unsigned long			addr_filters_gen;
+
 /*
  * hw_perf_event::state flags; used to track the PERF_EF_* state.
  */
@@ -221,6 +225,7 @@ struct perf_event;
 #define PERF_PMU_CAP_AUX_SW_DOUBLEBUF		0x08
 #define PERF_PMU_CAP_EXCLUSIVE			0x10
 #define PERF_PMU_CAP_ITRACE			0x20
+#define PERF_PMU_CAP_HETEROGENEOUS_CPUS		0x40
 
 /**
  * struct pmu - generic performance monitoring unit
@@ -246,6 +251,9 @@ struct pmu {
 	int				hrtimer_interval_ms;
 	u32                             events_across_hotplug:1,
 					reserved:31;
+
+	/* number of address filters this PMU can do */
+	unsigned int			nr_addr_filters;
 
 	/*
 	 * Fully disable/enable this PMU, can be used to protect from the PMI
@@ -400,6 +408,31 @@ struct pmu {
 	void (*free_aux)		(void *aux); /* optional */
 
 	/*
+	 * Validate address range filters: make sure the HW supports the
+	 * requested configuration and number of filters; return 0 if the
+	 * supplied filters are valid, -errno otherwise.
+	 *
+	 * Runs in the context of the ioctl()ing process and is not serialized
+	 * with the rest of the PMU callbacks.
+	 */
+	int (*addr_filters_validate)	(struct list_head *filters);
+					/* optional */
+
+	/*
+	 * Synchronize address range filter configuration:
+	 * translate hw-agnostic filters into hardware configuration in
+	 * event::hw::addr_filters.
+	 *
+	 * Runs as a part of filter sync sequence that is done in ->start()
+	 * callback by calling perf_event_addr_filters_sync().
+	 *
+	 * May (and should) traverse event::addr_filters::list, for which its
+	 * caller provides necessary serialization.
+	 */
+	void (*addr_filters_sync)	(struct perf_event *event);
+					/* optional */
+
+	/*
 	 * Filter events for PMU-specific reasons.
 	 */
 	int (*filter_match)		(struct perf_event *event); /* optional */
@@ -411,6 +444,40 @@ struct pmu {
 					 void __user *arg); /* optional */
 	void (*free_drv_configs)	(struct perf_event *event);
 					/* optional */
+};
+
+/**
+ * struct perf_addr_filter - address range filter definition
+ * @entry:	event's filter list linkage
+ * @inode:	object file's inode for file-based filters
+ * @offset:	filter range offset
+ * @size:	filter range size
+ * @range:	1: range, 0: address
+ * @filter:	1: filter/start, 0: stop
+ *
+ * This is a hardware-agnostic filter configuration as specified by the user.
+ */
+struct perf_addr_filter {
+	struct list_head	entry;
+	struct inode		*inode;
+	unsigned long		offset;
+	unsigned long		size;
+	unsigned int		range	: 1,
+				filter	: 1;
+};
+
+/**
+ * struct perf_addr_filters_head - container for address range filters
+ * @list:	list of filters for this event
+ * @lock:	spinlock that serializes accesses to the @list and event's
+ *		(and its children's) filter generations.
+ *
+ * A child event will use parent's @list (and therefore @lock), so they are
+ * bundled together; see perf_event_addr_filters().
+ */
+struct perf_addr_filters_head {
+	struct list_head	list;
+	raw_spinlock_t		lock;
 };
 
 /**
@@ -586,6 +653,12 @@ struct perf_event {
 
 	atomic_t			event_limit;
 	struct list_head		drv_configs;
+
+	/* address range filters */
+	struct perf_addr_filters_head	addr_filters;
+	/* vma address array for file-based filders */
+	unsigned long			*addr_filters_offs;
+	unsigned long			addr_filters_gen;
 
 	void (*destroy)(struct perf_event *);
 	struct rcu_head			rcu_head;
@@ -867,14 +940,24 @@ extern int perf_event_overflow(struct perf_event *event,
 				 struct perf_sample_data *data,
 				 struct pt_regs *regs);
 
+extern void perf_event_output_forward(struct perf_event *event,
+				     struct perf_sample_data *data,
+				     struct pt_regs *regs);
+extern void perf_event_output_backward(struct perf_event *event,
+				       struct perf_sample_data *data,
+				       struct pt_regs *regs);
 extern void perf_event_output(struct perf_event *event,
-				struct perf_sample_data *data,
-				struct pt_regs *regs);
+			      struct perf_sample_data *data,
+			      struct pt_regs *regs);
 
 static inline bool
 is_default_overflow_handler(struct perf_event *event)
 {
-	return (event->overflow_handler == perf_event_output);
+	if (likely(event->overflow_handler == perf_event_output_forward))
+		return true;
+	if (unlikely(event->overflow_handler == perf_event_output_backward))
+		return true;
+	return false;
 }
 
 extern void
@@ -1008,8 +1091,8 @@ extern void perf_event_fork(struct task_struct *tsk);
 /* Callchains */
 DECLARE_PER_CPU(struct perf_callchain_entry, perf_callchain_entry);
 
-extern void perf_callchain_user(struct perf_callchain_entry_ctx *entry, struct pt_regs *regs);
-extern void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry, struct pt_regs *regs);
+extern void perf_callchain_user(struct perf_callchain_entry *entry, struct pt_regs *regs);
+extern void perf_callchain_kernel(struct perf_callchain_entry *entry, struct pt_regs *regs);
 extern struct perf_callchain_entry *
 get_perf_callchain(struct pt_regs *regs, u32 init_nr, bool kernel, bool user,
 		   u32 max_stack, bool crosstask, bool add_mark);
@@ -1018,10 +1101,9 @@ extern void put_callchain_buffers(void);
 
 extern int sysctl_perf_event_max_stack;
 
-static inline int perf_callchain_store(struct perf_callchain_entry_ctx *ctx, u64 ip)
+static inline int perf_callchain_store(struct perf_callchain_entry *entry, u64 ip)
 {
-	struct perf_callchain_entry *entry = ctx->entry;
-	if (entry->nr < ctx->max_stack) {
+	if (entry->nr < sysctl_perf_event_max_stack) {
 		entry->ip[entry->nr++] = ip;
 		return 0;
 	} else {
@@ -1045,11 +1127,6 @@ extern int perf_cpu_time_max_percent_handler(struct ctl_table *table, int write,
 
 int perf_event_max_stack_handler(struct ctl_table *table, int write,
 				 void __user *buffer, size_t *lenp, loff_t *ppos);
-
-static inline bool perf_paranoid_any(void)
-{
-	return sysctl_perf_event_paranoid > 2;
-}
 
 static inline bool perf_paranoid_tracepoint_raw(void)
 {
@@ -1094,8 +1171,41 @@ static inline bool has_aux(struct perf_event *event)
 	return event->pmu->setup_aux;
 }
 
+static inline bool is_write_backward(struct perf_event *event)
+{
+	return !!event->attr.write_backward;
+}
+
+static inline bool has_addr_filter(struct perf_event *event)
+{
+	return event->pmu->nr_addr_filters;
+}
+
+/*
+ * An inherited event uses parent's filters
+ */
+static inline struct perf_addr_filters_head *
+perf_event_addr_filters(struct perf_event *event)
+{
+	struct perf_addr_filters_head *ifh = &event->addr_filters;
+
+	if (event->parent)
+		ifh = &event->parent->addr_filters;
+
+	return ifh;
+}
+
+extern void perf_event_addr_filters_sync(struct perf_event *event);
+
 extern int perf_output_begin(struct perf_output_handle *handle,
 			     struct perf_event *event, unsigned int size);
+extern int perf_output_begin_forward(struct perf_output_handle *handle,
+				    struct perf_event *event,
+				    unsigned int size);
+extern int perf_output_begin_backward(struct perf_output_handle *handle,
+				      struct perf_event *event,
+				      unsigned int size);
+
 extern void perf_output_end(struct perf_output_handle *handle);
 extern unsigned int perf_output_copy(struct perf_output_handle *handle,
 			     const void *buf, unsigned int len);

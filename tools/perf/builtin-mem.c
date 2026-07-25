@@ -26,8 +26,22 @@ static int __cmd_record(int argc, const char **argv, struct perf_mem *mem)
 	int rec_argc, i = 0, j;
 	const char **rec_argv;
 	int ret;
+	bool all_user = false, all_kernel = false;
+	struct option options[] = {
+	OPT_CALLBACK('e', "event", &mem, "event",
+		     "event selector. use 'perf mem record -e list' to list available events",
+		     parse_record_events),
+	OPT_INCR('v', "verbose", &verbose,
+		 "be more verbose (show counter open errors, etc)"),
+	OPT_BOOLEAN('U', "--all-user", &all_user, "collect only user level data"),
+	OPT_BOOLEAN('K', "--all-kernel", &all_kernel, "collect only kernel level data"),
+	OPT_END()
+	};
 
-	rec_argc = argc + 7; /* max number of arguments */
+	argc = parse_options(argc, argv, options, record_mem_usage,
+			     PARSE_OPT_STOP_AT_NON_OPTION);
+
+	rec_argc = argc + 9; /* max number of arguments */
 	rec_argv = calloc(rec_argc + 1, sizeof(char *));
 	if (!rec_argv)
 		return -1;
@@ -49,7 +63,13 @@ static int __cmd_record(int argc, const char **argv, struct perf_mem *mem)
 		rec_argv[i++] = "cpu/mem-stores/pp";
 	}
 
-	for (j = 1; j < argc; j++, i++)
+	if (all_user)
+		rec_argv[i++] = "--all-user";
+
+	if (all_kernel)
+		rec_argv[i++] = "--all-kernel";
+
+	for (j = 0; j < argc; j++, i++)
 		rec_argv[i] = argv[j];
 
 	ret = cmd_record(i, rec_argv, NULL);

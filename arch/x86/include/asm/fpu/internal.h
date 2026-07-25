@@ -101,9 +101,6 @@ extern void fpstate_sanitize_xstate(struct fpu *fpu);
 #define user_insn(insn, output, input...)				\
 ({									\
 	int err;							\
-									\
-	might_fault();							\
-									\
 	asm volatile(ASM_STAC "\n"					\
 		     "1:" #insn "\n\t"					\
 		     "2: " ASM_CLAC "\n"				\
@@ -224,14 +221,6 @@ static inline void copy_fxregs_to_kernel(struct fpu *fpu)
 	}
 }
 
-static inline void fxsave(struct fxregs_state *fx)
-{
-	if (IS_ENABLED(CONFIG_X86_32))
-		asm volatile( "fxsave %[fx]" : [fx] "=m" (*fx));
-	else
-		asm volatile("fxsaveq %[fx]" : [fx] "=m" (*fx));
-}
-
 /* These macros all use (%edi)/(%rdi) as the single memory argument. */
 #define XSAVE		".byte " REX_PREFIX "0x0f,0xae,0x27"
 #define XSAVEOPT	".byte " REX_PREFIX "0x0f,0xae,0x37"
@@ -302,18 +291,8 @@ static inline void fxsave(struct fxregs_state *fx)
 		     : "memory")
 
 /*
- * If XSAVES is enabled, it replaces XSAVEOPT because it supports a compact
- * format and supervisor states in addition to modified optimization in
- * XSAVEOPT.
- *
- * Otherwise, if XSAVEOPT is enabled, XSAVEOPT replaces XSAVE because XSAVEOPT
- * supports modified optimization which is not supported by XSAVE.
- *
- * We use XSAVE as a fallback.
- *
- * The 661 label is defined in the ALTERNATIVE* macros as the address of the
- * original instruction which gets replaced. We need to use it here as the
- * address of the instruction where we might get an exception at.
+ * This function is called only during boot time when x86 caps are not set
+ * up and alternative can not be used yet.
  */
 static inline void copy_xregs_to_kernel_booting(struct xregs_state *xstate)
 {
@@ -329,24 +308,9 @@ static inline void copy_xregs_to_kernel_booting(struct xregs_state *xstate)
 	else
 		XSTATE_OP(XSAVE, xstate, lmask, hmask, err);
 
-/*
- * Use XRSTORS to restore context if it is enabled. XRSTORS supports compact
- * XSAVE area format.
- */
-#define XSTATE_XRESTORE(st, lmask, hmask, err)				\
-	asm volatile(ALTERNATIVE(XRSTOR,				\
-				 XRSTORS, X86_FEATURE_XSAVES)		\
-		     "\n"						\
-		     "xor %[err], %[err]\n"				\
-		     "3:\n"						\
-		     ".pushsection .fixup,\"ax\"\n"			\
-		     "4: movl $-2, %[err]\n"				\
-		     "jmp 3b\n"						\
-		     ".popsection\n"					\
-		     _ASM_EXTABLE(661b, 4b)				\
-		     : [err] "=r" (err)					\
-		     : "D" (st), "m" (*st), "a" (lmask), "d" (hmask)	\
-		     : "memory")
+	/* We should never fault when copying to a kernel buffer: */
+	WARN_ON_FPU(err);
+}
 
 /*
  * This function is called only during boot time when x86 caps are not set
@@ -536,6 +500,24 @@ static inline int fpu_want_lazy_restore(struct fpu *fpu, unsigned int cpu)
 }
 
 
+/*
+ * Wrap lazy FPU TS handling in a 'hw fpregs activation/deactivation'
+ * idiom, which is then paired with the sw-flag (fpregs_active) later on:
+ */
+
+static inline void __fpregs_activate_hw(void)
+{
+	if (!use_eager_fpu())
+		clts();
+}
+
+static inline void __fpregs_deactivate_hw(void)
+{
+	if (!use_eager_fpu())
+		stts();
+}
+
+/* Must be paired with an 'stts' (fpregs_deactivate_hw()) after! */
 static inline void __fpregs_deactivate(struct fpu *fpu)
 {
 	WARN_ON_FPU(!fpu->fpregs_active);
@@ -544,6 +526,7 @@ static inline void __fpregs_deactivate(struct fpu *fpu)
 	this_cpu_write(fpu_fpregs_owner_ctx, NULL);
 }
 
+/* Must be paired with a 'clts' (fpregs_activate_hw()) before! */
 static inline void __fpregs_activate(struct fpu *fpu)
 {
 	WARN_ON_FPU(fpu->fpregs_active);
@@ -568,17 +551,22 @@ static inline int fpregs_active(void)
 }
 
 /*
+ * Encapsulate the CR0.TS handling together with the
+ * software flag.
+ *
  * These generally need preemption protection to work,
  * do try to avoid using these on their own.
  */
 static inline void fpregs_activate(struct fpu *fpu)
 {
+	__fpregs_activate_hw();
 	__fpregs_activate(fpu);
 }
 
 static inline void fpregs_deactivate(struct fpu *fpu)
 {
 	__fpregs_deactivate(fpu);
+	__fpregs_deactivate_hw();
 }
 
 /*
@@ -619,12 +607,17 @@ switch_fpu_prepare(struct fpu *old_fpu, struct fpu *new_fpu, int cpu)
 
 		/* Don't change CR0.TS if we just switch! */
 		if (fpu.preload) {
+			new_fpu->counter++;
 			__fpregs_activate(new_fpu);
 			prefetch(&new_fpu->state);
+		} else {
+			__fpregs_deactivate_hw();
 		}
 	} else {
+		old_fpu->counter = 0;
 		old_fpu->last_cpu = -1;
 		if (fpu.preload) {
+			new_fpu->counter++;
 			if (fpu_want_lazy_restore(new_fpu, cpu))
 				fpu.preload = 0;
 			else

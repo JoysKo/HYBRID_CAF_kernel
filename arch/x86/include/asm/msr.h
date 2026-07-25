@@ -112,7 +112,7 @@ static inline void native_write_msr(unsigned int msr,
 				    unsigned low, unsigned high)
 {
 	asm volatile("wrmsr" : : "c" (msr), "a"(low), "d" (high) : "memory");
-	if (msr_tracepoint_active(__tracepoint_write_msr))
+	if (msr_tracepoint_active(__tracepoint_read_msr))
 		do_trace_write_msr(msr, ((u64)high << 32 | low), 0);
 }
 
@@ -131,7 +131,7 @@ notrace static inline int native_write_msr_safe(unsigned int msr,
 		     : "c" (msr), "0" (low), "d" (high),
 		       [fault] "i" (-EIO)
 		     : "memory");
-	if (msr_tracepoint_active(__tracepoint_write_msr))
+	if (msr_tracepoint_active(__tracepoint_read_msr))
 		do_trace_write_msr(msr, ((u64)high << 32 | low), err);
 	return err;
 }
@@ -178,7 +178,8 @@ static __always_inline unsigned long long rdtsc_ordered(void)
 	 * that some other imaginary CPU is updating continuously with a
 	 * time stamp.
 	 */
-	barrier_nospec();
+	alternative_2("", "mfence", X86_FEATURE_MFENCE_RDTSC,
+			  "lfence", X86_FEATURE_LFENCE_RDTSC);
 	return rdtsc();
 }
 

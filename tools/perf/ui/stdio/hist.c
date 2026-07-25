@@ -432,6 +432,110 @@ static int hist_entry__fprintf(struct hist_entry *he, size_t size,
 	return ret;
 }
 
+static int print_hierarchy_indent(const char *sep, int indent,
+				  const char *line, FILE *fp)
+{
+	if (sep != NULL || indent < 2)
+		return 0;
+
+	return fprintf(fp, "%-.*s", (indent - 2) * HIERARCHY_INDENT, line);
+}
+
+static int print_hierarchy_header(struct hists *hists, struct perf_hpp *hpp,
+				  const char *sep, FILE *fp)
+{
+	bool first_node, first_col;
+	int indent;
+	int depth;
+	unsigned width = 0;
+	unsigned header_width = 0;
+	struct perf_hpp_fmt *fmt;
+	struct perf_hpp_list_node *fmt_node;
+
+	indent = hists->nr_hpp_node;
+
+	/* preserve max indent depth for column headers */
+	print_hierarchy_indent(sep, indent, spaces, fp);
+
+	/* the first hpp_list_node is for overhead columns */
+	fmt_node = list_first_entry(&hists->hpp_formats,
+				    struct perf_hpp_list_node, list);
+
+	perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+		fmt->header(fmt, hpp, hists_to_evsel(hists));
+		fprintf(fp, "%s%s", hpp->buf, sep ?: "  ");
+	}
+
+	/* combine sort headers with ' / ' */
+	first_node = true;
+	list_for_each_entry_continue(fmt_node, &hists->hpp_formats, list) {
+		if (!first_node)
+			header_width += fprintf(fp, " / ");
+		first_node = false;
+
+		first_col = true;
+		perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+			if (perf_hpp__should_skip(fmt, hists))
+				continue;
+
+			if (!first_col)
+				header_width += fprintf(fp, "+");
+			first_col = false;
+
+			fmt->header(fmt, hpp, hists_to_evsel(hists));
+
+			header_width += fprintf(fp, "%s", trim(hpp->buf));
+		}
+	}
+
+	fprintf(fp, "\n# ");
+
+	/* preserve max indent depth for initial dots */
+	print_hierarchy_indent(sep, indent, dots, fp);
+
+	/* the first hpp_list_node is for overhead columns */
+	fmt_node = list_first_entry(&hists->hpp_formats,
+				    struct perf_hpp_list_node, list);
+
+	first_col = true;
+	perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+		if (!first_col)
+			fprintf(fp, "%s", sep ?: "..");
+		first_col = false;
+
+		width = fmt->width(fmt, hpp, hists_to_evsel(hists));
+		fprintf(fp, "%.*s", width, dots);
+	}
+
+	depth = 0;
+	list_for_each_entry_continue(fmt_node, &hists->hpp_formats, list) {
+		first_col = true;
+		width = depth * HIERARCHY_INDENT;
+
+		perf_hpp_list__for_each_format(&fmt_node->hpp, fmt) {
+			if (perf_hpp__should_skip(fmt, hists))
+				continue;
+
+			if (!first_col)
+				width++;  /* for '+' sign between column header */
+			first_col = false;
+
+			width += fmt->width(fmt, hpp, hists_to_evsel(hists));
+		}
+
+		if (width > header_width)
+			header_width = width;
+
+		depth++;
+	}
+
+	fprintf(fp, "%s%-.*s", sep ?: "  ", header_width, dots);
+
+	fprintf(fp, "\n#\n");
+
+	return 2;
+}
+
 size_t hists__fprintf(struct hists *hists, bool show_header, int max_rows,
 		      int max_cols, float min_pcnt, FILE *fp)
 {

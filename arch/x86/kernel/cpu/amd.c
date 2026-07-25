@@ -9,7 +9,6 @@
 #include <asm/processor.h>
 #include <asm/apic.h>
 #include <asm/cpu.h>
-#include <asm/spec-ctrl.h>
 #include <asm/smp.h>
 #include <asm/pci-direct.h>
 #include <asm/delay.h>
@@ -115,13 +114,13 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 		return;
 	}
 
-	if (c->x86_model == 6 && c->x86_stepping == 1) {
+	if (c->x86_model == 6 && c->x86_mask == 1) {
 		const int K6_BUG_LOOP = 1000000;
 		int n;
 		void (*f_vide)(void);
 		u64 d, d2;
 
-		printk(KERN_INFO "AMD K6 stepping B detected - ");
+		pr_info("AMD K6 stepping B detected - ");
 
 		/*
 		 * It looks like AMD fixed the 2.6.2 bug and improved indirect
@@ -137,15 +136,14 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 		d = d2-d;
 
 		if (d > 20*K6_BUG_LOOP)
-			printk(KERN_CONT
-				"system stability may be impaired when more than 32 MB are used.\n");
+			pr_cont("system stability may be impaired when more than 32 MB are used.\n");
 		else
-			printk(KERN_CONT "probably OK (after B9730xxxx).\n");
+			pr_cont("probably OK (after B9730xxxx).\n");
 	}
 
 	/* K6 with old style WHCR */
 	if (c->x86_model < 8 ||
-	   (c->x86_model == 8 && c->x86_stepping < 8)) {
+	   (c->x86_model == 8 && c->x86_mask < 8)) {
 		/* We can only write allocate on the low 508Mb */
 		if (mbytes > 508)
 			mbytes = 508;
@@ -158,13 +156,13 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 			wbinvd();
 			wrmsr(MSR_K6_WHCR, l, h);
 			local_irq_restore(flags);
-			printk(KERN_INFO "Enabling old style K6 write allocation for %d Mb\n",
+			pr_info("Enabling old style K6 write allocation for %d Mb\n",
 				mbytes);
 		}
 		return;
 	}
 
-	if ((c->x86_model == 8 && c->x86_stepping > 7) ||
+	if ((c->x86_model == 8 && c->x86_mask > 7) ||
 	     c->x86_model == 9 || c->x86_model == 13) {
 		/* The more serious chips .. */
 
@@ -179,7 +177,7 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 			wbinvd();
 			wrmsr(MSR_K6_WHCR, l, h);
 			local_irq_restore(flags);
-			printk(KERN_INFO "Enabling new style K6 write allocation for %d Mb\n",
+			pr_info("Enabling new style K6 write allocation for %d Mb\n",
 				mbytes);
 		}
 
@@ -192,15 +190,6 @@ static void init_amd_k6(struct cpuinfo_x86 *c)
 		return;
 	}
 #endif
-	/*
-	 * Work around Erratum 1386.  The XSAVES instruction malfunctions in
-	 * certain circumstances on Zen1/2 uarch, and not all parts have had
-	 * updated microcode at the time of writing (March 2023).
-	 *
-	 * Affected parts all have no supervisor XSAVE states, meaning that
-	 * the XSAVEC instruction (which works fine) is equivalent.
-	 */
-	clear_cpu_cap(c, X86_FEATURE_XSAVES);
 }
 
 static void init_amd_k7(struct cpuinfo_x86 *c)
@@ -215,7 +204,7 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	 */
 	if (c->x86_model >= 6 && c->x86_model <= 10) {
 		if (!cpu_has(c, X86_FEATURE_XMM)) {
-			printk(KERN_INFO "Enabling disabled K7/SSE Support.\n");
+			pr_info("Enabling disabled K7/SSE Support.\n");
 			msr_clear_bit(MSR_K7_HWCR, 15);
 			set_cpu_cap(c, X86_FEATURE_XMM);
 		}
@@ -226,12 +215,11 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	 * are more robust with CLK_CTL set to 200xxxxx instead of 600xxxxx
 	 * As per AMD technical note 27212 0.2
 	 */
-	if ((c->x86_model == 8 && c->x86_stepping >= 1) || (c->x86_model > 8)) {
+	if ((c->x86_model == 8 && c->x86_mask >= 1) || (c->x86_model > 8)) {
 		rdmsr(MSR_K7_CLK_CTL, l, h);
 		if ((l & 0xfff00000) != 0x20000000) {
-			printk(KERN_INFO
-			    "CPU: CLK_CTL MSR was %x. Reprogramming to %x\n",
-					l, ((l & 0x000fffff)|0x20000000));
+			pr_info("CPU: CLK_CTL MSR was %x. Reprogramming to %x\n",
+				l, ((l & 0x000fffff)|0x20000000));
 			wrmsr(MSR_K7_CLK_CTL, (l & 0x000fffff)|0x20000000, h);
 		}
 	}
@@ -247,12 +235,12 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	 * but they are not certified as MP capable.
 	 */
 	/* Athlon 660/661 is valid. */
-	if ((c->x86_model == 6) && ((c->x86_stepping == 0) ||
-	    (c->x86_stepping == 1)))
+	if ((c->x86_model == 6) && ((c->x86_mask == 0) ||
+	    (c->x86_mask == 1)))
 		return;
 
 	/* Duron 670 is valid */
-	if ((c->x86_model == 7) && (c->x86_stepping == 0))
+	if ((c->x86_model == 7) && (c->x86_mask == 0))
 		return;
 
 	/*
@@ -262,8 +250,8 @@ static void init_amd_k7(struct cpuinfo_x86 *c)
 	 * See http://www.heise.de/newsticker/data/jow-18.10.01-000 for
 	 * more.
 	 */
-	if (((c->x86_model == 6) && (c->x86_stepping >= 2)) ||
-	    ((c->x86_model == 7) && (c->x86_stepping >= 1)) ||
+	if (((c->x86_model == 6) && (c->x86_mask >= 2)) ||
+	    ((c->x86_model == 7) && (c->x86_mask >= 1)) ||
 	     (c->x86_model > 7))
 		if (cpu_has(c, X86_FEATURE_MP))
 			return;
@@ -359,6 +347,7 @@ static void amd_detect_cmp(struct cpuinfo_x86 *c)
 #ifdef CONFIG_SMP
 	unsigned bits;
 	int cpu = smp_processor_id();
+	unsigned int socket_id, core_complex_id;
 
 	bits = c->x86_coreid_bits;
 	/* Low order bits define the core id (index of core in socket) */
@@ -376,7 +365,10 @@ static void amd_detect_cmp(struct cpuinfo_x86 *c)
 	 if (c->x86 != 0x17 || !cpuid_edx(0x80000006))
 		return;
 
-	per_cpu(cpu_llc_id, cpu) = c->apicid >> 3;
+	socket_id	= (c->apicid >> bits) - 1;
+	core_complex_id	= (c->apicid & ((1 << bits) - 1)) >> 3;
+
+	per_cpu(cpu_llc_id, cpu) = (socket_id << 3) | core_complex_id;
 #endif
 }
 
@@ -488,7 +480,7 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 		if (!rdmsrl_safe(MSR_K8_TSEG_ADDR, &tseg)) {
 			unsigned long pfn = tseg >> PAGE_SHIFT;
 
-			printk(KERN_DEBUG "tseg: %010llx\n", tseg);
+			pr_debug("tseg: %010llx\n", tseg);
 			if (pfn_range_is_mapped(pfn, pfn + 1))
 				set_memory_4k((unsigned long)__va(tseg), 1);
 		}
@@ -503,8 +495,7 @@ static void bsp_init_amd(struct cpuinfo_x86 *c)
 
 			rdmsrl(MSR_K7_HWCR, val);
 			if (!(val & BIT(24)))
-				printk(KERN_WARNING FW_BUG "TSC doesn't count "
-					"with P0 frequency!\n");
+				pr_warn(FW_BUG "TSC doesn't count with P0 frequency!\n");
 		}
 	}
 
@@ -564,7 +555,7 @@ static void early_init_amd(struct cpuinfo_x86 *c)
 	/*  Set MTRR capability flag if appropriate */
 	if (c->x86 == 5)
 		if (c->x86_model == 13 || c->x86_model == 9 ||
-		    (c->x86_model == 8 && c->x86_stepping >= 8))
+		    (c->x86_model == 8 && c->x86_mask >= 8))
 			set_cpu_cap(c, X86_FEATURE_K6_MTRR);
 #endif
 #if defined(CONFIG_X86_LOCAL_APIC) && defined(CONFIG_PCI)
@@ -674,75 +665,6 @@ static void init_amd_gh(struct cpuinfo_x86 *c)
 		set_cpu_bug(c, X86_BUG_AMD_TLB_MMATCH);
 }
 
-#define MSR_AMD64_DE_CFG	0xC0011029
-
-static void init_amd_ln(struct cpuinfo_x86 *c)
-{
-	/*
-	 * Apply erratum 665 fix unconditionally so machines without a BIOS
-	 * fix work.
-	 */
-	msr_set_bit(MSR_AMD64_DE_CFG, 31);
-}
-
-static bool rdrand_force;
-
-static int __init rdrand_cmdline(char *str)
-{
-	if (!str)
-		return -EINVAL;
-
-	if (!strcmp(str, "force"))
-		rdrand_force = true;
-	else
-		return -EINVAL;
-
-	return 0;
-}
-early_param("rdrand", rdrand_cmdline);
-
-static void clear_rdrand_cpuid_bit(struct cpuinfo_x86 *c)
-{
-	/*
-	 * Saving of the MSR used to hide the RDRAND support during
-	 * suspend/resume is done by arch/x86/power/cpu.c, which is
-	 * dependent on CONFIG_PM_SLEEP.
-	 */
-	if (!IS_ENABLED(CONFIG_PM_SLEEP))
-		return;
-
-	/*
-	 * The nordrand option can clear X86_FEATURE_RDRAND, so check for
-	 * RDRAND support using the CPUID function directly.
-	 */
-	if (!(cpuid_ecx(1) & BIT(30)) || rdrand_force)
-		return;
-
-	msr_clear_bit(MSR_AMD64_CPUID_FN_1, 62);
-
-	/*
-	 * Verify that the CPUID change has occurred in case the kernel is
-	 * running virtualized and the hypervisor doesn't support the MSR.
-	 */
-	if (cpuid_ecx(1) & BIT(30)) {
-		pr_info_once("BIOS may not properly restore RDRAND after suspend, but hypervisor does not support hiding RDRAND via CPUID.\n");
-		return;
-	}
-
-	clear_cpu_cap(c, X86_FEATURE_RDRAND);
-	pr_info_once("BIOS may not properly restore RDRAND after suspend, hiding RDRAND via CPUID. Use rdrand=force to reenable.\n");
-}
-
-static void init_amd_jg(struct cpuinfo_x86 *c)
-{
-	/*
-	 * Some BIOS implementations do not restore proper RDRAND support
-	 * across suspend and resume. Check on whether to hide the RDRAND
-	 * instruction support via CPUID.
-	 */
-	clear_rdrand_cpuid_bit(c);
-}
-
 static void init_amd_bd(struct cpuinfo_x86 *c)
 {
 	u64 value;
@@ -770,25 +692,6 @@ static void init_amd_bd(struct cpuinfo_x86 *c)
 			wrmsrl_safe(MSR_F15H_IC_CFG, value);
 		}
 	}
-
-	/*
-	 * Some BIOS implementations do not restore proper RDRAND support
-	 * across suspend and resume. Check on whether to hide the RDRAND
-	 * instruction support via CPUID.
-	 */
-	clear_rdrand_cpuid_bit(c);
-}
-
-static void init_amd_zn(struct cpuinfo_x86 *c)
-{
-	set_cpu_cap(c, X86_FEATURE_ZEN);
-
-	/*
-	 * Fix erratum 1076: CPB feature bit not being set in CPUID.
-	 * Always set it, except when running under a hypervisor.
-	 */
-	if (!cpu_has(c, X86_FEATURE_HYPERVISOR) && !cpu_has(c, X86_FEATURE_CPB))
-		set_cpu_cap(c, X86_FEATURE_CPB);
 }
 
 static void init_amd(struct cpuinfo_x86 *c)
@@ -819,10 +722,7 @@ static void init_amd(struct cpuinfo_x86 *c)
 	case 6:	   init_amd_k7(c); break;
 	case 0xf:  init_amd_k8(c); break;
 	case 0x10: init_amd_gh(c); break;
-	case 0x12: init_amd_ln(c); break;
 	case 0x15: init_amd_bd(c); break;
-	case 0x16: init_amd_jg(c); break;
-	case 0x17: init_amd_zn(c); break;
 	}
 
 	/* Enable workaround for FXSAVE leak */
@@ -847,32 +747,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 		set_cpu_cap(c, X86_FEATURE_K8);
 
 	if (cpu_has_xmm2) {
-		unsigned long long val;
-		int ret;
-
-		/*
-		 * A serializing LFENCE has less overhead than MFENCE, so
-		 * use it for execution serialization.  On families which
-		 * don't have that MSR, LFENCE is already serializing.
-		 * msr_set_bit() uses the safe accessors, too, even if the MSR
-		 * is not present.
-		 */
-		msr_set_bit(MSR_F10H_DECFG,
-			    MSR_F10H_DECFG_LFENCE_SERIALIZE_BIT);
-
-		/*
-		 * Verify that the MSR write was successful (could be running
-		 * under a hypervisor) and only then assume that LFENCE is
-		 * serializing.
-		 */
-		ret = rdmsrl_safe(MSR_F10H_DECFG, &val);
-		if (!ret && (val & MSR_F10H_DECFG_LFENCE_SERIALIZE)) {
-			/* A serializing LFENCE stops RDTSC speculation */
-			set_cpu_cap(c, X86_FEATURE_LFENCE_RDTSC);
-		} else {
-			/* MFENCE stops RDTSC speculation */
-			set_cpu_cap(c, X86_FEATURE_MFENCE_RDTSC);
-		}
+		/* MFENCE stops RDTSC speculation */
+		set_cpu_cap(c, X86_FEATURE_MFENCE_RDTSC);
 	}
 
 	/*
@@ -892,9 +768,8 @@ static void init_amd(struct cpuinfo_x86 *c)
 		if (cpu_has(c, X86_FEATURE_3DNOW) || cpu_has(c, X86_FEATURE_LM))
 			set_cpu_cap(c, X86_FEATURE_3DNOWPREFETCH);
 
-	/* AMD CPUs don't reset SS attributes on SYSRET, Xen does. */
-	if (!cpu_has(c, X86_FEATURE_XENPV))
-		set_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
+	/* AMD CPUs don't reset SS attributes on SYSRET */
+	set_cpu_bug(c, X86_BUG_SYSRET_SS_ATTRS);
 }
 
 #ifdef CONFIG_X86_32
@@ -903,11 +778,11 @@ static unsigned int amd_size_cache(struct cpuinfo_x86 *c, unsigned int size)
 	/* AMD errata T13 (order #21922) */
 	if ((c->x86 == 6)) {
 		/* Duron Rev A0 */
-		if (c->x86_model == 3 && c->x86_stepping == 0)
+		if (c->x86_model == 3 && c->x86_mask == 0)
 			size = 64;
 		/* Tbird rev A1/A2 */
 		if (c->x86_model == 4 &&
-			(c->x86_stepping == 0 || c->x86_stepping == 1))
+			(c->x86_mask == 0 || c->x86_mask == 1))
 			size = 256;
 	}
 	return size;
@@ -1044,7 +919,7 @@ static bool cpu_has_amd_erratum(struct cpuinfo_x86 *cpu, const int *erratum)
 	}
 
 	/* OSVW unavailable or ID unknown, match family-model-stepping range */
-	ms = (cpu->x86_model << 4) | cpu->x86_stepping;
+	ms = (cpu->x86_model << 4) | cpu->x86_mask;
 	while ((range = *erratum++))
 		if ((cpu->x86 == AMD_MODEL_RANGE_FAMILY(range)) &&
 		    (ms >= AMD_MODEL_RANGE_START(range)) &&

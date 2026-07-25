@@ -30,7 +30,7 @@
 #include <asm/nmi.h>
 #include <asm/x86_init.h>
 #include <asm/reboot.h>
-#include <asm/nospec-branch.h>
+#include <asm/cache.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/nmi.h>
@@ -70,7 +70,7 @@ struct nmi_stats {
 
 static DEFINE_PER_CPU(struct nmi_stats, nmi_stats);
 
-static int ignore_nmis;
+static int ignore_nmis __read_mostly;
 
 int unknown_nmi_panic;
 /*
@@ -543,9 +543,6 @@ nmi_restart:
 		write_cr2(this_cpu_read(nmi_cr2));
 	if (this_cpu_dec_return(nmi_state))
 		goto nmi_restart;
-
-	if (user_mode(regs))
-		mds_user_clear_cpu_buffers();
 }
 NOKPROBE_SYMBOL(do_nmi);
 

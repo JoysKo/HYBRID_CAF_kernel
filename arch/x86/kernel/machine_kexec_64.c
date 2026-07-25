@@ -37,11 +37,8 @@ static struct kexec_file_ops *kexec_file_loaders[] = {
 static void free_transition_pgtable(struct kimage *image)
 {
 	free_page((unsigned long)image->arch.pud);
-	image->arch.pud = NULL;
 	free_page((unsigned long)image->arch.pmd);
-	image->arch.pmd = NULL;
 	free_page((unsigned long)image->arch.pte);
-	image->arch.pte = NULL;
 }
 
 static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
@@ -82,6 +79,7 @@ static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
 	set_pte(pte, pfn_pte(paddr >> PAGE_SHIFT, PAGE_KERNEL_EXEC));
 	return 0;
 err:
+	free_transition_pgtable(image);
 	return result;
 }
 
@@ -387,6 +385,7 @@ int arch_kimage_file_post_load_cleanup(struct kimage *image)
 	return image->fops->cleanup(image->image_loader_data);
 }
 
+#ifdef CONFIG_KEXEC_VERIFY_SIG
 int arch_kexec_kernel_verify_sig(struct kimage *image, void *kernel,
 				 unsigned long kernel_len)
 {
@@ -397,6 +396,7 @@ int arch_kexec_kernel_verify_sig(struct kimage *image, void *kernel,
 
 	return image->fops->verify_sig(kernel, kernel_len);
 }
+#endif
 
 /*
  * Apply purgatory relocations.
@@ -521,7 +521,6 @@ int arch_kexec_apply_relocations_add(const Elf64_Ehdr *ehdr,
 				goto overflow;
 			break;
 		case R_X86_64_PC32:
-		case R_X86_64_PLT32:
 			value -= (u64)address;
 			*(u32 *)location = value;
 			break;

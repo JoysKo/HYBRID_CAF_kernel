@@ -12,7 +12,6 @@
 #include <linux/export.h>
 #include <linux/smp.h>
 #include <linux/perf_event.h>
-#include <linux/dmi.h>
 
 #include <asm/pgtable.h>
 #include <asm/proto.h>

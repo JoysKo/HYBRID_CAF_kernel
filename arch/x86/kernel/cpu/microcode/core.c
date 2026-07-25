@@ -86,20 +86,8 @@ static bool __init check_loader_disabled_bsp(void)
 	bool *res = &dis_ucode_ldr;
 #endif
 
-	a = 1;
-	c = 0;
-	native_cpuid(&a, &b, &c, &d);
-
-	/*
-	 * CPUID(1).ECX[31]: reserved for hypervisor use. This is still not
-	 * completely accurate as xen pv guests don't see that CPUID bit set but
-	 * that's good enough as they don't land on the BSP path anyway.
-	 */
-	if (c & BIT(31))
-		return *res;
-
-	if (cmdline_find_option_bool(cmdline, option) <= 0)
-		*res = false;
+	if (cmdline_find_option_bool(cmdline, option))
+		*res = true;
 
 	return *res;
 }
@@ -127,7 +115,9 @@ void __init load_ucode_bsp(void)
 {
 	int vendor;
 	unsigned int family;
-	bool intel = true;
+
+	if (check_loader_disabled_bsp())
+		return;
 
 	if (!have_cpuid_p())
 		return;
@@ -137,27 +127,16 @@ void __init load_ucode_bsp(void)
 
 	switch (vendor) {
 	case X86_VENDOR_INTEL:
-		if (family < 6)
-			return;
+		if (family >= 6)
+			load_ucode_intel_bsp();
 		break;
-
 	case X86_VENDOR_AMD:
-		if (family < 0x10)
-			return;
-		intel = false;
+		if (family >= 0x10)
+			load_ucode_amd_bsp(family);
 		break;
-
 	default:
-		return;
+		break;
 	}
-
-	if (check_loader_disabled_bsp())
-		return;
-
-	if (intel)
-		load_ucode_intel_bsp();
-	else
-		load_ucode_amd_bsp(family);
 }
 
 static bool check_loader_disabled_ap(void)
@@ -196,7 +175,7 @@ void load_ucode_ap(void)
 	}
 }
 
-static int __init save_microcode_in_initrd(void)
+int __init save_microcode_in_initrd(void)
 {
 	struct cpuinfo_x86 *c = &boot_cpu_data;
 
@@ -563,9 +542,9 @@ static struct subsys_interface mc_cpu_interface = {
 };
 
 /**
- * microcode_bsp_resume - Update boot CPU microcode during resume.
+ * mc_bp_resume - Update boot CPU microcode during resume.
  */
-void microcode_bsp_resume(void)
+static void mc_bp_resume(void)
 {
 	int cpu = smp_processor_id();
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
@@ -577,7 +556,7 @@ void microcode_bsp_resume(void)
 }
 
 static struct syscore_ops mc_syscore_ops = {
-	.resume			= microcode_bsp_resume,
+	.resume			= mc_bp_resume,
 };
 
 static int
@@ -712,5 +691,4 @@ int __init microcode_init(void)
 	return error;
 
 }
-fs_initcall(save_microcode_in_initrd);
 late_initcall(microcode_init);

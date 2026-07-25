@@ -1,5 +1,4 @@
 #include <linux/jump_label.h>
-#include <asm/cpufeatures.h>
 
 /*
 

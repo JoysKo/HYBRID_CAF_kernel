@@ -44,7 +44,6 @@
 #include <asm/alternative-asm.h>
 #include <asm/asm.h>
 #include <asm/smap.h>
-#include <asm/nospec-branch.h>
 
 	.section .entry.text, "ax"
 
@@ -227,8 +226,7 @@ ENTRY(ret_from_kernel_thread)
 	pushl	$0x0202				# Reset kernel eflags
 	popfl
 	movl	PT_EBP(%esp), %eax
-	movl	PT_EBX(%esp), %edx
-	CALL_NOSPEC %edx
+	call	*PT_EBX(%esp)
 	movl	$0, PT_EAX(%esp)
 
 	/*
@@ -861,8 +859,8 @@ ftrace_graph_call:
 	jmp	ftrace_stub
 #endif
 
-/* This is weak to keep gas from relaxing the jumps */
-WEAK(ftrace_stub)
+.globl ftrace_stub
+ftrace_stub:
 	ret
 END(ftrace_caller)
 
@@ -956,8 +954,7 @@ trace:
 	movl	0x4(%ebp), %edx
 	subl	$MCOUNT_INSN_SIZE, %eax
 
-	movl    ftrace_trace_function, %ecx
-	CALL_NOSPEC %ecx
+	call	*ftrace_trace_function
 
 	popl	%edx
 	popl	%ecx
@@ -992,7 +989,7 @@ return_to_handler:
 	movl	%eax, %ecx
 	popl	%edx
 	popl	%eax
-	JMP_NOSPEC %ecx
+	jmp	*%ecx
 #endif
 
 #ifdef CONFIG_TRACING
@@ -1034,7 +1031,7 @@ error_code:
 	movl	%ecx, %es
 	TRACE_IRQS_OFF
 	movl	%esp, %eax			# pt_regs pointer
-	CALL_NOSPEC %edi
+	call	*%edi
 	jmp	ret_from_exception
 END(page_fault)
 
@@ -1152,7 +1149,6 @@ ENTRY(int3)
 END(int3)
 
 ENTRY(general_protection)
-	ASM_CLAC
 	pushl	$do_general_protection
 	jmp	error_code
 END(general_protection)

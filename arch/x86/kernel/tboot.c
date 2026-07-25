@@ -135,21 +135,11 @@ static int map_tboot_page(unsigned long vaddr, unsigned long pfn,
 	pmd = pmd_alloc(&tboot_mm, pud, vaddr);
 	if (!pmd)
 		return -1;
-	pte = pte_alloc_map(&tboot_mm, NULL, pmd, vaddr);
+	pte = pte_alloc_map(&tboot_mm, pmd, vaddr);
 	if (!pte)
 		return -1;
 	set_pte_at(&tboot_mm, vaddr, pte, pfn_pte(pfn, prot));
 	pte_unmap(pte);
-
-	/*
-	 * PTI poisons low addresses in the kernel page tables in the
-	 * name of making them unusable for userspace.  To execute
-	 * code at such a low address, the poison must be cleared.
-	 *
-	 * Note: 'pgd' actually gets set in pud_alloc().
-	 */
-	pgd->pgd &= ~_PAGE_NX;
-
 	return 0;
 }
 

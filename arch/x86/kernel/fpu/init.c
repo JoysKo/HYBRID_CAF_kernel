@@ -101,7 +101,6 @@ static void fpu__init_system_early_generic(struct cpuinfo_x86 *c)
  * Boot time FPU feature detection code:
  */
 unsigned int mxcsr_feature_mask __read_mostly = 0xffffffffu;
-EXPORT_SYMBOL_GPL(mxcsr_feature_mask);
 
 static void __init fpu__init_system_mxcsr(void)
 {
@@ -329,7 +328,6 @@ static void __init fpu__init_system_ctx_switch(void)
 
 	WARN_ON_FPU(current->thread.fpu.fpstate_active);
 	current_thread_info()->status = 0;
-}
 
 	if (boot_cpu_has(X86_FEATURE_XSAVEOPT) && eagerfpu != DISABLE)
 		eagerfpu = ENABLE;
@@ -337,14 +335,10 @@ static void __init fpu__init_system_ctx_switch(void)
 	if (xfeatures_mask & XFEATURE_MASK_EAGER)
 		eagerfpu = ENABLE;
 
-	if (cmdline_find_option_bool(boot_command_line, "noxsave"))
-		fpu__xstate_clear_all_cpu_caps();
+	if (eagerfpu == ENABLE)
+		setup_force_cpu_cap(X86_FEATURE_EAGER_FPU);
 
-	if (cmdline_find_option_bool(boot_command_line, "noxsaveopt"))
-		setup_clear_cpu_cap(X86_FEATURE_XSAVEOPT);
-
-	if (cmdline_find_option_bool(boot_command_line, "noxsaves"))
-		setup_clear_cpu_cap(X86_FEATURE_XSAVES);
+	printk(KERN_INFO "x86/fpu: Using '%s' FPU context switches.\n", eagerfpu == ENABLE ? "eager" : "lazy");
 }
 
 /*

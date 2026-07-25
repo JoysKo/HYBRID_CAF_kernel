@@ -269,7 +269,19 @@ static bool hists__decay_entry(struct hists *hists, struct hist_entry *he)
 
 static void hists__delete_entry(struct hists *hists, struct hist_entry *he)
 {
-	rb_erase(&he->rb_node, &hists->entries);
+	struct rb_root *root_in;
+	struct rb_root *root_out;
+
+	if (he->parent_he) {
+		root_in  = &he->parent_he->hroot_in;
+		root_out = &he->parent_he->hroot_out;
+	} else {
+		if (hists__has(hists, need_collapse))
+			root_in = &hists->entries_collapsed;
+		else
+			root_in = hists->entries_in;
+		root_out = &hists->entries;
+	}
 
 	if (sort__need_collapse)
 		rb_erase(&he->rb_node_in, &hists->entries_collapsed);
@@ -907,7 +919,7 @@ int hist_entry_iter__add(struct hist_entry_iter *iter, struct addr_location *al,
 {
 	int err, err2;
 
-	err = sample__resolve_callchain(iter->sample, &iter->parent,
+	err = sample__resolve_callchain(iter->sample, &callchain_cursor, &iter->parent,
 					iter->evsel, al, max_stack_depth);
 	if (err)
 		return err;
@@ -1007,8 +1019,218 @@ void hist_entry__delete(struct hist_entry *he)
  * collapse the histogram
  */
 
-bool hists__collapse_insert_entry(struct hists *hists __maybe_unused,
-				  struct rb_root *root, struct hist_entry *he)
+static void hists__apply_filters(struct hists *hists, struct hist_entry *he);
+static void hists__remove_entry_filter(struct hists *hists, struct hist_entry *he,
+				       enum hist_filter type);
+
+typedef bool (*fmt_chk_fn)(struct perf_hpp_fmt *fmt);
+
+static bool check_thread_entry(struct perf_hpp_fmt *fmt)
+{
+	return perf_hpp__is_thread_entry(fmt) || perf_hpp__is_comm_entry(fmt);
+}
+
+static void hist_entry__check_and_remove_filter(struct hist_entry *he,
+						enum hist_filter type,
+						fmt_chk_fn check)
+{
+	struct perf_hpp_fmt *fmt;
+	bool type_match = false;
+	struct hist_entry *parent = he->parent_he;
+
+	switch (type) {
+	case HIST_FILTER__THREAD:
+		if (symbol_conf.comm_list == NULL &&
+		    symbol_conf.pid_list == NULL &&
+		    symbol_conf.tid_list == NULL)
+			return;
+		break;
+	case HIST_FILTER__DSO:
+		if (symbol_conf.dso_list == NULL)
+			return;
+		break;
+	case HIST_FILTER__SYMBOL:
+		if (symbol_conf.sym_list == NULL)
+			return;
+		break;
+	case HIST_FILTER__PARENT:
+	case HIST_FILTER__GUEST:
+	case HIST_FILTER__HOST:
+	case HIST_FILTER__SOCKET:
+	default:
+		return;
+	}
+
+	/* if it's filtered by own fmt, it has to have filter bits */
+	perf_hpp_list__for_each_format(he->hpp_list, fmt) {
+		if (check(fmt)) {
+			type_match = true;
+			break;
+		}
+	}
+
+	if (type_match) {
+		/*
+		 * If the filter is for current level entry, propagate
+		 * filter marker to parents.  The marker bit was
+		 * already set by default so it only needs to clear
+		 * non-filtered entries.
+		 */
+		if (!(he->filtered & (1 << type))) {
+			while (parent) {
+				parent->filtered &= ~(1 << type);
+				parent = parent->parent_he;
+			}
+		}
+	} else {
+		/*
+		 * If current entry doesn't have matching formats, set
+		 * filter marker for upper level entries.  it will be
+		 * cleared if its lower level entries is not filtered.
+		 *
+		 * For lower-level entries, it inherits parent's
+		 * filter bit so that lower level entries of a
+		 * non-filtered entry won't set the filter marker.
+		 */
+		if (parent == NULL)
+			he->filtered |= (1 << type);
+		else
+			he->filtered |= (parent->filtered & (1 << type));
+	}
+}
+
+static void hist_entry__apply_hierarchy_filters(struct hist_entry *he)
+{
+	hist_entry__check_and_remove_filter(he, HIST_FILTER__THREAD,
+					    check_thread_entry);
+
+	hist_entry__check_and_remove_filter(he, HIST_FILTER__DSO,
+					    perf_hpp__is_dso_entry);
+
+	hist_entry__check_and_remove_filter(he, HIST_FILTER__SYMBOL,
+					    perf_hpp__is_sym_entry);
+
+	hists__apply_filters(he->hists, he);
+}
+
+static struct hist_entry *hierarchy_insert_entry(struct hists *hists,
+						 struct rb_root *root,
+						 struct hist_entry *he,
+						 struct hist_entry *parent_he,
+						 struct perf_hpp_list *hpp_list)
+{
+	struct rb_node **p = &root->rb_node;
+	struct rb_node *parent = NULL;
+	struct hist_entry *iter, *new;
+	struct perf_hpp_fmt *fmt;
+	int64_t cmp;
+
+	while (*p != NULL) {
+		parent = *p;
+		iter = rb_entry(parent, struct hist_entry, rb_node_in);
+
+		cmp = 0;
+		perf_hpp_list__for_each_sort_list(hpp_list, fmt) {
+			cmp = fmt->collapse(fmt, iter, he);
+			if (cmp)
+				break;
+		}
+
+		if (!cmp) {
+			he_stat__add_stat(&iter->stat, &he->stat);
+			return iter;
+		}
+
+		if (cmp < 0)
+			p = &parent->rb_left;
+		else
+			p = &parent->rb_right;
+	}
+
+	new = hist_entry__new(he, true);
+	if (new == NULL)
+		return NULL;
+
+	hists->nr_entries++;
+
+	/* save related format list for output */
+	new->hpp_list = hpp_list;
+	new->parent_he = parent_he;
+
+	hist_entry__apply_hierarchy_filters(new);
+
+	/* some fields are now passed to 'new' */
+	perf_hpp_list__for_each_sort_list(hpp_list, fmt) {
+		if (perf_hpp__is_trace_entry(fmt) || perf_hpp__is_dynamic_entry(fmt))
+			he->trace_output = NULL;
+		else
+			new->trace_output = NULL;
+
+		if (perf_hpp__is_srcline_entry(fmt))
+			he->srcline = NULL;
+		else
+			new->srcline = NULL;
+
+		if (perf_hpp__is_srcfile_entry(fmt))
+			he->srcfile = NULL;
+		else
+			new->srcfile = NULL;
+	}
+
+	rb_link_node(&new->rb_node_in, parent, p);
+	rb_insert_color(&new->rb_node_in, root);
+	return new;
+}
+
+static int hists__hierarchy_insert_entry(struct hists *hists,
+					 struct rb_root *root,
+					 struct hist_entry *he)
+{
+	struct perf_hpp_list_node *node;
+	struct hist_entry *new_he = NULL;
+	struct hist_entry *parent = NULL;
+	int depth = 0;
+	int ret = 0;
+
+	list_for_each_entry(node, &hists->hpp_formats, list) {
+		/* skip period (overhead) and elided columns */
+		if (node->level == 0 || node->skip)
+			continue;
+
+		/* insert copy of 'he' for each fmt into the hierarchy */
+		new_he = hierarchy_insert_entry(hists, root, he, parent, &node->hpp);
+		if (new_he == NULL) {
+			ret = -1;
+			break;
+		}
+
+		root = &new_he->hroot_in;
+		new_he->depth = depth++;
+		parent = new_he;
+	}
+
+	if (new_he) {
+		new_he->leaf = true;
+
+		if (symbol_conf.use_callchain) {
+			callchain_cursor_reset(&callchain_cursor);
+			if (callchain_merge(&callchain_cursor,
+					    new_he->callchain,
+					    he->callchain) < 0)
+				ret = -1;
+		}
+	}
+
+	/* 'he' is no longer used */
+	hist_entry__delete(he);
+
+	/* return 0 (or -1) since it already applied filters */
+	return ret;
+}
+
+static int hists__collapse_insert_entry(struct hists *hists,
+					struct rb_root *root,
+					struct hist_entry *he)
 {
 	struct rb_node **p = &root->rb_node;
 	struct rb_node *parent = NULL;
@@ -1077,8 +1299,8 @@ void hists__collapse_resort(struct hists *hists, struct ui_progress *prog)
 	struct rb_node *next;
 	struct hist_entry *n;
 
-	if (!sort__need_collapse)
-		return;
+	if (!hists__has(hists, need_collapse))
+		return 0;
 
 	hists->nr_entries = 0;
 
@@ -1195,7 +1417,7 @@ void hists__output_resort(struct hists *hists, struct ui_progress *prog)
 
 	min_callchain_hits = hists->stats.total_period * (callchain_param.min_percent / 100);
 
-	if (sort__need_collapse)
+	if (hists__has(hists, need_collapse))
 		root = &hists->entries_collapsed;
 	else
 		root = hists->entries_in;
@@ -1395,7 +1617,7 @@ static struct hist_entry *hists__add_dummy_entry(struct hists *hists,
 	struct hist_entry *he;
 	int64_t cmp;
 
-	if (sort__need_collapse)
+	if (hists__has(hists, need_collapse))
 		root = &hists->entries_collapsed;
 	else
 		root = hists->entries_in;
@@ -1421,6 +1643,8 @@ static struct hist_entry *hists__add_dummy_entry(struct hists *hists,
 	if (he) {
 		memset(&he->stat, 0, sizeof(he->stat));
 		he->hists = hists;
+		if (symbol_conf.cumulate_callchain)
+			memset(he->stat_acc, 0, sizeof(he->stat));
 		rb_link_node(&he->rb_node_in, parent, p);
 		rb_insert_color(&he->rb_node_in, root);
 		hists__inc_stats(hists, he);
@@ -1435,7 +1659,7 @@ static struct hist_entry *hists__find_entry(struct hists *hists,
 {
 	struct rb_node *n;
 
-	if (sort__need_collapse)
+	if (hists__has(hists, need_collapse))
 		n = hists->entries_collapsed.rb_node;
 	else
 		n = hists->entries_in->rb_node;
@@ -1464,7 +1688,7 @@ void hists__match(struct hists *leader, struct hists *other)
 	struct rb_node *nd;
 	struct hist_entry *pos, *pair;
 
-	if (sort__need_collapse)
+	if (hists__has(leader, need_collapse))
 		root = &leader->entries_collapsed;
 	else
 		root = leader->entries_in;
@@ -1489,7 +1713,7 @@ int hists__link(struct hists *leader, struct hists *other)
 	struct rb_node *nd;
 	struct hist_entry *pos, *pair;
 
-	if (sort__need_collapse)
+	if (hists__has(other, need_collapse))
 		root = &other->entries_collapsed;
 	else
 		root = other->entries_in;

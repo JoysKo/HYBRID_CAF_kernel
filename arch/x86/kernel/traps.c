@@ -95,12 +95,6 @@ static inline void cond_local_irq_disable(struct pt_regs *regs)
 		local_irq_disable();
 }
 
-/*
- * In IST context, we explicitly disable preemption.  This serves two
- * purposes: it makes it much less likely that we would accidentally
- * schedule in IST context and it will force a warning if we somehow
- * manage to schedule by accident.
- */
 void ist_enter(struct pt_regs *regs)
 {
 	if (user_mode(regs)) {
@@ -115,7 +109,13 @@ void ist_enter(struct pt_regs *regs)
 		rcu_nmi_enter();
 	}
 
-	preempt_disable();
+	/*
+	 * We are atomic because we're on the IST stack; or we're on
+	 * x86_32, in which case we still shouldn't schedule; or we're
+	 * on x86_64 and entered from user mode, in which case we're
+	 * still atomic unless ist_begin_non_atomic is called.
+	 */
+	preempt_count_add(HARDIRQ_OFFSET);
 
 	/* This code is a bit fragile.  Test it. */
 	RCU_LOCKDEP_WARN(!rcu_is_watching(), "ist_enter didn't work");
@@ -123,7 +123,7 @@ void ist_enter(struct pt_regs *regs)
 
 void ist_exit(struct pt_regs *regs)
 {
-	preempt_enable_no_resched();
+	preempt_count_sub(HARDIRQ_OFFSET);
 
 	if (!user_mode(regs))
 		rcu_nmi_exit();
@@ -152,9 +152,9 @@ void ist_begin_non_atomic(struct pt_regs *regs)
 	 * from double_fault.
 	 */
 	BUG_ON((unsigned long)(current_top_of_stack() -
-			       current_stack_pointer) >= THREAD_SIZE);
+			       current_stack_pointer()) >= THREAD_SIZE);
 
-	preempt_enable_no_resched();
+	preempt_count_sub(HARDIRQ_OFFSET);
 }
 
 /**
@@ -164,7 +164,7 @@ void ist_begin_non_atomic(struct pt_regs *regs)
  */
 void ist_end_non_atomic(void)
 {
-	preempt_disable();
+	preempt_count_add(HARDIRQ_OFFSET);
 }
 
 static nokprobe_inline int
@@ -464,6 +464,7 @@ do_general_protection(struct pt_regs *regs, long error_code)
 }
 NOKPROBE_SYMBOL(do_general_protection);
 
+/* May run on IST stack. */
 dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 {
 #ifdef CONFIG_DYNAMIC_FTRACE
@@ -478,15 +479,7 @@ dotraplinkage void notrace do_int3(struct pt_regs *regs, long error_code)
 	if (poke_int3_handler(regs))
 		return;
 
-	/*
-	 * Use ist_enter despite the fact that we don't use an IST stack.
-	 * We can be called from a kprobe in non-CONTEXT_KERNEL kernel
-	 * mode or even during context tracking state changes.
-	 *
-	 * This means that we can't schedule.  That's okay.
-	 */
 	ist_enter(regs);
-
 	RCU_LOCKDEP_WARN(!rcu_is_watching(), "entry code didn't wake RCU");
 #ifdef CONFIG_KGDB_LOW_LEVEL_TRAP
 	if (kgdb_ll_trap(DIE_INT3, "int3", regs, error_code, X86_TRAP_BP,
@@ -934,16 +927,19 @@ void __init trap_init(void)
 	cpu_init();
 
 	/*
-	 * X86_TRAP_DB was installed in early_trap_init(). However,
-	 * IST works only after cpu_init() loads TSS. See comments
-	 * in early_trap_init().
+	 * X86_TRAP_DB and X86_TRAP_BP have been set
+	 * in early_trap_init(). However, ITS works only after
+	 * cpu_init() loads TSS. See comments in early_trap_init().
 	 */
 	set_intr_gate_ist(X86_TRAP_DB, &debug, DEBUG_STACK);
+	/* int3 can be called from all */
+	set_system_intr_gate_ist(X86_TRAP_BP, &int3, DEBUG_STACK);
 
 	x86_init.irqs.trap_init();
 
 #ifdef CONFIG_X86_64
 	memcpy(&debug_idt_table, &idt_table, IDT_ENTRIES * 16);
 	set_nmi_gate(X86_TRAP_DB, &debug);
+	set_nmi_gate(X86_TRAP_BP, &int3);
 #endif
 }

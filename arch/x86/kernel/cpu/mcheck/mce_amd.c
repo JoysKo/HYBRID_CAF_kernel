@@ -66,7 +66,7 @@ static const char * const th_names[] = {
 	"load_store",
 	"insn_fetch",
 	"combined_unit",
-	"decode_unit",
+	"",
 	"northbridge",
 	"execution_unit",
 };
@@ -674,12 +674,9 @@ static const struct sysfs_ops threshold_ops = {
 	.store			= store,
 };
 
-static void threshold_block_release(struct kobject *kobj);
-
 static struct kobj_type threshold_ktype = {
 	.sysfs_ops		= &threshold_ops,
 	.default_attrs		= default_attrs,
-	.release		= threshold_block_release,
 };
 
 static int allocate_threshold_blocks(unsigned int cpu, unsigned int bank,
@@ -794,9 +791,6 @@ static int threshold_create_bank(unsigned int cpu, unsigned int bank)
 	const char *name = th_names[bank];
 	int err = 0;
 
-	if (!dev)
-		return -ENODEV;
-
 	if (is_shared_bank(bank)) {
 		nb = node_to_amd_nb(amd_get_nb_id(cpu));
 
@@ -877,12 +871,8 @@ static int threshold_create_device(unsigned int cpu)
 	return err;
 }
 
-static void threshold_block_release(struct kobject *kobj)
-{
-	kfree(to_block(kobj));
-}
-
-static void deallocate_threshold_block(unsigned int cpu, unsigned int bank)
+static void deallocate_threshold_block(unsigned int cpu,
+						 unsigned int bank)
 {
 	struct threshold_block *pos = NULL;
 	struct threshold_block *tmp = NULL;
@@ -892,11 +882,13 @@ static void deallocate_threshold_block(unsigned int cpu, unsigned int bank)
 		return;
 
 	list_for_each_entry_safe(pos, tmp, &head->blocks->miscj, miscj) {
-		list_del(&pos->miscj);
 		kobject_put(&pos->kobj);
+		list_del(&pos->miscj);
+		kfree(pos);
 	}
 
-	kobject_put(&head->blocks->kobj);
+	kfree(per_cpu(threshold_banks, cpu)[bank]->blocks);
+	per_cpu(threshold_banks, cpu)[bank]->blocks = NULL;
 }
 
 static void __threshold_remove_blocks(struct threshold_bank *b)

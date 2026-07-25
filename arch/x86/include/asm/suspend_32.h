@@ -23,7 +23,6 @@ struct saved_context {
 	unsigned long tr;
 	unsigned long safety;
 	unsigned long return_address;
-	bool misc_enable_saved;
 } __attribute__((packed));
 
 #endif /* _ASM_X86_SUSPEND_32_H */
