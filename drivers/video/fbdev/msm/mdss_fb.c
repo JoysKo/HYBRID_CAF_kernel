@@ -2632,7 +2632,7 @@ static int mdss_fb_fbmem_ion_mmap(struct fb_info *info,
 			pr_debug("vm_start=%x vm_end=%x vm_page_prot=%ld\n",
 					(unsigned int)vma->vm_start,
 					(unsigned int)vma->vm_end,
-					(unsigned long int)vma->vm_page_prot);
+					(unsigned long int)pgprot_val(vma->vm_page_prot));
 
 			io_remap_pfn_range(vma, addr, page_to_pfn(page), len,
 					vma->vm_page_prot);

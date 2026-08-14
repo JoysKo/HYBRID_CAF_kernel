@@ -424,7 +424,7 @@ static void __init __map_memblock(pgd_t *pgd, phys_addr_t start, phys_addr_t end
 				     early_pgtable_alloc);
 
 	/*
-	 * Map the linear alias of the [_text, __init_begin) interval as
+	 * Map the linear alias of the [_text, _etext) interval as
 	 * read-only/non-executable. This makes the contents of the
 	 * region accessible to subsystems such as hibernate, but
 	 * protects it from inadvertent modification or execution.
@@ -647,8 +647,6 @@ void __init paging_init(void)
 	 */
 	memblock_free(__pa_symbol(swapper_pg_dir) + PAGE_SIZE,
 		      SWAPPER_DIR_SIZE - PAGE_SIZE);
-
-	bootmem_init();
 }
 
 #ifdef CONFIG_MEMORY_HOTPLUG

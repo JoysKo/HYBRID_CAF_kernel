@@ -1123,11 +1123,7 @@ static int init_subsystems(void)
 	/*
 	 * Enable hardware so that subsystem initialisation can access EL2.
 	 */
-	err = register_cpu_notifier(&hyp_init_cpu_nb);
-	if (err) {
-		kvm_err("Cannot register KVM init CPU notifier (%d)\n", err);
-		return err;
-	}
+	on_each_cpu(_kvm_arch_hardware_enable, NULL, 1);
 
 	/*
 	 * Register CPU lower-power notifier

@@ -14,6 +14,30 @@
 #include <asm/tlbflush.h>
 
 /*
+ * This is called by __cpu_suspend_enter() to save the state, and do whatever
+ * flushing is required to ensure that when the CPU goes to sleep we have
+ * the necessary data available when the caches are not searched.
+ *
+ * ptr: sleep_stack_data containing cpu state virtual address.
+ * save_ptr: address of the location where the context physical address
+ *           must be saved
+ */
+void notrace __cpu_suspend_save(struct sleep_stack_data *ptr,
+				phys_addr_t *save_ptr)
+{
+	*save_ptr = virt_to_phys(ptr);
+
+	cpu_do_suspend(&ptr->system_regs);
+	/*
+	 * Only flush the context that must be retrieved with the MMU
+	 * off. VA primitives ensure the flush is applied to all
+	 * cache levels so context is pushed to DRAM.
+	 */
+	__flush_dcache_area(ptr, sizeof(*ptr));
+	__flush_dcache_area(save_ptr, sizeof(*save_ptr));
+}
+
+/*
  * This is allocated by cpu_suspend_init(), and used to store a pointer to
  * the 'struct sleep_stack_data' the contains a particular CPUs state.
  */
@@ -43,6 +67,12 @@ void notrace __cpu_suspend_exit(void)
 	 * state before we can possibly return to userspace.
 	 */
 	cpu_uninstall_idmap();
+
+	/*
+	 * Restore per-cpu offset before any kernel
+	 * subsystem relying on it has a chance to run.
+	 */
+	set_my_cpu_offset(per_cpu_offset(smp_processor_id()));
 
 	/*
 	 * Restore HW breakpoint registers to sane values
@@ -93,9 +123,11 @@ int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 		uao_thread_switch(current);
 
 		/*
-		 * Restore HW breakpoint registers to sane values
-		 * before debug exceptions are possibly reenabled
-		 * through local_dbg_restore.
+		 * Never gets here, unless the suspend finisher fails.
+		 * Successful cpu_suspend() should return from cpu_resume(),
+		 * returning through this code path is considered an error
+		 * If the return value is set to 0 force ret = -EOPNOTSUPP
+		 * to make sure a proper error condition is propagated
 		 */
 		if (!ret)
 			ret = -EOPNOTSUPP;

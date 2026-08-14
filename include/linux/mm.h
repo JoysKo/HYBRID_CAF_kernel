@@ -71,9 +71,14 @@ extern int mmap_rnd_compat_bits __read_mostly;
 #define __pa_symbol(x)  __pa(RELOC_HIDE((unsigned long)(x), 0))
 #endif
 
+#ifndef page_to_virt
+#define page_to_virt(x)	__va(PFN_PHYS(page_to_pfn(x)))
+#endif
+
 #ifndef lm_alias
 #define lm_alias(x)	__va(__pa_symbol(x))
 #endif
+
 
 /*
  * To prevent common memory management code establishing
@@ -1027,7 +1032,7 @@ static inline void set_page_memcg(struct page *page, struct mem_cgroup *memcg)
 
 static __always_inline void *lowmem_page_address(const struct page *page)
 {
-	return __va(PFN_PHYS(page_to_pfn(page)));
+	return page_to_virt(page);
 }
 
 #if defined(CONFIG_HIGHMEM) && !defined(WANT_PAGE_VIRTUAL)

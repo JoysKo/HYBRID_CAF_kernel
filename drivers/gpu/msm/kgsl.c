@@ -2299,9 +2299,9 @@ static void _setup_cache_mode(struct kgsl_mem_entry *entry,
 	unsigned int mode;
 	pgprot_t pgprot = vma->vm_page_prot;
 
-	if (pgprot == pgprot_noncached(pgprot))
+	if (pgprot_val(pgprot) == pgprot_val(pgprot_noncached(pgprot)))
 		mode = KGSL_CACHEMODE_UNCACHED;
-	else if (pgprot == pgprot_writecombine(pgprot))
+	else if (pgprot_val(pgprot) == pgprot_val(pgprot_writecombine(pgprot)))
 		mode = KGSL_CACHEMODE_WRITECOMBINE;
 	else
 		mode = KGSL_CACHEMODE_WRITEBACK;
@@ -4708,8 +4708,8 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 		break;
 	case KGSL_CACHEMODE_WRITETHROUGH:
 		vma->vm_page_prot = pgprot_writethroughcache(vma->vm_page_prot);
-		if (vma->vm_page_prot ==
-			pgprot_writebackcache(vma->vm_page_prot))
+		if (pgprot_val(vma->vm_page_prot) ==
+			pgprot_val(pgprot_writebackcache(vma->vm_page_prot)))
 			WARN_ONCE(1, "WRITETHROUGH is deprecated for arm64");
 		break;
 	case KGSL_CACHEMODE_WRITEBACK:

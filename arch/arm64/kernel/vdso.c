@@ -38,6 +38,8 @@
 #include <asm/vdso.h>
 #include <asm/vdso_datapage.h>
 
+extern char vdso_start[], vdso_end[];
+
 struct vdso_mappings {
 	unsigned long num_code_pages;
 	struct vm_special_mapping data_mapping;
@@ -194,7 +196,7 @@ static int __init vdso_mappings_init(const char *name,
 	kmemleak_not_leak(vdso_pagelist);
 
 	/* Grab the vDSO data page. */
-	vdso_pagelist[0] = phys_to_page(__pa_symbol(vdso_data));
+	vdso_pagelist[0] = pfn_to_page(PHYS_PFN(__pa_symbol(vdso_data)));
 
 	/* Grab the vDSO code pages. */
 	pfn = sym_to_pfn(code_start);
@@ -238,8 +240,6 @@ static struct vdso_mappings vdso_mappings __ro_after_init;
 
 static int __init vdso_init(void)
 {
-	extern char vdso_start[], vdso_end[];
-
 	return vdso_mappings_init("vdso", vdso_start, vdso_end,
 				  &vdso_mappings);
 }
