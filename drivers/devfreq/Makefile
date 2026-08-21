@@ -4,6 +4,7 @@ obj-$(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)	+= governor_simpleondemand.o
 obj-$(CONFIG_DEVFREQ_GOV_PERFORMANCE)	+= governor_performance.o
 obj-$(CONFIG_DEVFREQ_GOV_POWERSAVE)	+= governor_powersave.o
 obj-$(CONFIG_DEVFREQ_GOV_USERSPACE)	+= governor_userspace.o
+obj-$(CONFIG_DEVFREQ_GOV_PASSIVE)	+= governor_passive.o
 obj-$(CONFIG_DEVFREQ_GOV_QCOM_ADRENO_TZ) += governor_msm_adreno_tz.o
 obj-$(CONFIG_DEVFREQ_GOV_CPUFREQ)	+= governor_cpufreq.o
 obj-$(CONFIG_QCOM_BIMC_BWMON)		+= bimc-bwmon.o
@@ -20,8 +21,7 @@ obj-$(CONFIG_DEVFREQ_GOV_QCOM_GPUBW_MON) += governor_bw_vbif.o
 obj-$(CONFIG_DEVFREQ_GOV_MEMLAT)	+= governor_memlat.o
 
 # DEVFREQ Drivers
-obj-$(CONFIG_ARM_EXYNOS4_BUS_DEVFREQ)	+= exynos/
-obj-$(CONFIG_ARM_EXYNOS5_BUS_DEVFREQ)	+= exynos/
+obj-$(CONFIG_ARM_EXYNOS_BUS_DEVFREQ)	+= exynos-bus.o
 obj-$(CONFIG_ARM_TEGRA_DEVFREQ)		+= tegra-devfreq.o
 obj-$(CONFIG_QCOM_DEVFREQ_DEVBW)		+= devfreq_devbw.o
 obj-$(CONFIG_DEVFREQ_SIMPLE_DEV)	+= devfreq_simple_dev.o

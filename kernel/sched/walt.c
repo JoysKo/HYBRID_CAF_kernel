@@ -782,6 +782,10 @@ void walt_update_task_ravg(struct task_struct *p, struct rq *rq,
 
 	update_window_start(rq, wallclock);
 
+	/* Notify schedutil to re-evaluate frequency for this CPU */
+	if (cpu_of(rq) == smp_processor_id())
+		cpufreq_update_util(rq, SCHED_CPUFREQ_WALT);
+
 	if (!p->ravg.mark_start)
 		goto done;
 
@@ -789,8 +793,6 @@ void walt_update_task_ravg(struct task_struct *p, struct rq *rq,
 	update_cpu_busy_time(p, rq, event, wallclock, irqtime);
 
 done:
-//	trace_walt_update_task_ravg(p, rq, event, wallclock, irqtime);
-
 	p->ravg.mark_start = wallclock;
 }
 
@@ -902,8 +904,9 @@ void walt_fixup_busy_time(struct task_struct *p, int new_cpu)
 		WARN_ON(1);
 	}
 
-//	trace_walt_migration_update_sum(src_rq, p);
-//	trace_walt_migration_update_sum(dest_rq, p);
+	/* Notify schedutil about updated WALT load on destination CPU */
+	if (cpu_of(dest_rq) == smp_processor_id())
+		cpufreq_update_util(dest_rq, SCHED_CPUFREQ_WALT);
 
 	if (p->state == TASK_WAKING)
 		double_rq_unlock(src_rq, dest_rq);

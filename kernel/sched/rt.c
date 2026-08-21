@@ -1023,7 +1023,7 @@ static enum hrtimer_restart rt_schedtune_timer(struct hrtimer *timer)
 	 */
 	rt_se->schedtune_enqueued = false;
 	schedtune_dequeue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
+	cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 out:
 	raw_spin_unlock(&rq->lock);
 
@@ -1067,14 +1067,14 @@ static void update_curr_rt(struct rq *rq)
 
 	/* Kick cpufreq (see the comment in linux/cpufreq.h). */
 	if (cpu_of(rq) == smp_processor_id())
-		cpufreq_trigger_update(rq_clock(rq));
+		cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 
 	delta_exec = rq_clock_task(rq) - curr->se.exec_start;
 	if (unlikely((s64)delta_exec <= 0))
 		return;
 
 	/* Kick cpufreq (see the comment in kernel/sched/sched.h). */
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
+	cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 
 	schedstat_set(curr->se.statistics.exec_max,
 		      max(curr->se.statistics.exec_max, delta_exec));
@@ -1468,7 +1468,7 @@ enqueue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	rt_se->schedtune_enqueued = true;
 	schedtune_enqueue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
+	cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 }
 
 static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
@@ -1492,7 +1492,7 @@ static void dequeue_task_rt(struct rq *rq, struct task_struct *p, int flags)
 
 	rt_se->schedtune_enqueued = false;
 	schedtune_dequeue_task(p, cpu_of(rq));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
+	cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 }
 
 /*
@@ -1573,7 +1573,7 @@ static void schedtune_dequeue_rt(struct rq *rq, struct task_struct *p)
 	/* schedtune_enqueued is true, deboost it */
 	rt_se->schedtune_enqueued = false;
 	schedtune_dequeue_task(p, task_cpu(p));
-	cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_RT);
+	cpufreq_update_util(rq, SCHED_CPUFREQ_RT);
 }
 
 static int

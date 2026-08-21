@@ -346,6 +346,17 @@ static inline void gov_clear_update_util(struct cpufreq_policy *policy)
 	synchronize_sched();
 }
 
+static void gov_cancel_work(struct cpufreq_policy *policy)
+{
+	struct policy_dbs_info *policy_dbs = policy->governor_data;
+
+	gov_clear_update_util(policy_dbs->policy);
+	irq_work_sync(&policy_dbs->irq_work);
+	cancel_work_sync(&policy_dbs->work);
+	atomic_set(&policy_dbs->work_count, 0);
+	policy_dbs->work_in_progress = false;
+}
+
 static struct policy_dbs_info *alloc_policy_dbs_info(struct cpufreq_policy *policy,
 						     struct dbs_governor *gov)
 {

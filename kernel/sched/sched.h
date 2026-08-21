@@ -15,6 +15,7 @@
 #include "cpupri.h"
 #include "cpudeadline.h"
 #include "cpuacct.h"
+#include "walt.h"
 
 #ifdef CONFIG_SCHED_DEBUG
 #define SCHED_WARN_ON(x)	WARN_ONCE(x, #x)
@@ -1281,6 +1282,15 @@ static inline int hrtick_enabled(struct rq *rq)
 
 #endif /* CONFIG_SCHED_HRTICK */
 
+#ifdef CONFIG_SCHED_WALT
+u64 walt_ktime_clock(void);
+#else
+static inline u64 walt_ktime_clock(void)
+{
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_SMP
 extern void sched_avg_update(struct rq *rq);
 
@@ -1393,6 +1403,13 @@ static inline unsigned long cpu_util(int cpu)
 {
 	return __cpu_util(cpu, 0);
 }
+
+struct sched_walt_cpu_load {
+	unsigned long prev_window_util;
+	unsigned long nl;
+	unsigned long pl;
+	u64 ws;
+};
 
 static inline unsigned long cpu_util_freq(int cpu)
 {
@@ -1763,73 +1780,30 @@ DECLARE_PER_CPU(struct update_util_data *, cpufreq_update_util_data);
  */
 static inline void cpufreq_update_util(struct rq *rq, unsigned int flags)
 {
-        struct update_util_data *data;
+	struct update_util_data *data;
 
-        data = rcu_dereference_sched(*this_cpu_ptr(&cpufreq_update_util_data));
-        if (data)
-                data->func(data, rq_clock(rq), flags);
+#ifdef CONFIG_SCHED_WALT
+	if (!(flags & SCHED_CPUFREQ_WALT))
+		return;
+#endif
+
+	data = rcu_dereference_sched(*per_cpu_ptr(&cpufreq_update_util_data,
+					cpu_of(rq)));
+	if (data)
+		data->func(data, walt_ktime_clock(), flags);
 }
 
-static inline void cpufreq_update_this_cpu(struct rq *rq, unsigned int flags)
-{
-        if (cpu_of(rq) == smp_processor_id())
-                cpufreq_update_util(rq, flags);
-}
-
-/**
- * cpufreq_update_util2 - Take a note about CPU utilization changes.
- * @time: Current time.
- * @util: Current utilization.
- * @max: Utilization ceiling.
- *
- * This function is called by the scheduler on every invocation of
- * update_load_avg() on the CPU whose utilization is being updated.
- *
- * It can only be called from RCU-sched read-side critical sections.
- */
-static inline void cpufreq_update_util2(u64 time, unsigned long util, unsigned long max)
-{
-    struct update_util_data *data;
-
-    data = rcu_dereference_sched(*this_cpu_ptr(&cpufreq_update_util_data));
-    if (data) {
-        unsigned int flags = 0;
-        
-        if (util > (max * 80 / 100))
-            flags |= SCHED_CPUFREQ_RT;
-        if (util < (max * 20 / 100))
-            flags |= SCHED_CPUFREQ_DL;
-        
-        data->func(data, time, flags);
-    }
-}
-
-/**
- * cpufreq_trigger_update - Trigger CPU performance state evaluation if needed.
- * @time: Current time.
- *
- * The way cpufreq is currently arranged requires it to evaluate the CPU
- * performance state (frequency/voltage) on a regular basis to prevent it from
- * being stuck in a completely inadequate performance level for too long.
- * That is not guaranteed to happen if the updates are only triggered from CFS,
- * though, because they may not be coming in if RT or deadline tasks are active
- * all the time (or there are RT and DL tasks only).
- *
- * As a workaround for that issue, this function is called by the RT and DL
- * sched classes to trigger extra cpufreq updates to prevent it from stalling,
- * but that really is a band-aid.  Going forward it should be replaced with
- * solutions targeted more specifically at RT and DL tasks.
- */
-static inline void cpufreq_trigger_update(u64 time)
-{
-	cpufreq_update_util2(time, ULONG_MAX, 0);
-}
 #else
 static inline void cpufreq_update_util(struct rq *rq, unsigned int flags) {}
-static inline void cpufreq_update_this_cpu(struct rq *rq, unsigned int flags) {}
-static inline void cpufreq_update_util2(u64 time, unsigned long util, unsigned long max) {}
-static inline void cpufreq_trigger_update(u64 time) {}
 #endif /* CONFIG_CPU_FREQ */
+
+#ifdef arch_scale_freq_capacity
+#ifndef arch_scale_freq_invariant
+#define arch_scale_freq_invariant()	(true)
+#endif
+#else /* arch_scale_freq_capacity */
+#define arch_scale_freq_invariant()	(false)
+#endif
 
 #ifdef CONFIG_UCLAMP_TASK
 unsigned long uclamp_eff_value(struct task_struct *p, enum uclamp_id clamp_id);

@@ -3821,12 +3821,14 @@ static inline unsigned long rlimit_max(unsigned int limit)
 }
 
 #ifdef CONFIG_CPU_FREQ
-struct update_util_data2 {
-	void (*func)(struct update_util_data2 *data,
-		     u64 time, unsigned long util, unsigned long max);
+struct update_util_data {
+       void (*func)(struct update_util_data *data, u64 time, unsigned int flags);
 };
 
-void cpufreq_set_update_util_data(int cpu, struct update_util_data2 *data);
+void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
+                       void (*func)(struct update_util_data *data, u64 time,
+                                    unsigned int flags));
+void cpufreq_remove_update_util_hook(int cpu);
 #endif /* CONFIG_CPU_FREQ */
 
 struct cpu_cycle_counter_cb {
@@ -3847,16 +3849,6 @@ static inline int sched_set_boost(int enable)
 #define SCHED_CPUFREQ_RT        (1U << 0)
 #define SCHED_CPUFREQ_DL        (1U << 1)
 #define SCHED_CPUFREQ_IOWAIT    (1U << 2)
+#define SCHED_CPUFREQ_WALT (1U << 4)
 
-#ifdef CONFIG_CPU_FREQ
-struct update_util_data {
-	void (*func)(struct update_util_data *data, u64 time, unsigned int flags);
-};
-
-void cpufreq_add_update_util_hook(int cpu, struct update_util_data *data,
-                       void (*func)(struct update_util_data *data, u64 time,
-                                    unsigned int flags));
-void cpufreq_remove_update_util_hook(int cpu);
-
-#endif
 #endif //_LINUX_SCHED_H

@@ -3227,25 +3227,27 @@ static inline void set_tg_cfs_propagate(struct cfs_rq *cfs_rq) {}
 
 static inline void cfs_rq_util_change(struct cfs_rq *cfs_rq)
 {
-        if (&this_rq()->cfs == cfs_rq) {
-                /*
-                 * There are a few boundary cases this might miss but it should
-                 * get called often enough that that should (hopefully) not be
-                 * a real problem -- added to that it only calls on the local
-                 * CPU, so if we enqueue remotely we'll miss an update, but
-                 * the next tick/schedule should update.
-                 *
-                 * It will not get called when we go idle, because the idle
-                 * thread is a different class (!fair), nor will the utilization
-                 * number include things like RT tasks.
-                 *
-                 * As is, the util number is not freq-invariant (we'd have to
-                 * implement arch_scale_freq_capacity() for that).
-                 *
-                 * See cpu_util().
-                 */
-                cpufreq_update_util(rq_of(cfs_rq), 0);
-        }
+	struct rq *rq = rq_of(cfs_rq);
+
+	if (&rq->cfs == cfs_rq) {
+		/*
+		 * There are a few boundary cases this might miss but it should
+		 * get called often enough that that should (hopefully) not be
+		 * a real problem -- added to that it only calls on the local
+		 * CPU, so if we enqueue remotely we'll miss an update, but
+		 * the next tick/schedule should update.
+		 *
+		 * It will not get called when we go idle, because the idle
+		 * thread is a different class (!fair), nor will the utilization
+		 * number include things like RT tasks.
+		 *
+		 * As is, the util number is not freq-invariant (we'd have to
+		 * implement arch_scale_freq_capacity() for that).
+		 *
+		 * See cpu_util().
+		 */
+		cpufreq_update_util(rq, 0);
+	}
 }
 
 static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq);
@@ -3569,7 +3571,7 @@ static inline void update_load_avg(struct sched_entity *se, int not_used)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	struct rq *rq = rq_of(cfs_rq);
 
-	cpufreq_trigger_update(rq_clock(rq));
+	cpufreq_update_util(rq, 0);
 }
 
 static inline void
@@ -5070,7 +5072,7 @@ enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 	 * passed.
 	 */
 	if (p->in_iowait)
-		cpufreq_update_this_cpu(rq, SCHED_CPUFREQ_IOWAIT);
+		cpufreq_update_util(rq, SCHED_CPUFREQ_IOWAIT);
 
 	for_each_sched_entity(se) {
 		if (se->on_rq)
