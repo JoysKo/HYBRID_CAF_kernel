@@ -22,6 +22,9 @@
 #include <linux/dmapool.h>
 #include <linux/hw_random.h>
 #include <linux/bitops.h>
+#include <linux/interrupt.h>
+#include <linux/irqreturn.h>
+#include <linux/dmaengine.h>
 
 #define MAX_DMAPOOL_NAME_LEN		32
 
@@ -140,8 +143,64 @@
 #define CCP_ECC_RESULT_OFFSET		60
 #define CCP_ECC_RESULT_SUCCESS		0x0001
 
+struct ccp_op;
+
+/* Structure for computation functions that are device-specific */
+struct ccp_actions {
+	int (*perform_aes)(struct ccp_op *);
+	int (*perform_xts_aes)(struct ccp_op *);
+	int (*perform_sha)(struct ccp_op *);
+	int (*perform_rsa)(struct ccp_op *);
+	int (*perform_passthru)(struct ccp_op *);
+	int (*perform_ecc)(struct ccp_op *);
+	int (*init)(struct ccp_device *);
+	void (*destroy)(struct ccp_device *);
+	irqreturn_t (*irqhandler)(int, void *);
+};
+
+/* Structure to hold CCP version-specific values */
+struct ccp_vdata {
+	unsigned int version;
+	const struct ccp_actions *perform;
+};
+
+extern struct ccp_vdata ccpv3;
+
 struct ccp_device;
 struct ccp_cmd;
+
+struct ccp_dma_cmd {
+	struct list_head entry;
+
+	struct ccp_cmd ccp_cmd;
+};
+
+struct ccp_dma_desc {
+	struct list_head entry;
+
+	struct ccp_device *ccp;
+
+	struct list_head pending;
+	struct list_head active;
+
+	enum dma_status status;
+	struct dma_async_tx_descriptor tx_desc;
+	size_t len;
+};
+
+struct ccp_dma_chan {
+	struct ccp_device *ccp;
+
+	spinlock_t lock;
+	struct list_head pending;
+	struct list_head active;
+	struct list_head complete;
+
+	struct tasklet_struct cleanup_tasklet;
+
+	enum dma_status status;
+	struct dma_chan dma_chan;
+};
 
 struct ccp_cmd_queue {
 	struct ccp_device *ccp;
@@ -230,6 +289,14 @@ struct ccp_device {
 	unsigned int hwrng_retries;
 
 	/*
+	 * Support for the CCP DMA capabilities
+	 */
+	struct dma_device dma_dev;
+	struct ccp_dma_chan *ccp_dma_chan;
+	struct kmem_cache *dma_cmd_cache;
+	struct kmem_cache *dma_desc_cache;
+
+	/*
 	 * A counter used to generate job-ids for cmds submitted to the CCP
 	 */
 	atomic_t current_id ____cacheline_aligned;
@@ -272,5 +339,8 @@ bool ccp_queues_suspended(struct ccp_device *ccp);
 irqreturn_t ccp_irq_handler(int irq, void *data);
 
 int ccp_run_cmd(struct ccp_cmd_queue *cmd_q, struct ccp_cmd *cmd);
+
+int ccp_dmaengine_register(struct ccp_device *ccp);
+void ccp_dmaengine_unregister(struct ccp_device *ccp);
 
 #endif
