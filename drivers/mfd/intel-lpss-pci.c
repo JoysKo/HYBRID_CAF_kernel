@@ -73,13 +73,9 @@ static struct property_entry spt_i2c_properties[] = {
 	{ },
 };
 
-static struct property_set spt_i2c_pset = {
-	.properties = spt_i2c_properties,
-};
-
 static const struct intel_lpss_platform_info spt_i2c_info = {
 	.clk_rate = 120000000,
-	.pset = &spt_i2c_pset,
+	.properties = spt_i2c_properties,
 };
 
 static struct property_entry uart_properties[] = {
@@ -89,14 +85,10 @@ static struct property_entry uart_properties[] = {
 	{ },
 };
 
-static struct property_set uart_pset = {
-	.properties = uart_properties,
-};
-
 static const struct intel_lpss_platform_info spt_uart_info = {
 	.clk_rate = 120000000,
 	.clk_con_id = "baudclk",
-	.pset = &uart_pset,
+	.properties = uart_properties,
 };
 
 static const struct intel_lpss_platform_info bxt_info = {
@@ -106,7 +98,7 @@ static const struct intel_lpss_platform_info bxt_info = {
 static const struct intel_lpss_platform_info bxt_uart_info = {
 	.clk_rate = 100000000,
 	.clk_con_id = "baudclk",
-	.pset = &uart_pset,
+	.properties = uart_properties,
 };
 
 static struct property_entry bxt_i2c_properties[] = {
@@ -116,13 +108,9 @@ static struct property_entry bxt_i2c_properties[] = {
 	{ },
 };
 
-static struct property_set bxt_i2c_pset = {
-	.properties = bxt_i2c_properties,
-};
-
 static const struct intel_lpss_platform_info bxt_i2c_info = {
 	.clk_rate = 133000000,
-	.pset = &bxt_i2c_pset,
+	.properties = bxt_i2c_properties,
 };
 
 static const struct pci_device_id intel_lpss_pci_ids[] = {
