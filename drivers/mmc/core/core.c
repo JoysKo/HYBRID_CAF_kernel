@@ -33,14 +33,14 @@
 #include <linux/pm.h>
 #include <linux/jiffies.h>
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/mmc.h>
-
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
 #include <linux/mmc/slot-gpio.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/mmc.h>
 
 #include "core.h"
 #include "bus.h"
@@ -982,6 +982,8 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 			cmd->retries = 0;
 	}
 
+	trace_mmc_request_done(host, mrq);
+
 	if (err && cmd->retries && !mmc_card_removed(host->card)) {
 		/*
 		 * Request starter must handle retries - see
@@ -1091,6 +1093,8 @@ static void __mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 			return;
 		}
 	}
+
+	trace_mmc_request_start(host, mrq);
 
 	host->ops->request(host, mrq);
 }

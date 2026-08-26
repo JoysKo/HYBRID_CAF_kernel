@@ -1523,21 +1523,13 @@ static int mmc_select_timing(struct mmc_card *card)
 	if (err && err != -EBADMSG)
 		return err;
 
-	if (err) {
-		pr_warn("%s: switch to %s failed\n",
-			mmc_card_hs(card) ? "high-speed" :
-			(mmc_card_hs200(card) ? "hs200" : ""),
-			mmc_hostname(card->host));
-		err = 0;
-	}
-
 bus_speed:
 	/*
 	 * Set the bus speed to the selected bus timing.
 	 * If timing is not selected, backward compatible is the default.
 	 */
 	mmc_set_bus_speed(card);
-	return err;
+	return 0;
 }
 
 /*
@@ -1956,12 +1948,13 @@ reinit:
 			goto free_card;
 		}
 
-		/* If doing byte addressing, check if required to do sector
+		/*
+		 * If doing byte addressing, check if required to do sector
 		 * addressing.  Handle the case of <2GB cards needing sector
 		 * addressing.  See section 8.1 JEDEC Standard JED84-A441;
 		 * ocr register has bit 30 set for sector addressing.
 		 */
-		if (!(mmc_card_blockaddr(card)) && (rocr & (1<<30)))
+		if (rocr & BIT(30))
 			mmc_card_set_blockaddr(card);
 
 		/* Erase size depends on CSD and Extended CSD */
@@ -2919,6 +2912,12 @@ static int mmc_reset(struct mmc_host *host)
 {
 	struct mmc_card *card = host->card;
 	int ret;
+
+	/*
+	 * In the case of recovery, we can't expect flushing the cache to work
+	 * always, but we have a go and ignore errors.
+	 */
+	mmc_flush_cache(host->card);
 
 	if ((host->caps & MMC_CAP_HW_RESET) && host->ops->hw_reset &&
 	     mmc_can_reset(card)) {
