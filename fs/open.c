@@ -74,7 +74,7 @@ int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
 	return do_truncate2(NULL, dentry, length, time_attrs, filp);
 }
 
-long vfs_truncate(struct path *path, loff_t length)
+long vfs_truncate(const struct path *path, loff_t length)
 {
 	struct inode *inode;
 	struct vfsmount *mnt;
@@ -583,7 +583,7 @@ out:
 	return error;
 }
 
-static int chmod_common(struct path *path, umode_t mode)
+static int chmod_common(const struct path *path, umode_t mode)
 {
 	struct inode *inode = path->dentry->d_inode;
 	struct inode *delegated_inode = NULL;
@@ -648,7 +648,7 @@ SYSCALL_DEFINE2(chmod, const char __user *, filename, umode_t, mode)
 	return sys_fchmodat(AT_FDCWD, filename, mode);
 }
 
-static int chown_common(struct path *path, uid_t user, gid_t group)
+static int chown_common(const struct path *path, uid_t user, gid_t group)
 {
 	struct inode *inode = path->dentry->d_inode;
 	struct inode *delegated_inode = NULL;
