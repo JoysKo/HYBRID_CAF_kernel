@@ -247,7 +247,7 @@ s32  exfat_nls_vfsname_to_uni16s(struct super_block *sb, const u8 *p_cstring,
 #ifdef CONFIG_EXFAT_VIRTUAL_XATTR
 void setup_exfat_xattr_handler(struct super_block *sb);
 extern int exfat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags);
-extern ssize_t exfat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size);
+extern ssize_t exfat_getxattr(struct dentry *dentry, struct inode *inode, const char *name, void *value, size_t size);
 extern ssize_t exfat_listxattr(struct dentry *dentry, char *list, size_t size);
 extern int exfat_removexattr(struct dentry *dentry, const char *name);
 #else

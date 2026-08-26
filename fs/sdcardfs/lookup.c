@@ -369,10 +369,10 @@ put_name:
 	/* See if the low-level filesystem might want
 	 * to use its own hash
 	 */
-	mutex_lock(&lower_dir_dentry->d_inode->i_mutex);
+	inode_lock(lower_dir_dentry->d_inode);
 	lower_dentry = lookup_one_len(dname.name, lower_dir_dentry,
 						dname.len);
-	mutex_unlock(&lower_dir_dentry->d_inode->i_mutex);
+	inode_unlock(lower_dir_dentry->d_inode);
 	if (IS_ERR(lower_dentry))
 		return lower_dentry;
 

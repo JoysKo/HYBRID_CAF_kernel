@@ -801,11 +801,11 @@ resizefs_out:
 		if (err)
 			goto encryption_policy_out;
 
-		mutex_lock(&inode->i_mutex);
+		inode_lock(inode);
 
 		err = ext4_process_policy(&policy, inode);
 
-		mutex_unlock(&inode->i_mutex);
+		inode_unlock(inode);
 
 		mnt_drop_write_file(filp);
 encryption_policy_out:

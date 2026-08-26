@@ -89,7 +89,7 @@ int exfat_setxattr(struct dentry *dentry, const char *name, const void *value, s
 	return __exfat_xattr_check_support(name);
 }
 
-ssize_t exfat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size)
+ssize_t exfat_getxattr(struct dentry *dentry, struct inode *inode, const char *name, void *value, size_t size)
 {
 	return __exfat_getxattr(name, value, size);
 }

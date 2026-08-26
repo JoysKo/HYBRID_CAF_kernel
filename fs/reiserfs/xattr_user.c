@@ -7,8 +7,8 @@
 #include <linux/uaccess.h>
 
 static int
-user_get(const struct xattr_handler *handler, struct dentry *dentry,
-	 const char *name, void *buffer, size_t size)
+user_get(const struct xattr_handler *handler, struct dentry *unused,
+	 struct inode *inode, const char *name, void *buffer, size_t size)
 {
 	if (!reiserfs_xattrs_user(dentry->d_sb))
 		return -EOPNOTSUPP;
