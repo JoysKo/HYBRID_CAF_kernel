@@ -1072,7 +1072,7 @@ static int exfat_cmpi(const struct dentry *parent, const struct inode *pinode,
 #endif
 
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 9)
 static ssize_t exfat_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
@@ -1127,7 +1127,7 @@ static ssize_t exfat_direct_IO(int rw, struct kiocb *iocb,
 #endif
 
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 6, 9)
 static inline ssize_t __exfat_blkdev_direct_IO(int unused, struct kiocb *iocb,
 		struct inode *inode, void *iov_u, loff_t unused_1,
 		unsigned long nr_segs)
