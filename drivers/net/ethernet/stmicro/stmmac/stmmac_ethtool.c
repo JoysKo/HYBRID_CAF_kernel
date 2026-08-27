@@ -136,6 +136,34 @@ static const struct stmmac_stats stmmac_gstrings_stats[] = {
 	STMMAC_STAT(irq_pcs_ane_n),
 	STMMAC_STAT(irq_pcs_link_n),
 	STMMAC_STAT(irq_rgmii_n),
+	/* DEBUG */
+	STMMAC_STAT(mtl_tx_status_fifo_full),
+	STMMAC_STAT(mtl_tx_fifo_not_empty),
+	STMMAC_STAT(mmtl_fifo_ctrl),
+	STMMAC_STAT(mtl_tx_fifo_read_ctrl_write),
+	STMMAC_STAT(mtl_tx_fifo_read_ctrl_wait),
+	STMMAC_STAT(mtl_tx_fifo_read_ctrl_read),
+	STMMAC_STAT(mtl_tx_fifo_read_ctrl_idle),
+	STMMAC_STAT(mac_tx_in_pause),
+	STMMAC_STAT(mac_tx_frame_ctrl_xfer),
+	STMMAC_STAT(mac_tx_frame_ctrl_idle),
+	STMMAC_STAT(mac_tx_frame_ctrl_wait),
+	STMMAC_STAT(mac_tx_frame_ctrl_pause),
+	STMMAC_STAT(mac_gmii_tx_proto_engine),
+	STMMAC_STAT(mtl_rx_fifo_fill_level_full),
+	STMMAC_STAT(mtl_rx_fifo_fill_above_thresh),
+	STMMAC_STAT(mtl_rx_fifo_fill_below_thresh),
+	STMMAC_STAT(mtl_rx_fifo_fill_level_empty),
+	STMMAC_STAT(mtl_rx_fifo_read_ctrl_flush),
+	STMMAC_STAT(mtl_rx_fifo_read_ctrl_read_data),
+	STMMAC_STAT(mtl_rx_fifo_read_ctrl_status),
+	STMMAC_STAT(mtl_rx_fifo_read_ctrl_idle),
+	STMMAC_STAT(mtl_rx_fifo_ctrl_active),
+	STMMAC_STAT(mac_rx_frame_ctrl_fifo),
+	STMMAC_STAT(mac_gmii_rx_proto_engine),
+	/* TSO */
+	STMMAC_STAT(tx_tso_frames),
+	STMMAC_STAT(tx_tso_nfrags),
 };
 #define STMMAC_STATS_LEN ARRAY_SIZE(stmmac_gstrings_stats)
 
@@ -474,14 +502,14 @@ static void stmmac_get_ethtool_stats(struct net_device *dev,
 	int i, j = 0;
 
 	/* Update the DMA HW counters for dwmac10/100 */
-	if (!priv->plat->has_gmac)
+	if (priv->hw->dma->dma_diagnostic_fr)
 		priv->hw->dma->dma_diagnostic_fr(&dev->stats,
 						 (void *) &priv->xstats,
 						 priv->ioaddr);
 	else {
 		/* If supported, for new GMAC chips expose the MMC counters */
 		if (priv->dma_cap.rmon) {
-			dwmac_mmc_read(priv->ioaddr, &priv->mmc);
+			dwmac_mmc_read(priv->mmcaddr, &priv->mmc);
 
 			for (i = 0; i < STMMAC_MMC_STATS_LEN; i++) {
 				char *p;
