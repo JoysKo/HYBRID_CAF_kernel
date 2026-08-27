@@ -1182,6 +1182,7 @@ int udpv6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	int connected = 0;
 	int is_udplite = IS_UDPLITE(sk);
 	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
+	struct sockcm_cookie sockc;
 
 	/* destination address check */
 	if (sin6) {
@@ -1305,6 +1306,7 @@ do_udp_sendmsg:
 		fl6.flowi6_oif = np->sticky_pktinfo.ipi6_ifindex;
 
 	fl6.flowi6_mark = sk->sk_mark;
+	sockc.tsflags = sk->sk_tsflags;
 	fl6.flowi6_uid = sk->sk_uid;
 
 	if (msg->msg_controllen) {
@@ -1313,7 +1315,8 @@ do_udp_sendmsg:
 		opt->tot_len = sizeof(*opt);
 
 		err = ip6_datagram_send_ctl(sock_net(sk), sk, msg, &fl6, opt,
-					    &hlimit, &tclass, &dontfrag);
+					    &hlimit, &tclass, &dontfrag,
+					    &sockc);
 		if (err < 0) {
 			fl6_sock_release(flowlabel);
 			return err;
@@ -1380,7 +1383,7 @@ back_from_confirm:
 		skb = ip6_make_skb(sk, getfrag, msg, ulen,
 				   sizeof(struct udphdr), hlimit, tclass, opt,
 				   &fl6, (struct rt6_info *)dst,
-				   msg->msg_flags, dontfrag);
+				   msg->msg_flags, dontfrag, &sockc);
 		err = PTR_ERR(skb);
 		if (!IS_ERR_OR_NULL(skb))
 			err = udp_v6_send_skb(skb, &fl6);
@@ -1407,7 +1410,8 @@ do_append_data:
 	err = ip6_append_data(sk, getfrag, msg, ulen,
 		sizeof(struct udphdr), hlimit, tclass, opt, &fl6,
 		(struct rt6_info *)dst,
-		corkreq ? msg->msg_flags|MSG_MORE : msg->msg_flags, dontfrag);
+		corkreq ? msg->msg_flags|MSG_MORE : msg->msg_flags, dontfrag,
+		&sockc);
 	if (err)
 		udp_v6_flush_pending_frames(sk);
 	else if (!corkreq)
