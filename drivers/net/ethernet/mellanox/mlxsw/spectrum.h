@@ -47,6 +47,14 @@
 #include "core.h"
 
 #define MLXSW_SP_VFID_BASE VLAN_N_VID
+#define MLXSW_SP_VFID_PORT_MAX 512	/* Non-bridged VLAN interfaces */
+#define MLXSW_SP_VFID_BR_MAX 6144	/* Bridged VLAN interfaces */
+#define MLXSW_SP_VFID_MAX (MLXSW_SP_VFID_PORT_MAX + MLXSW_SP_VFID_BR_MAX)
+
+#define MLXSW_SP_LAG_MAX 64
+#define MLXSW_SP_PORT_PER_LAG_MAX 16
+
+#define MLXSW_SP_MID_MAX 7000
 
 #define MLXSW_SP_PORTS_PER_CLUSTER_MAX 4
 
