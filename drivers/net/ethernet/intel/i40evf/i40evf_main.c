@@ -37,8 +37,8 @@ static const char i40evf_driver_string[] =
 #define DRV_KERN "-k"
 
 #define DRV_VERSION_MAJOR 1
-#define DRV_VERSION_MINOR 4
-#define DRV_VERSION_BUILD 15
+#define DRV_VERSION_MINOR 5
+#define DRV_VERSION_BUILD 1
 #define DRV_VERSION __stringify(DRV_VERSION_MAJOR) "." \
 	     __stringify(DRV_VERSION_MINOR) "." \
 	     __stringify(DRV_VERSION_BUILD) \
@@ -1344,6 +1344,10 @@ static int i40evf_alloc_q_vectors(struct i40evf_adapter *adapter)
 	struct i40e_q_vector *q_vector;
 
 	num_q_vectors = adapter->num_msix_vectors - NONQ_VECS;
+	adapter->q_vectors = kcalloc(num_q_vectors, sizeof(*q_vector),
+				     GFP_KERNEL);
+	if (!adapter->q_vectors)
+		return -ENOMEM;
 
 	for (q_idx = 0; q_idx < num_q_vectors; q_idx++) {
 		q_vector = kzalloc(sizeof(*q_vector), GFP_KERNEL);
@@ -1358,16 +1362,6 @@ static int i40evf_alloc_q_vectors(struct i40evf_adapter *adapter)
 	}
 
 	return 0;
-
-err_out:
-	while (q_idx) {
-		q_idx--;
-		q_vector = adapter->q_vector[q_idx];
-		netif_napi_del(&q_vector->napi);
-		kfree(q_vector);
-		adapter->q_vector[q_idx] = NULL;
-	}
-	return -ENOMEM;
 }
 
 /**
@@ -1829,6 +1823,8 @@ static void i40evf_adminq_task(struct work_struct *work)
 
 	/* check for error indications */
 	val = rd32(hw, hw->aq.arq.len);
+	if (val == 0xdeadbeef) /* indicates device in reset */
+		goto freedom;
 	oldval = val;
 	if (val & I40E_VF_ARQLEN1_ARQVFE_MASK) {
 		dev_info(&adapter->pdev->dev, "ARQ VF Error detected\n");
