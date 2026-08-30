@@ -302,7 +302,7 @@ struct trace_event_call {
 #ifdef CONFIG_PERF_EVENTS
 	int				perf_refcount;
 	struct hlist_head __percpu	*perf_events;
-	struct bpf_prog_array __rcu	*prog_array;
+	struct bpf_prog			*prog;
 
 	int	(*perf_perm)(struct trace_event_call *,
 			     struct perf_event *);
@@ -329,7 +329,7 @@ static inline bool bpf_prog_array_valid(struct trace_event_call *call)
 	 * "struct bpf_prog_array" while READ_ONCE() only needs
 	 * a declaration of the same type.
 	 */
-	return !!READ_ONCE(call->prog_array);
+	return !!READ_ONCE(call->prog);
 }
 #endif
 
