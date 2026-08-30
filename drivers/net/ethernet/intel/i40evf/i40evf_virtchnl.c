@@ -157,7 +157,9 @@ int i40evf_send_vf_config_msg(struct i40evf_adapter *adapter)
 	       I40E_VIRTCHNL_VF_OFFLOAD_RSS_AQ |
 	       I40E_VIRTCHNL_VF_OFFLOAD_RSS_REG |
 	       I40E_VIRTCHNL_VF_OFFLOAD_VLAN |
-	       I40E_VIRTCHNL_VF_OFFLOAD_WB_ON_ITR;
+	       I40E_VIRTCHNL_VF_OFFLOAD_WB_ON_ITR |
+	       I40E_VIRTCHNL_VF_OFFLOAD_RSS_PCTYPE_V2;
+
 	adapter->current_op = I40E_VIRTCHNL_OP_GET_VF_RESOURCES;
 	adapter->aq_required &= ~I40EVF_FLAG_AQ_GET_CONFIG;
 	if (PF_IS_V11(adapter))
@@ -242,7 +244,7 @@ void i40evf_configure_queues(struct i40evf_adapter *adapter)
 	adapter->current_op = I40E_VIRTCHNL_OP_CONFIG_VSI_QUEUES;
 	len = sizeof(struct i40e_virtchnl_vsi_queue_config_info) +
 		       (sizeof(struct i40e_virtchnl_queue_pair_info) * pairs);
-	vqci = kzalloc(len, GFP_ATOMIC);
+	vqci = kzalloc(len, GFP_KERNEL);
 	if (!vqci)
 		return;
 
@@ -255,16 +257,16 @@ void i40evf_configure_queues(struct i40evf_adapter *adapter)
 	for (i = 0; i < pairs; i++) {
 		vqpi->txq.vsi_id = vqci->vsi_id;
 		vqpi->txq.queue_id = i;
-		vqpi->txq.ring_len = adapter->tx_rings[i]->count;
-		vqpi->txq.dma_ring_addr = adapter->tx_rings[i]->dma;
+		vqpi->txq.ring_len = adapter->tx_rings[i].count;
+		vqpi->txq.dma_ring_addr = adapter->tx_rings[i].dma;
 		vqpi->txq.headwb_enabled = 1;
 		vqpi->txq.dma_headwb_addr = vqpi->txq.dma_ring_addr +
 		    (vqpi->txq.ring_len * sizeof(struct i40e_tx_desc));
 
 		vqpi->rxq.vsi_id = vqci->vsi_id;
 		vqpi->rxq.queue_id = i;
-		vqpi->rxq.ring_len = adapter->rx_rings[i]->count;
-		vqpi->rxq.dma_ring_addr = adapter->rx_rings[i]->dma;
+		vqpi->rxq.ring_len = adapter->rx_rings[i].count;
+		vqpi->rxq.dma_ring_addr = adapter->rx_rings[i].dma;
 		vqpi->rxq.max_pkt_size = adapter->netdev->mtu
 					+ ETH_HLEN + VLAN_HLEN + ETH_FCS_LEN;
 		vqpi->rxq.databuffer_size = adapter->rx_rings[i].rx_buf_len;
@@ -357,14 +359,14 @@ void i40evf_map_queues(struct i40evf_adapter *adapter)
 	len = sizeof(struct i40e_virtchnl_irq_map_info) +
 	      (adapter->num_msix_vectors *
 		sizeof(struct i40e_virtchnl_vector_map));
-	vimi = kzalloc(len, GFP_ATOMIC);
+	vimi = kzalloc(len, GFP_KERNEL);
 	if (!vimi)
 		return;
 
 	vimi->num_vectors = adapter->num_msix_vectors;
 	/* Queue vectors first */
 	for (v_idx = 0; v_idx < q_vectors; v_idx++) {
-		q_vector = adapter->q_vector[v_idx];
+		q_vector = adapter->q_vectors + v_idx;
 		vimi->vecmap[v_idx].vsi_id = adapter->vsi_res->vsi_id;
 		vimi->vecmap[v_idx].vector_id = v_idx + NONQ_VECS;
 		vimi->vecmap[v_idx].txq_map = q_vector->ring_mask;
@@ -425,7 +427,7 @@ void i40evf_add_ether_addrs(struct i40evf_adapter *adapter)
 		more = true;
 	}
 
-	veal = kzalloc(len, GFP_ATOMIC);
+	veal = kzalloc(len, GFP_KERNEL);
 	if (!veal)
 		return;
 
@@ -487,7 +489,7 @@ void i40evf_del_ether_addrs(struct i40evf_adapter *adapter)
 		      (count * sizeof(struct i40e_virtchnl_ether_addr));
 		more = true;
 	}
-	veal = kzalloc(len, GFP_ATOMIC);
+	veal = kzalloc(len, GFP_KERNEL);
 	if (!veal)
 		return;
 
@@ -551,7 +553,7 @@ void i40evf_add_vlans(struct i40evf_adapter *adapter)
 		      (count * sizeof(u16));
 		more = true;
 	}
-	vvfl = kzalloc(len, GFP_ATOMIC);
+	vvfl = kzalloc(len, GFP_KERNEL);
 	if (!vvfl)
 		return;
 
@@ -613,7 +615,7 @@ void i40evf_del_vlans(struct i40evf_adapter *adapter)
 		      (count * sizeof(u16));
 		more = true;
 	}
-	vvfl = kzalloc(len, GFP_ATOMIC);
+	vvfl = kzalloc(len, GFP_KERNEL);
 	if (!vvfl)
 		return;
 
@@ -744,9 +746,29 @@ void i40evf_virtchnl_completion(struct i40evf_adapter *adapter,
 		return;
 	}
 	if (v_retval) {
-		dev_err(&adapter->pdev->dev, "PF returned error %d (%s) to our request %d\n",
-			v_retval, i40evf_stat_str(&adapter->hw, v_retval),
-			v_opcode);
+		switch (v_opcode) {
+		case I40E_VIRTCHNL_OP_ADD_VLAN:
+			dev_err(&adapter->pdev->dev, "Failed to add VLAN filter, error %s\n",
+				i40evf_stat_str(&adapter->hw, v_retval));
+			break;
+		case I40E_VIRTCHNL_OP_ADD_ETHER_ADDRESS:
+			dev_err(&adapter->pdev->dev, "Failed to add MAC filter, error %s\n",
+				i40evf_stat_str(&adapter->hw, v_retval));
+			break;
+		case I40E_VIRTCHNL_OP_DEL_VLAN:
+			dev_err(&adapter->pdev->dev, "Failed to delete VLAN filter, error %s\n",
+				i40evf_stat_str(&adapter->hw, v_retval));
+			break;
+		case I40E_VIRTCHNL_OP_DEL_ETHER_ADDRESS:
+			dev_err(&adapter->pdev->dev, "Failed to delete MAC filter, error %s\n",
+				i40evf_stat_str(&adapter->hw, v_retval));
+			break;
+		default:
+			dev_err(&adapter->pdev->dev, "PF returned error %d (%s) to our request %d\n",
+				v_retval,
+				i40evf_stat_str(&adapter->hw, v_retval),
+				v_opcode);
+		}
 	}
 	switch (v_opcode) {
 	case I40E_VIRTCHNL_OP_GET_STATS: {

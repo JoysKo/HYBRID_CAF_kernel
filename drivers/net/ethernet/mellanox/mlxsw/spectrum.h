@@ -41,6 +41,8 @@
 #include <linux/netdevice.h>
 #include <linux/bitops.h>
 #include <linux/if_vlan.h>
+#include <linux/list.h>
+#include <linux/dcbnl.h>
 #include <net/switchdev.h>
 #include <net/devlink.h>
 
@@ -59,6 +61,23 @@
 #define MLXSW_SP_PORTS_PER_CLUSTER_MAX 4
 
 #define MLXSW_SP_PORT_BASE_SPEED 25000	/* Mb/s */
+
+#define MLXSW_SP_BYTES_PER_CELL 96
+
+#define MLXSW_SP_BYTES_TO_CELLS(b) DIV_ROUND_UP(b, MLXSW_SP_BYTES_PER_CELL)
+
+/* Maximum delay buffer needed in case of PAUSE frames, in cells.
+ * Assumes 100m cable and maximum MTU.
+ */
+#define MLXSW_SP_PAUSE_DELAY 612
+
+#define MLXSW_SP_CELL_FACTOR 2	/* 2 * cell_size / (IPG + cell_size + 1) */
+
+static inline u16 mlxsw_sp_pfc_delay_get(int mtu, u16 delay)
+{
+	delay = MLXSW_SP_BYTES_TO_CELLS(DIV_ROUND_UP(delay, BITS_PER_BYTE));
+	return MLXSW_SP_CELL_FACTOR * delay + MLXSW_SP_BYTES_TO_CELLS(mtu);
+}
 
 struct mlxsw_sp_port;
 
@@ -105,12 +124,98 @@ struct mlxsw_sp_port {
 	   lagged:1,
 	   split:1;
 	u16 pvid;
+	u16 lag_id;
+	struct {
+		struct list_head list;
+		struct mlxsw_sp_vfid *vfid;
+		u16 vid;
+	} vport;
+	struct {
+		u8 tx_pause:1,
+		   rx_pause:1;
+	} link;
+	struct {
+		struct ieee_ets *ets;
+		struct ieee_maxrate *maxrate;
+		struct ieee_pfc *pfc;
+	} dcb;
 	/* 802.1Q bridge VLANs */
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 	/* VLAN interfaces */
 	struct list_head vports_list;
 	struct devlink_port devlink_port;
 };
+
+static inline bool
+mlxsw_sp_port_is_pause_en(const struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	return mlxsw_sp_port->link.tx_pause || mlxsw_sp_port->link.rx_pause;
+}
+
+static inline struct mlxsw_sp_port *
+mlxsw_sp_port_lagged_get(struct mlxsw_sp *mlxsw_sp, u16 lag_id, u8 port_index)
+{
+	struct mlxsw_sp_port *mlxsw_sp_port;
+	u8 local_port;
+
+	local_port = mlxsw_core_lag_mapping_get(mlxsw_sp->core,
+						lag_id, port_index);
+	mlxsw_sp_port = mlxsw_sp->ports[local_port];
+	return mlxsw_sp_port && mlxsw_sp_port->lagged ? mlxsw_sp_port : NULL;
+}
+
+static inline bool
+mlxsw_sp_port_is_vport(const struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	return mlxsw_sp_port->vport.vfid;
+}
+
+static inline struct net_device *
+mlxsw_sp_vport_br_get(const struct mlxsw_sp_port *mlxsw_sp_vport)
+{
+	return mlxsw_sp_vport->vport.vfid->br_dev;
+}
+
+static inline u16
+mlxsw_sp_vport_vid_get(const struct mlxsw_sp_port *mlxsw_sp_vport)
+{
+	return mlxsw_sp_vport->vport.vid;
+}
+
+static inline u16
+mlxsw_sp_vport_vfid_get(const struct mlxsw_sp_port *mlxsw_sp_vport)
+{
+	return mlxsw_sp_vport->vport.vfid->vfid;
+}
+
+static inline struct mlxsw_sp_port *
+mlxsw_sp_port_vport_find(const struct mlxsw_sp_port *mlxsw_sp_port, u16 vid)
+{
+	struct mlxsw_sp_port *mlxsw_sp_vport;
+
+	list_for_each_entry(mlxsw_sp_vport, &mlxsw_sp_port->vports_list,
+			    vport.list) {
+		if (mlxsw_sp_vport_vid_get(mlxsw_sp_vport) == vid)
+			return mlxsw_sp_vport;
+	}
+
+	return NULL;
+}
+
+static inline struct mlxsw_sp_port *
+mlxsw_sp_port_vport_find_by_vfid(const struct mlxsw_sp_port *mlxsw_sp_port,
+				 u16 vfid)
+{
+	struct mlxsw_sp_port *mlxsw_sp_vport;
+
+	list_for_each_entry(mlxsw_sp_vport, &mlxsw_sp_port->vports_list,
+			    vport.list) {
+		if (mlxsw_sp_vport_vfid_get(mlxsw_sp_vport) == vfid)
+			return mlxsw_sp_vport;
+	}
+
+	return NULL;
+}
 
 enum mlxsw_sp_flood_table {
 	MLXSW_SP_FLOOD_TABLE_UC,
@@ -134,5 +239,37 @@ int mlxsw_sp_port_add_vid(struct net_device *dev, __be16 __always_unused proto,
 			  u16 vid);
 int mlxsw_sp_port_kill_vid(struct net_device *dev,
 			   __be16 __always_unused proto, u16 vid);
+int mlxsw_sp_vport_flood_set(struct mlxsw_sp_port *mlxsw_sp_vport, u16 vfid,
+			     bool set, bool only_uc);
+void mlxsw_sp_port_active_vlans_del(struct mlxsw_sp_port *mlxsw_sp_port);
+int mlxsw_sp_port_pvid_set(struct mlxsw_sp_port *mlxsw_sp_port, u16 vid);
+int mlxsw_sp_port_ets_set(struct mlxsw_sp_port *mlxsw_sp_port,
+			  enum mlxsw_reg_qeec_hr hr, u8 index, u8 next_index,
+			  bool dwrr, u8 dwrr_weight);
+int mlxsw_sp_port_prio_tc_set(struct mlxsw_sp_port *mlxsw_sp_port,
+			      u8 switch_prio, u8 tclass);
+int __mlxsw_sp_port_headroom_set(struct mlxsw_sp_port *mlxsw_sp_port, int mtu,
+				 u8 *prio_tc, bool pause_en,
+				 struct ieee_pfc *my_pfc);
+int mlxsw_sp_port_ets_maxrate_set(struct mlxsw_sp_port *mlxsw_sp_port,
+				  enum mlxsw_reg_qeec_hr hr, u8 index,
+				  u8 next_index, u32 maxrate);
+
+#ifdef CONFIG_MLXSW_SPECTRUM_DCB
+
+int mlxsw_sp_port_dcb_init(struct mlxsw_sp_port *mlxsw_sp_port);
+void mlxsw_sp_port_dcb_fini(struct mlxsw_sp_port *mlxsw_sp_port);
+
+#else
+
+static inline int mlxsw_sp_port_dcb_init(struct mlxsw_sp_port *mlxsw_sp_port)
+{
+	return 0;
+}
+
+static inline void mlxsw_sp_port_dcb_fini(struct mlxsw_sp_port *mlxsw_sp_port)
+{}
+
+#endif
 
 #endif

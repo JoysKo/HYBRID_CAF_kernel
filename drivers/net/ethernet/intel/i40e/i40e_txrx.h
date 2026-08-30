@@ -191,7 +191,7 @@ static inline unsigned int i40e_txd_use_count(unsigned int size)
 #define I40E_TX_FLAGS_FSO		BIT(7)
 #define I40E_TX_FLAGS_TSYN		BIT(8)
 #define I40E_TX_FLAGS_FD_SB		BIT(9)
-#define I40E_TX_FLAGS_VXLAN_TUNNEL	BIT(10)
+#define I40E_TX_FLAGS_UDP_TUNNEL	BIT(10)
 #define I40E_TX_FLAGS_VLAN_MASK		0xffff0000
 #define I40E_TX_FLAGS_VLAN_PRIO_MASK	0xe0000000
 #define I40E_TX_FLAGS_VLAN_PRIO_SHIFT	29
@@ -442,14 +442,20 @@ static inline int i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
  **/
 static inline bool i40e_chk_linearize(struct sk_buff *skb, int count)
 {
-	/* Both TSO and single send will work if count is less than 8 */
-	if (likely(count < I40E_MAX_BUFFER_TXD))
+	/* we can only support up to 8 data buffers for a single send */
+	if (likely(count <= I40E_MAX_BUFFER_TXD))
 		return false;
 
-	if (skb_is_gso(skb))
-		return __i40e_chk_linearize(skb);
+	return __i40e_chk_linearize(skb);
+}
 
-	/* we can support up to 8 data buffers for a single send */
-	return count != I40E_MAX_BUFFER_TXD;
+/**
+ * i40e_rx_is_fcoe - returns true if the Rx packet type is FCoE
+ * @ptype: the packet type field from Rx descriptor write-back
+ **/
+static inline bool i40e_rx_is_fcoe(u16 ptype)
+{
+	return (ptype >= I40E_RX_PTYPE_L2_FCOE_PAY3) &&
+	       (ptype <= I40E_RX_PTYPE_L2_FCOE_VFT_FCOTHER);
 }
 #endif /* _I40E_TXRX_H_ */

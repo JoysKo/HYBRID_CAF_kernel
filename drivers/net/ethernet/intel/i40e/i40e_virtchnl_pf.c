@@ -188,7 +188,7 @@ static inline bool i40e_vc_isvalid_vsi_id(struct i40e_vf *vf, u16 vsi_id)
  * check for the valid queue id
  **/
 static inline bool i40e_vc_isvalid_queue_id(struct i40e_vf *vf, u16 vsi_id,
-					    u16 qid)
+					    u8 qid)
 {
 	struct i40e_pf *pf = vf->pf;
 	struct i40e_vsi *vsi = i40e_find_vsi_from_id(pf, vsi_id);
@@ -203,7 +203,7 @@ static inline bool i40e_vc_isvalid_queue_id(struct i40e_vf *vf, u16 vsi_id,
  *
  * check for the valid vector id
  **/
-static inline bool i40e_vc_isvalid_vector_id(struct i40e_vf *vf, u32 vector_id)
+static inline bool i40e_vc_isvalid_vector_id(struct i40e_vf *vf, u8 vector_id)
 {
 	struct i40e_pf *pf = vf->pf;
 
@@ -290,8 +290,8 @@ static void i40e_config_irq_link_list(struct i40e_vf *vf, u16 vsi_id,
 	next_q = find_first_bit(&linklistmap,
 				(I40E_MAX_VSI_QP *
 				 I40E_VIRTCHNL_SUPPORTED_QTYPES));
-	vsi_queue_id = next_q/I40E_VIRTCHNL_SUPPORTED_QTYPES;
-	qtype = next_q%I40E_VIRTCHNL_SUPPORTED_QTYPES;
+	vsi_queue_id = next_q / I40E_VIRTCHNL_SUPPORTED_QTYPES;
+	qtype = next_q % I40E_VIRTCHNL_SUPPORTED_QTYPES;
 	pf_queue_id = i40e_vc_get_pf_queue_id(vf, vsi_id, vsi_queue_id);
 	reg = ((qtype << I40E_VPINT_LNKLSTN_FIRSTQ_TYPE_SHIFT) | pf_queue_id);
 
@@ -698,7 +698,7 @@ static int i40e_alloc_vsi_res(struct i40e_vf *vf, enum i40e_vsi_type type)
 	}
 
 	/* program mac filter */
-	ret = i40e_sync_vsi_filters(vsi, false);
+	ret = i40e_sync_vsi_filters(vsi);
 	if (ret)
 		dev_err(&pf->pdev->dev, "Unable to program ucast filters\n");
 
@@ -937,6 +937,11 @@ void i40e_reset_vf(struct i40e_vf *vf, bool flr)
 		wr32(hw, I40E_VPGEN_VFRTRIG(vf->vf_id), reg);
 		i40e_flush(hw);
 	}
+	/* clear the VFLR bit in GLGEN_VFLRSTAT */
+	reg_idx = (hw->func_caps.vf_base_id + vf->vf_id) / 32;
+	bit_idx = (hw->func_caps.vf_base_id + vf->vf_id) % 32;
+	wr32(hw, I40E_GLGEN_VFLRSTAT(reg_idx), BIT(bit_idx));
+	i40e_flush(hw);
 
 	if (i40e_quiesce_vf_pci(vf))
 		dev_err(&pf->pdev->dev, "VF %d PCI transactions stuck\n",
@@ -989,10 +994,6 @@ complete_reset:
 	/* tell the VF the reset is done */
 	wr32(hw, I40E_VFGEN_RSTAT1(vf->vf_id), I40E_VFR_VFACTIVE);
 
-	/* clear the VFLR bit in GLGEN_VFLRSTAT */
-	reg_idx = (hw->func_caps.vf_base_id + vf->vf_id) / 32;
-	bit_idx = (hw->func_caps.vf_base_id + vf->vf_id) % 32;
-	wr32(hw, I40E_GLGEN_VFLRSTAT(reg_idx), BIT(bit_idx));
 	i40e_flush(hw);
 	clear_bit(__I40E_VF_DISABLE, &pf->state);
 }
@@ -1232,8 +1233,8 @@ static int i40e_vc_send_msg_to_vf(struct i40e_vf *vf, u32 v_opcode,
 	/* single place to detect unsuccessful return values */
 	if (v_retval) {
 		vf->num_invalid_msgs++;
-		dev_err(&pf->pdev->dev, "Failed opcode %d Error: %d\n",
-			v_opcode, v_retval);
+		dev_info(&pf->pdev->dev, "VF %d failed opcode %d, retval: %d\n",
+			 vf->vf_id, v_opcode, v_retval);
 		if (vf->num_invalid_msgs >
 		    I40E_DEFAULT_NUM_INVALID_MSGS_ALLOWED) {
 			dev_err(&pf->pdev->dev,
@@ -1251,9 +1252,9 @@ static int i40e_vc_send_msg_to_vf(struct i40e_vf *vf, u32 v_opcode,
 	aq_ret = i40e_aq_send_msg_to_vf(hw, abs_vf_id,	v_opcode, v_retval,
 					msg, msglen, NULL);
 	if (aq_ret) {
-		dev_err(&pf->pdev->dev,
-			"Unable to send the message to VF %d aq_err %d\n",
-			vf->vf_id, pf->hw.aq.asq_last_status);
+		dev_info(&pf->pdev->dev,
+			 "Unable to send the message to VF %d aq_err %d\n",
+			 vf->vf_id, pf->hw.aq.asq_last_status);
 		return -EIO;
 	}
 
@@ -1311,8 +1312,8 @@ static int i40e_vc_get_vf_resources_msg(struct i40e_vf *vf, u8 *msg)
 	struct i40e_pf *pf = vf->pf;
 	i40e_status aq_ret = 0;
 	struct i40e_vsi *vsi;
-	int i = 0, len = 0;
 	int num_vsis = 1;
+	int len = 0;
 	int ret;
 
 	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
@@ -1361,8 +1362,16 @@ static int i40e_vc_get_vf_resources_msg(struct i40e_vf *vf, u8 *msg)
 				I40E_VIRTCHNL_VF_OFFLOAD_RSS_PCTYPE_V2;
 	}
 
-	if (vf->driver_caps & I40E_VIRTCHNL_VF_OFFLOAD_RX_POLLING)
+	if (vf->driver_caps & I40E_VIRTCHNL_VF_OFFLOAD_RX_POLLING) {
+		if (pf->flags & I40E_FLAG_MFP_ENABLED) {
+			dev_err(&pf->pdev->dev,
+				"VF %d requested polling mode: this feature is supported only when the device is running in single function per port (SFP) mode\n",
+				 vf->vf_id);
+			ret = I40E_ERR_PARAM;
+			goto err;
+		}
 		vfres->vf_offload_flags |= I40E_VIRTCHNL_VF_OFFLOAD_RX_POLLING;
+	}
 
 	if (pf->flags & I40E_FLAG_WB_ON_ITR_CAPABLE) {
 		if (vf->driver_caps & I40E_VIRTCHNL_VF_OFFLOAD_WB_ON_ITR)
@@ -1374,15 +1383,14 @@ static int i40e_vc_get_vf_resources_msg(struct i40e_vf *vf, u8 *msg)
 	vfres->num_queue_pairs = vf->num_queue_pairs;
 	vfres->max_vectors = pf->hw.func_caps.num_msix_vectors_vf;
 	if (vf->lan_vsi_idx) {
-		vfres->vsi_res[i].vsi_id = vf->lan_vsi_id;
-		vfres->vsi_res[i].vsi_type = I40E_VSI_SRIOV;
-		vfres->vsi_res[i].num_queue_pairs = vsi->alloc_queue_pairs;
+		vfres->vsi_res[0].vsi_id = vf->lan_vsi_id;
+		vfres->vsi_res[0].vsi_type = I40E_VSI_SRIOV;
+		vfres->vsi_res[0].num_queue_pairs = vsi->alloc_queue_pairs;
 		/* VFs only use TC 0 */
-		vfres->vsi_res[i].qset_handle
+		vfres->vsi_res[0].qset_handle
 					  = le16_to_cpu(vsi->info.qs_handle[0]);
-		ether_addr_copy(vfres->vsi_res[i].default_mac_addr,
+		ether_addr_copy(vfres->vsi_res[0].default_mac_addr,
 				vf->default_lan_addr.addr);
-		i++;
 	}
 	set_bit(I40E_VF_STAT_ACTIVE, &vf->vf_states);
 
@@ -1780,7 +1788,8 @@ static int i40e_vc_add_mac_addr_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 
 		if (!f) {
 			dev_err(&pf->pdev->dev,
-				"Unable to add VF MAC filter\n");
+				"Unable to add MAC filter %pM for VF %d\n",
+				 al->list[i].addr, vf->vf_id);
 			ret = I40E_ERR_PARAM;
 			spin_unlock_bh(&vsi->mac_filter_list_lock);
 			goto error_param;
@@ -1789,8 +1798,10 @@ static int i40e_vc_add_mac_addr_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 	spin_unlock_bh(&vsi->mac_filter_list_lock);
 
 	/* program the updated filter list */
-	if (i40e_sync_vsi_filters(vsi, false))
-		dev_err(&pf->pdev->dev, "Unable to program VF MAC filters\n");
+	ret = i40e_sync_vsi_filters(vsi);
+	if (ret)
+		dev_err(&pf->pdev->dev, "Unable to program VF %d MAC filters, error %d\n",
+			vf->vf_id, ret);
 
 error_param:
 	/* send the response to the VF */
@@ -1826,19 +1837,9 @@ static int i40e_vc_del_mac_addr_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 	for (i = 0; i < al->num_elements; i++) {
 		if (is_broadcast_ether_addr(al->list[i].addr) ||
 		    is_zero_ether_addr(al->list[i].addr)) {
-			dev_err(&pf->pdev->dev, "invalid VF MAC addr %pM\n",
-				al->list[i].addr);
+			dev_err(&pf->pdev->dev, "Invalid MAC addr %pM for VF %d\n",
+				al->list[i].addr, vf->vf_id);
 			ret = I40E_ERR_INVALID_MAC_ADDR;
-			goto error_param;
-		}
-
-		if (vf->pf_set_mac &&
-		    ether_addr_equal(al->list[i].addr,
-				     vf->default_lan_addr.addr)) {
-			dev_err(&pf->pdev->dev,
-				"MAC addr %pM has been set by PF, cannot delete it for VF %d, reset VF to change MAC addr\n",
-				vf->default_lan_addr.addr, vf->vf_id);
-			ret = I40E_ERR_PARAM;
 			goto error_param;
 		}
 	}
@@ -1856,8 +1857,10 @@ static int i40e_vc_del_mac_addr_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 	spin_unlock_bh(&vsi->mac_filter_list_lock);
 
 	/* program the updated filter list */
-	if (i40e_sync_vsi_filters(vsi, false))
-		dev_err(&pf->pdev->dev, "Unable to program VF MAC filters\n");
+	ret = i40e_sync_vsi_filters(vsi);
+	if (ret)
+		dev_err(&pf->pdev->dev, "Unable to program VF %d MAC filters, error %d\n",
+			vf->vf_id, ret);
 
 error_param:
 	/* send the response to the VF */
@@ -1911,8 +1914,8 @@ static int i40e_vc_add_vlan_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 
 		if (ret)
 			dev_err(&pf->pdev->dev,
-				"Unable to add VF vlan filter %d, error %d\n",
-				vfl->vlan_id[i], ret);
+				"Unable to add VLAN filter %d for VF %d, error %d\n",
+				vfl->vlan_id[i], vf->vf_id, ret);
 	}
 
 error_param:
@@ -1963,8 +1966,8 @@ static int i40e_vc_remove_vlan_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 
 		if (ret)
 			dev_err(&pf->pdev->dev,
-				"Unable to delete VF vlan filter %d, error %d\n",
-				vfl->vlan_id[i], ret);
+				"Unable to delete VLAN filter %d for VF %d, error %d\n",
+				vfl->vlan_id[i], vf->vf_id, ret);
 	}
 
 error_param:
@@ -2302,11 +2305,9 @@ int i40e_vc_process_vflr_event(struct i40e_pf *pf)
 		/* read GLGEN_VFLRSTAT register to find out the flr VFs */
 		vf = &pf->vf[vf_id];
 		reg = rd32(hw, I40E_GLGEN_VFLRSTAT(reg_idx));
-		if (reg & BIT(bit_idx)) {
+		if (reg & BIT(bit_idx))
 			/* i40e_reset_vf will clear the bit in GLGEN_VFLRSTAT */
-			if (!test_bit(__I40E_DOWN, &pf->state))
-				i40e_reset_vf(vf, true);
-		}
+			i40e_reset_vf(vf, true);
 	}
 
 	return 0;
@@ -2340,15 +2341,15 @@ int i40e_ndo_set_vf_mac(struct net_device *netdev, int vf_id, u8 *mac)
 	vf = &(pf->vf[vf_id]);
 	vsi = pf->vsi[vf->lan_vsi_idx];
 	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
-		dev_err(&pf->pdev->dev,
-			"Uninitialized VF %d\n", vf_id);
-		ret = -EINVAL;
+		dev_err(&pf->pdev->dev, "VF %d still in reset. Try again.\n",
+			vf_id);
+		ret = -EAGAIN;
 		goto error_param;
 	}
 
-	if (!is_valid_ether_addr(mac)) {
+	if (is_multicast_ether_addr(mac)) {
 		dev_err(&pf->pdev->dev,
-			"Invalid VF ethernet address\n");
+			"Invalid Ethernet address %pM for VF %d\n", mac, vf_id);
 		ret = -EINVAL;
 		goto error_param;
 	}
@@ -2359,9 +2360,10 @@ int i40e_ndo_set_vf_mac(struct net_device *netdev, int vf_id, u8 *mac)
 	spin_lock_bh(&vsi->mac_filter_list_lock);
 
 	/* delete the temporary mac address */
-	i40e_del_filter(vsi, vf->default_lan_addr.addr,
-			vf->port_vlan_id ? vf->port_vlan_id : -1,
-			true, false);
+	if (!is_zero_ether_addr(vf->default_lan_addr.addr))
+		i40e_del_filter(vsi, vf->default_lan_addr.addr,
+				vf->port_vlan_id ? vf->port_vlan_id : -1,
+				true, false);
 
 	/* Delete all the filters for this VSI - we're going to kill it
 	 * anyway.
@@ -2373,7 +2375,7 @@ int i40e_ndo_set_vf_mac(struct net_device *netdev, int vf_id, u8 *mac)
 
 	dev_info(&pf->pdev->dev, "Setting MAC %pM on VF %d\n", mac, vf_id);
 	/* program mac filter */
-	if (i40e_sync_vsi_filters(vsi, false)) {
+	if (i40e_sync_vsi_filters(vsi)) {
 		dev_err(&pf->pdev->dev, "Unable to program ucast filters\n");
 		ret = -EIO;
 		goto error_param;
@@ -2424,8 +2426,9 @@ int i40e_ndo_set_vf_port_vlan(struct net_device *netdev,
 	vf = &(pf->vf[vf_id]);
 	vsi = pf->vsi[vf->lan_vsi_idx];
 	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
-		dev_err(&pf->pdev->dev, "Uninitialized VF %d\n", vf_id);
-		ret = -EINVAL;
+		dev_err(&pf->pdev->dev, "VF %d still in reset. Try again.\n",
+			vf_id);
+		ret = -EAGAIN;
 		goto error_pvid;
 	}
 
@@ -2546,8 +2549,9 @@ int i40e_ndo_set_vf_bw(struct net_device *netdev, int vf_id, int min_tx_rate,
 	vf = &(pf->vf[vf_id]);
 	vsi = pf->vsi[vf->lan_vsi_idx];
 	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
-		dev_err(&pf->pdev->dev, "Uninitialized VF %d.\n", vf_id);
-		ret = -EINVAL;
+		dev_err(&pf->pdev->dev, "VF %d still in reset. Try again.\n",
+			vf_id);
+		ret = -EAGAIN;
 		goto error;
 	}
 
@@ -2623,8 +2627,9 @@ int i40e_ndo_get_vf_config(struct net_device *netdev,
 	/* first vsi is always the LAN vsi */
 	vsi = pf->vsi[vf->lan_vsi_idx];
 	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
-		dev_err(&pf->pdev->dev, "Uninitialized VF %d\n", vf_id);
-		ret = -EINVAL;
+		dev_err(&pf->pdev->dev, "VF %d still in reset. Try again.\n",
+			vf_id);
+		ret = -EAGAIN;
 		goto error_param;
 	}
 
@@ -2739,6 +2744,12 @@ int i40e_ndo_set_vf_spoofchk(struct net_device *netdev, int vf_id, bool enable)
 	}
 
 	vf = &(pf->vf[vf_id]);
+	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
+		dev_err(&pf->pdev->dev, "VF %d still in reset. Try again.\n",
+			vf_id);
+		ret = -EAGAIN;
+		goto out;
+	}
 
 	if (enable == vf->spoofchk)
 		goto out;
@@ -2757,6 +2768,48 @@ int i40e_ndo_set_vf_spoofchk(struct net_device *netdev, int vf_id, bool enable)
 			ret);
 		ret = -EIO;
 	}
+out:
+	return ret;
+}
+
+/**
+ * i40e_ndo_set_vf_trust
+ * @netdev: network interface device structure of the pf
+ * @vf_id: VF identifier
+ * @setting: trust setting
+ *
+ * Enable or disable VF trust setting
+ **/
+int i40e_ndo_set_vf_trust(struct net_device *netdev, int vf_id, bool setting)
+{
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
+	struct i40e_vf *vf;
+	int ret = 0;
+
+	/* validate the request */
+	if (vf_id >= pf->num_alloc_vfs) {
+		dev_err(&pf->pdev->dev, "Invalid VF Identifier %d\n", vf_id);
+		return -EINVAL;
+	}
+
+	if (pf->flags & I40E_FLAG_MFP_ENABLED) {
+		dev_err(&pf->pdev->dev, "Trusted VF not supported in MFP mode.\n");
+		return -EINVAL;
+	}
+
+	vf = &pf->vf[vf_id];
+
+	if (!vf)
+		return -EINVAL;
+	if (setting == vf->trusted)
+		goto out;
+
+	vf->trusted = setting;
+	i40e_vc_notify_vf_reset(vf);
+	i40e_reset_vf(vf, false);
+	dev_info(&pf->pdev->dev, "VF %u is now %strusted\n",
+		 vf_id, setting ? "" : "un");
 out:
 	return ret;
 }

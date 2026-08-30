@@ -424,14 +424,20 @@ static inline int i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
  **/
 static inline bool i40e_chk_linearize(struct sk_buff *skb, int count)
 {
-	/* Both TSO and single send will work if count is less than 8 */
-	if (likely(count < I40E_MAX_BUFFER_TXD))
+	/* we can only support up to 8 data buffers for a single send */
+	if (likely(count <= I40E_MAX_BUFFER_TXD))
 		return false;
 
-	if (skb_is_gso(skb))
-		return __i40evf_chk_linearize(skb);
+	return __i40evf_chk_linearize(skb);
+}
 
-	/* we can support up to 8 data buffers for a single send */
-	return count != I40E_MAX_BUFFER_TXD;
+/**
+ * i40e_rx_is_fcoe - returns true if the Rx packet type is FCoE
+ * @ptype: the packet type field from Rx descriptor write-back
+ **/
+static inline bool i40e_rx_is_fcoe(u16 ptype)
+{
+	return (ptype >= I40E_RX_PTYPE_L2_FCOE_PAY3) &&
+	       (ptype <= I40E_RX_PTYPE_L2_FCOE_VFT_FCOTHER);
 }
 #endif /* _I40E_TXRX_H_ */

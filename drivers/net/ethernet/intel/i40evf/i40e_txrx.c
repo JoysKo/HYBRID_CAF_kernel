@@ -131,12 +131,12 @@ void i40evf_free_tx_resources(struct i40e_ring *tx_ring)
  * @tx_ring: the ring of descriptors
  * @in_sw: is tx_pending being checked in SW or HW
  *
- * Returns value of Tx ring head based on value stored
- * in head write-back location
+ * Since there is no access to the ring head register
+ * in XL710, we need to use our local copies
  **/
 u32 i40evf_get_tx_pending(struct i40e_ring *ring, bool in_sw)
 {
-	void *head = (struct i40e_tx_desc *)tx_ring->desc + tx_ring->count;
+	u32 head, tail;
 
 	if (!in_sw)
 		head = i40e_get_head(ring);
@@ -185,7 +185,7 @@ static bool i40e_clean_tx_irq(struct i40e_vsi *vsi,
 			break;
 
 		/* prevent any other reads prior to eop_desc */
-		smp_rmb();
+		read_barrier_depends();
 
 		/* we have caught up to head, no work left to do */
 		if (tx_head == tx_desc)
@@ -443,7 +443,7 @@ static bool i40e_set_new_dynamic_itr(struct i40e_ring_container *rc)
 	return false;
 }
 
-/*
+/**
  * i40evf_setup_tx_descriptors - Allocate the Tx descriptors
  * @tx_ring: the tx ring to set up
  *
@@ -965,7 +965,7 @@ static inline void i40e_rx_hash(struct i40e_ring *ring,
 		cpu_to_le64((u64)I40E_RX_DESC_FLTSTAT_RSS_HASH <<
 			    I40E_RX_DESC_STATUS_FLTSTAT_SHIFT);
 
-	if (!(ring->netdev->features & NETIF_F_RXHASH))
+	if (ring->netdev->features & NETIF_F_RXHASH)
 		return;
 
 	if ((rx_desc->wb.qword1.status_error_len & rss_mask) == rss_mask) {
@@ -1160,12 +1160,13 @@ static int i40e_clean_rx_irq_ps(struct i40e_ring *rx_ring, const int budget)
 			 ? le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1)
 			 : 0;
 #ifdef I40E_FCOE
-		if (!i40e_fcoe_handle_offload(rx_ring, rx_desc, skb)) {
+		if (unlikely(
+		    i40e_rx_is_fcoe(rx_ptype) &&
+		    !i40e_fcoe_handle_offload(rx_ring, rx_desc, skb))) {
 			dev_kfree_skb_any(skb);
 			continue;
 		}
 #endif
-		skb_mark_napi_id(skb, &rx_ring->q_vector->napi);
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
 
 		rx_desc->wb.qword1.status_error_len = 0;
@@ -1342,10 +1343,12 @@ static inline void i40e_update_enable_itr(struct i40e_vsi *vsi,
 		rx = i40e_set_new_dynamic_itr(&q_vector->rx);
 		rxval = i40e_buildreg_itr(I40E_RX_ITR, q_vector->rx.itr);
 	}
+
 	if (ITR_IS_DYNAMIC(vsi->tx_itr_setting)) {
 		tx = i40e_set_new_dynamic_itr(&q_vector->tx);
 		txval = i40e_buildreg_itr(I40E_TX_ITR, q_vector->tx.itr);
 	}
+
 	if (rx || tx) {
 		/* get the higher of the two ITR adjustments and
 		 * use the same value for both ITR registers
@@ -1381,7 +1384,6 @@ enable_int:
 		q_vector->itr_countdown--;
 	else
 		q_vector->itr_countdown = ITR_COUNTDOWN_START;
-
 }
 
 /**
@@ -1519,16 +1521,13 @@ out:
 
 /**
  * i40e_tso - set up the tso context descriptor
- * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @hdr_len:  ptr to the size of the packet header
- * @cd_tunneling: ptr to context descriptor bits
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no TSO can happen, 1 if tso is going, or error
  **/
-static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
-		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss,
-		    u32 *cd_tunneling)
+static int i40e_tso(struct sk_buff *skb, u8 *hdr_len, u64 *cd_type_cmd_tso_mss)
 {
 	u64 cd_cmd, cd_tso_len, cd_mss;
 	union {
@@ -1572,10 +1571,8 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
 			l4_offset = l4.hdr - skb->data;
 
 			/* remove payload length from outer checksum */
-			paylen = (__force u16)l4.udp->check;
-			paylen += ntohs((__force __be16)1) *
-					(u16)~(skb->len - l4_offset);
-			l4.udp->check = ~csum_fold((__force __wsum)paylen);
+			paylen = skb->len - l4_offset;
+			csum_replace_by_diff(&l4.udp->check, htonl(paylen));
 		}
 
 		/* reset pointers to inner headers */
@@ -1595,9 +1592,8 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
 	l4_offset = l4.hdr - skb->data;
 
 	/* remove payload length from inner checksum */
-	paylen = (__force u16)l4.tcp->check;
-	paylen += ntohs((__force __be16)1) * (u16)~(skb->len - l4_offset);
-	l4.tcp->check = ~csum_fold((__force __wsum)paylen);
+	paylen = skb->len - l4_offset;
+	csum_replace_by_diff(&l4.tcp->check, htonl(paylen));
 
 	/* compute length of segmentation header */
 	*hdr_len = (l4.tcp->doff * 4) + l4_offset;
@@ -1637,7 +1633,7 @@ static int i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 		unsigned char *hdr;
 	} l4;
 	unsigned char *exthdr;
-	u32 offset, cmd = 0, tunnel = 0;
+	u32 offset, cmd = 0;
 	__be16 frag_off;
 	u8 l4_proto = 0;
 
@@ -1651,6 +1647,7 @@ static int i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 	offset = ((ip.hdr - skb->data) / 2) << I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
 
 	if (skb->encapsulation) {
+		u32 tunnel = 0;
 		/* define outer network header type */
 		if (*tx_flags & I40E_TX_FLAGS_IPV4) {
 			tunnel |= (*tx_flags & I40E_TX_FLAGS_TSO) ?
@@ -1803,34 +1800,35 @@ static void i40e_create_tx_ctx(struct i40e_ring *tx_ring,
 }
 
 /**
- * __i40evf_chk_linearize - Check if there are more than 8 buffers per packet
+ * __i40evf_chk_linearize - Check if there are more than 8 fragments per packet
  * @skb:      send buffer
  *
- * Note: Our HW can't DMA more than 8 buffers to build a packet on the wire
- * and so we need to figure out the cases where we need to linearize the skb.
- *
- * For TSO we need to count the TSO header and segment payload separately.
- * As such we need to check cases where we have 7 fragments or more as we
- * can potentially require 9 DMA transactions, 1 for the TSO header, 1 for
- * the segment payload in the first descriptor, and another 7 for the
- * fragments.
+ * Note: Our HW can't scatter-gather more than 8 fragments to build
+ * a packet on the wire and so we need to figure out the cases where we
+ * need to linearize the skb.
  **/
 bool __i40evf_chk_linearize(struct sk_buff *skb)
 {
 	const struct skb_frag_struct *frag, *stale;
-	int nr_frags, sum;
+	int gso_size, nr_frags, sum;
 
-	/* no need to check if number of frags is less than 7 */
+	/* check to see if TSO is enabled, if so we may get a repreive */
+	gso_size = skb_shinfo(skb)->gso_size;
+	if (unlikely(!gso_size))
+		return true;
+
+	/* no need to check if number of frags is less than 8 */
 	nr_frags = skb_shinfo(skb)->nr_frags;
-	if (nr_frags < (I40E_MAX_BUFFER_TXD - 1))
+	if (nr_frags < I40E_MAX_BUFFER_TXD)
 		return false;
 
 	/* We need to walk through the list and validate that each group
 	 * of 6 fragments totals at least gso_size.  However we don't need
-	 * to perform such validation on the last 6 since the last 6 cannot
-	 * inherit any data from a descriptor after them.
+	 * to perform such validation on the first or last 6 since the first
+	 * 6 cannot inherit any data from a descriptor before them, and the
+	 * last 6 cannot inherit any data from a descriptor after them.
 	 */
-	nr_frags -= I40E_MAX_BUFFER_TXD - 2;
+	nr_frags -= I40E_MAX_BUFFER_TXD - 1;
 	frag = &skb_shinfo(skb)->frags[0];
 
 	/* Initialize size to the negative value of gso_size minus 1.  We
@@ -1839,21 +1837,21 @@ bool __i40evf_chk_linearize(struct sk_buff *skb)
 	 * descriptors for a single transmit as the header and previous
 	 * fragment are already consuming 2 descriptors.
 	 */
-	sum = 1 - skb_shinfo(skb)->gso_size;
+	sum = 1 - gso_size;
 
-	/* Add size of frags 0 through 4 to create our initial sum */
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
+	/* Add size of frags 1 through 5 to create our initial sum */
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
 
 	/* Walk through fragments adding latest fragment, testing it, and
 	 * then removing stale fragments from the sum.
 	 */
 	stale = &skb_shinfo(skb)->frags[0];
 	for (;;) {
-		sum += skb_frag_size(frag++);
+		sum += skb_frag_size(++frag);
 
 		/* if sum is negative we failed to make sufficient progress */
 		if (sum < 0)
@@ -1863,7 +1861,7 @@ bool __i40evf_chk_linearize(struct sk_buff *skb)
 		if (!--nr_frags)
 			break;
 
-		sum -= skb_frag_size(stale++);
+		sum -= skb_frag_size(++stale);
 	}
 
 	return false;
@@ -2000,7 +1998,6 @@ static inline void i40evf_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
 		tx_bi = &tx_ring->tx_bi[i];
 	}
 
-#define WB_STRIDE 0x3
 	/* set next_to_watch value indicating a packet is present */
 	first->next_to_watch = tx_desc;
 
@@ -2027,12 +2024,6 @@ static inline void i40evf_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
 	 *			update tail and set RS bit on every packet.
 	 *	if xmit_more is false and last_xmit_more was true
 	 *		update tail and set RS bit.
-	 * else (kernel < 3.18)
-	 *	if every packet spanned less than 4 desc
-	 *		then set RS bit on 4th packet and update tail
-	 *		on every packet
-	 *	else
-	 *		set RS bit on EOP for every packet and update tail
 	 *
 	 * Optimization: wmb to be issued only in case of tail update.
 	 * Also optimize the Descriptor WB path for RS bit with the same
@@ -2159,8 +2150,7 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	else if (protocol == htons(ETH_P_IPV6))
 		tx_flags |= I40E_TX_FLAGS_IPV6;
 
-	tso = i40e_tso(tx_ring, skb, &hdr_len,
-		       &cd_type_cmd_tso_mss, &cd_tunneling);
+	tso = i40e_tso(skb, &hdr_len, &cd_type_cmd_tso_mss);
 
 	if (tso < 0)
 		goto out_drop;
@@ -2201,7 +2191,7 @@ out_drop:
 netdev_tx_t i40evf_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 {
 	struct i40evf_adapter *adapter = netdev_priv(netdev);
-	struct i40e_ring *tx_ring = adapter->tx_rings[skb->queue_mapping];
+	struct i40e_ring *tx_ring = &adapter->tx_rings[skb->queue_mapping];
 
 	/* hardware can't handle really short frames, hardware padding works
 	 * beyond this point
