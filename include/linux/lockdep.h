@@ -338,9 +338,9 @@ extern void lock_acquire(struct lockdep_map *lock, unsigned int subclass,
 extern void lock_release(struct lockdep_map *lock, int nested,
 			 unsigned long ip);
 
-#define lockdep_is_held(lock)	lock_is_held(&(lock)->dep_map)
-
 extern int lock_is_held(struct lockdep_map *lock);
+
+#define lockdep_is_held(lock)	lock_is_held(&(lock)->dep_map)
 
 extern void lock_set_class(struct lockdep_map *lock, const char *name,
 			   struct lock_class_key *key, unsigned int subclass,

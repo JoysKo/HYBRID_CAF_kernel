@@ -2197,40 +2197,18 @@ struct packet_offload {
 	struct list_head	 list;
 };
 
-struct udp_offload;
-
-/* 'skb->encapsulation' is set before gro_complete() is called.  gro_complete()
- * must set 'skb->inner_mac_header' to the beginning of tunnel payload.
- */
-struct udp_offload_callbacks {
-	struct sk_buff		**(*gro_receive)(struct sk_buff **head,
-						 struct sk_buff *skb,
-						 struct udp_offload *uoff);
-	int			(*gro_complete)(struct sk_buff *skb,
-						int nhoff,
-						struct udp_offload *uoff);
-};
-
-struct udp_offload {
-	__be16			 port;
-	u8			 ipproto;
-	struct udp_offload_callbacks callbacks;
-};
-
 typedef struct sk_buff **(*gro_receive_udp_t)(struct sk_buff **,
-					      struct sk_buff *,
-					      struct udp_offload *);
+					      struct sk_buff *);
 static inline struct sk_buff **call_gro_receive_udp(gro_receive_udp_t cb,
 						    struct sk_buff **head,
-						    struct sk_buff *skb,
-						    struct udp_offload *uoff)
+						    struct sk_buff *skb)
 {
 	if (unlikely(gro_recursion_inc_test(skb))) {
 		NAPI_GRO_CB(skb)->flush |= 1;
 		return NULL;
 	}
 
-	return cb(head, skb, uoff);
+	return cb(head, skb);
 }
 
 /* often modified stats are per-CPU, other are shared (netdev->stats) */
