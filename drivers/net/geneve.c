@@ -81,7 +81,6 @@ struct geneve_sock {
 	struct socket		*sock;
 	struct rcu_head		rcu;
 	int			refcnt;
-	struct udp_offload	udp_offloads;
 	struct hlist_head	vni_list[VNI_HASH_SIZE];
 };
 
@@ -393,14 +392,15 @@ static void geneve_notify_add_rx_port(struct geneve_sock *gs)
 {
 	struct sock *sk = gs->sock->sk;
 	sa_family_t sa_family = geneve_get_sk_family(gs);
-	int err;
+	__be16 port = inet_sk(sk)->inet_sport;
 
-	if (sa_family == AF_INET) {
-		err = udp_add_offload(&gs->udp_offloads);
-		if (err)
-			pr_warn("geneve: udp_add_offload failed with status %d\n",
-				err);
+	rcu_read_lock();
+	for_each_netdev_rcu(net, dev) {
+		if (dev->netdev_ops->ndo_add_geneve_port)
+			dev->netdev_ops->ndo_add_geneve_port(dev, sa_family,
+							     port);
 	}
+	rcu_read_unlock();
 }
 
 static int geneve_hlen(struct genevehdr *gh)
@@ -408,9 +408,9 @@ static int geneve_hlen(struct genevehdr *gh)
 	return sizeof(*gh) + gh->opt_len * 4;
 }
 
-static struct sk_buff **geneve_gro_receive(struct sk_buff **head,
-					   struct sk_buff *skb,
-					   struct udp_offload *uoff)
+static struct sk_buff **geneve_gro_receive(struct sock *sk,
+					   struct sk_buff **head,
+					   struct sk_buff *skb)
 {
 	struct sk_buff *p, **pp = NULL;
 	struct genevehdr *gh, *gh2;
@@ -474,8 +474,8 @@ out:
 	return pp;
 }
 
-static int geneve_gro_complete(struct sk_buff *skb, int nhoff,
-			       struct udp_offload *uoff)
+static int geneve_gro_complete(struct sock *sk, struct sk_buff *skb,
+			       int nhoff)
 {
 	struct genevehdr *gh;
 	struct packet_offload *ptype;
@@ -525,14 +525,14 @@ static struct geneve_sock *geneve_socket_create(struct net *net, __be16 port,
 		INIT_HLIST_HEAD(&gs->vni_list[h]);
 
 	/* Initialize the geneve udp offloads structure */
-	gs->udp_offloads.port = port;
-	gs->udp_offloads.callbacks.gro_receive  = geneve_gro_receive;
-	gs->udp_offloads.callbacks.gro_complete = geneve_gro_complete;
 	geneve_notify_add_rx_port(gs);
 
 	/* Mark socket as an encapsulation socket */
+	memset(&tunnel_cfg, 0, sizeof(tunnel_cfg));
 	tunnel_cfg.sk_user_data = gs;
 	tunnel_cfg.encap_type = 1;
+	tunnel_cfg.gro_receive = geneve_gro_receive;
+	tunnel_cfg.gro_complete = geneve_gro_complete;
 	tunnel_cfg.encap_rcv = geneve_udp_encap_recv;
 	tunnel_cfg.encap_destroy = NULL;
 	setup_udp_tunnel_sock(net, sock, &tunnel_cfg);
@@ -544,9 +544,16 @@ static void geneve_notify_del_rx_port(struct geneve_sock *gs)
 {
 	struct sock *sk = gs->sock->sk;
 	sa_family_t sa_family = geneve_get_sk_family(gs);
+	__be16 port = inet_sk(sk)->inet_sport;
 
-	if (sa_family == AF_INET)
-		udp_del_offload(&gs->udp_offloads);
+	rcu_read_lock();
+	for_each_netdev_rcu(net, dev) {
+		if (dev->netdev_ops->ndo_del_geneve_port)
+			dev->netdev_ops->ndo_del_geneve_port(dev, sa_family,
+							     port);
+	}
+
+	rcu_read_unlock();
 }
 
 static void __geneve_sock_release(struct geneve_sock *gs)
