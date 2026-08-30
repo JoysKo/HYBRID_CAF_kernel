@@ -328,7 +328,7 @@ static int i40e_add_del_fdir_tcpv4(struct i40e_vsi *vsi,
  * @fd_data: the flow director data required for the FDir descriptor
  * @add: true adds a filter, false removes it
  *
- * Always returns -EOPNOTSUPP
+ * Returns 0 if the filters were successfully added or removed
  **/
 static int i40e_add_del_fdir_sctpv4(struct i40e_vsi *vsi,
 				    struct i40e_fdir_filter *fd_data,
@@ -515,9 +515,6 @@ static void i40e_fd_handle_status(struct i40e_ring *rx_ring,
 				pf->auto_disable_flags |=
 							I40E_FLAG_FD_SB_ENABLED;
 			}
-		} else {
-			dev_info(&pdev->dev,
-				"FD filter programming failed due to incorrect filter parameters\n");
 		}
 	} else if (error == BIT(I40E_RX_PROG_STATUS_DESC_NO_FD_ENTRY_SHIFT)) {
 		if (I40E_DEBUG_FD & pf->hw.debug_mask)
@@ -669,7 +666,7 @@ static bool i40e_clean_tx_irq(struct i40e_vsi *vsi,
 			break;
 
 		/* prevent any other reads prior to eop_desc */
-		smp_rmb();
+		read_barrier_depends();
 
 		/* we have caught up to head, no work left to do */
 		if (tx_head == tx_desc)
@@ -1706,12 +1703,13 @@ static int i40e_clean_rx_irq_ps(struct i40e_ring *rx_ring, const int budget)
 			 ? le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1)
 			 : 0;
 #ifdef I40E_FCOE
-		if (!i40e_fcoe_handle_offload(rx_ring, rx_desc, skb)) {
+		if (unlikely(
+		    i40e_rx_is_fcoe(rx_ptype) &&
+		    !i40e_fcoe_handle_offload(rx_ring, rx_desc, skb))) {
 			dev_kfree_skb_any(skb);
 			continue;
 		}
 #endif
-		skb_mark_napi_id(skb, &rx_ring->q_vector->napi);
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
 
 		rx_desc->wb.qword1.status_error_len = 0;
@@ -1838,7 +1836,9 @@ static int i40e_clean_rx_irq_1buf(struct i40e_ring *rx_ring, int budget)
 			 ? le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1)
 			 : 0;
 #ifdef I40E_FCOE
-		if (!i40e_fcoe_handle_offload(rx_ring, rx_desc, skb)) {
+		if (unlikely(
+		    i40e_rx_is_fcoe(rx_ptype) &&
+		    !i40e_fcoe_handle_offload(rx_ring, rx_desc, skb))) {
 			dev_kfree_skb_any(skb);
 			continue;
 		}
@@ -1948,7 +1948,6 @@ enable_int:
 		q_vector->itr_countdown--;
 	else
 		q_vector->itr_countdown = ITR_COUNTDOWN_START;
-
 }
 
 /**
@@ -1976,6 +1975,8 @@ int i40e_napi_poll(struct napi_struct *napi, int budget)
 		return 0;
 	}
 
+	/* Clear hung_detected bit */
+	clear_bit(I40E_Q_VECTOR_HUNG_DETECT, &q_vector->hung_detected);
 	/* Since the actual Tx work is minimal, we can give the Tx a larger
 	 * budget and be more aggressive about cleaning up the Tx descriptors.
 	 */
@@ -2021,7 +2022,7 @@ tx_only:
 		return budget;
 	}
 
-	if (q_vector->tx.ring[0].flags & I40E_TXR_FLAGS_WB_ON_ITR)
+	if (vsi->back->flags & I40E_TXR_FLAGS_WB_ON_ITR)
 		q_vector->arm_wb_state = false;
 
 	/* Work is done so exit the polling mode and re-enable the interrupt */
@@ -2148,7 +2149,7 @@ static void i40e_atr(struct i40e_ring *tx_ring, struct sk_buff *skb,
 		     I40E_TXD_FLTR_QW1_FD_STATUS_SHIFT;
 
 	dtype_cmd |= I40E_TXD_FLTR_QW1_CNT_ENA_MASK;
-	if (!(tx_flags & I40E_TX_FLAGS_VXLAN_TUNNEL))
+	if (!(tx_flags & I40E_TX_FLAGS_UDP_TUNNEL))
 		dtype_cmd |=
 			((u32)I40E_FD_ATR_STAT_IDX(pf->hw.pf_id) <<
 			I40E_TXD_FLTR_QW1_CNTINDEX_SHIFT) &
@@ -2255,17 +2256,13 @@ out:
 
 /**
  * i40e_tso - set up the tso context descriptor
- * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @hdr_len:  ptr to the size of the packet header
- * @cd_type_cmd_tso_mss: ptr to u64 object
- * @cd_tunneling: ptr to context descriptor bits
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no TSO can happen, 1 if tso is going, or error
  **/
-static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
-		    u8 *hdr_len, u64 *cd_type_cmd_tso_mss,
-		    u32 *cd_tunneling)
+static int i40e_tso(struct sk_buff *skb, u8 *hdr_len, u64 *cd_type_cmd_tso_mss)
 {
 	u64 cd_cmd, cd_tso_len, cd_mss;
 	union {
@@ -2309,10 +2306,8 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
 			l4_offset = l4.hdr - skb->data;
 
 			/* remove payload length from outer checksum */
-			paylen = (__force u16)l4.udp->check;
-			paylen += ntohs((__force __be16)1) *
-					(u16)~(skb->len - l4_offset);
-			l4.udp->check = ~csum_fold((__force __wsum)paylen);
+			paylen = skb->len - l4_offset;
+			csum_replace_by_diff(&l4.udp->check, htonl(paylen));
 		}
 
 		/* reset pointers to inner headers */
@@ -2332,9 +2327,8 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
 	l4_offset = l4.hdr - skb->data;
 
 	/* remove payload length from inner checksum */
-	paylen = (__force u16)l4.tcp->check;
-	paylen += ntohs((__force __be16)1) * (u16)~(skb->len - l4_offset);
-	l4.tcp->check = ~csum_fold((__force __wsum)paylen);
+	paylen = skb->len - l4_offset;
+	csum_replace_by_diff(&l4.tcp->check, htonl(paylen));
 
 	/* compute length of segmentation header */
 	*hdr_len = (l4.tcp->doff * 4) + l4_offset;
@@ -2354,7 +2348,7 @@ static int i40e_tso(struct i40e_ring *tx_ring, struct sk_buff *skb,
  * @tx_ring:  ptr to the ring to send
  * @skb:      ptr to the skb we're sending
  * @tx_flags: the collected send information
- * @cd_type_cmd_tso_mss: ptr to u64 object
+ * @cd_type_cmd_tso_mss: Quad Word 1
  *
  * Returns 0 if no Tx timestamp can happen and 1 if the timestamp will happen
  **/
@@ -2416,7 +2410,7 @@ static int i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 		unsigned char *hdr;
 	} l4;
 	unsigned char *exthdr;
-	u32 offset, cmd = 0, tunnel = 0;
+	u32 offset, cmd = 0;
 	__be16 frag_off;
 	u8 l4_proto = 0;
 
@@ -2430,6 +2424,7 @@ static int i40e_tx_enable_csum(struct sk_buff *skb, u32 *tx_flags,
 	offset = ((ip.hdr - skb->data) / 2) << I40E_TX_DESC_LENGTH_MACLEN_SHIFT;
 
 	if (skb->encapsulation) {
+		u32 tunnel = 0;
 		/* define outer network header type */
 		if (*tx_flags & I40E_TX_FLAGS_IPV4) {
 			tunnel |= (*tx_flags & I40E_TX_FLAGS_TSO) ?
@@ -2605,34 +2600,35 @@ int __i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
 }
 
 /**
- * __i40e_chk_linearize - Check if there are more than 8 buffers per packet
+ * __i40e_chk_linearize - Check if there are more than 8 fragments per packet
  * @skb:      send buffer
  *
- * Note: Our HW can't DMA more than 8 buffers to build a packet on the wire
- * and so we need to figure out the cases where we need to linearize the skb.
- *
- * For TSO we need to count the TSO header and segment payload separately.
- * As such we need to check cases where we have 7 fragments or more as we
- * can potentially require 9 DMA transactions, 1 for the TSO header, 1 for
- * the segment payload in the first descriptor, and another 7 for the
- * fragments.
+ * Note: Our HW can't scatter-gather more than 8 fragments to build
+ * a packet on the wire and so we need to figure out the cases where we
+ * need to linearize the skb.
  **/
 bool __i40e_chk_linearize(struct sk_buff *skb)
 {
 	const struct skb_frag_struct *frag, *stale;
-	int nr_frags, sum;
+	int gso_size, nr_frags, sum;
 
-	/* no need to check if number of frags is less than 7 */
+	/* check to see if TSO is enabled, if so we may get a repreive */
+	gso_size = skb_shinfo(skb)->gso_size;
+	if (unlikely(!gso_size))
+		return true;
+
+	/* no need to check if number of frags is less than 8 */
 	nr_frags = skb_shinfo(skb)->nr_frags;
-	if (nr_frags < (I40E_MAX_BUFFER_TXD - 1))
+	if (nr_frags < I40E_MAX_BUFFER_TXD)
 		return false;
 
 	/* We need to walk through the list and validate that each group
 	 * of 6 fragments totals at least gso_size.  However we don't need
-	 * to perform such validation on the last 6 since the last 6 cannot
-	 * inherit any data from a descriptor after them.
+	 * to perform such validation on the first or last 6 since the first
+	 * 6 cannot inherit any data from a descriptor before them, and the
+	 * last 6 cannot inherit any data from a descriptor after them.
 	 */
-	nr_frags -= I40E_MAX_BUFFER_TXD - 2;
+	nr_frags -= I40E_MAX_BUFFER_TXD - 1;
 	frag = &skb_shinfo(skb)->frags[0];
 
 	/* Initialize size to the negative value of gso_size minus 1.  We
@@ -2641,21 +2637,21 @@ bool __i40e_chk_linearize(struct sk_buff *skb)
 	 * descriptors for a single transmit as the header and previous
 	 * fragment are already consuming 2 descriptors.
 	 */
-	sum = 1 - skb_shinfo(skb)->gso_size;
+	sum = 1 - gso_size;
 
-	/* Add size of frags 0 through 4 to create our initial sum */
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
-	sum += skb_frag_size(frag++);
+	/* Add size of frags 1 through 5 to create our initial sum */
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
+	sum += skb_frag_size(++frag);
 
 	/* Walk through fragments adding latest fragment, testing it, and
 	 * then removing stale fragments from the sum.
 	 */
 	stale = &skb_shinfo(skb)->frags[0];
 	for (;;) {
-		sum += skb_frag_size(frag++);
+		sum += skb_frag_size(++frag);
 
 		/* if sum is negative we failed to make sufficient progress */
 		if (sum < 0)
@@ -2665,7 +2661,7 @@ bool __i40e_chk_linearize(struct sk_buff *skb)
 		if (!--nr_frags)
 			break;
 
-		sum -= skb_frag_size(stale++);
+		sum -= skb_frag_size(++stale);
 	}
 
 	return false;
@@ -2938,8 +2934,7 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	else if (protocol == htons(ETH_P_IPV6))
 		tx_flags |= I40E_TX_FLAGS_IPV6;
 
-	tso = i40e_tso(tx_ring, skb, &hdr_len,
-		       &cd_type_cmd_tso_mss, &cd_tunneling);
+	tso = i40e_tso(skb, &hdr_len, &cd_type_cmd_tso_mss);
 
 	if (tso < 0)
 		goto out_drop;

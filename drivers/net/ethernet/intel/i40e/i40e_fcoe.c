@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2015 Intel Corporation.
+ * Copyright(c) 2013 - 2016 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -36,16 +36,6 @@
 
 #include "i40e.h"
 #include "i40e_fcoe.h"
-
-/**
- * i40e_rx_is_fcoe - returns true if the rx packet type is FCoE
- * @ptype: the packet type field from rx descriptor write-back
- **/
-static inline bool i40e_rx_is_fcoe(u16 ptype)
-{
-	return (ptype >= I40E_RX_PTYPE_L2_FCOE_PAY3) &&
-	       (ptype <= I40E_RX_PTYPE_L2_FCOE_VFT_FCOTHER);
-}
 
 /**
  * i40e_fcoe_sof_is_class2 - returns true if this is a FC Class 2 SOF
@@ -1559,8 +1549,6 @@ void i40e_fcoe_vsi_setup(struct i40e_pf *pf)
 
 	if (!(pf->flags & I40E_FLAG_FCOE_ENABLED))
 		return;
-
-	BUG_ON(!pf->vsi[pf->lan_vsi]);
 
 	for (i = 0; i < pf->num_alloc_vsi; i++) {
 		vsi = pf->vsi[i];
