@@ -881,6 +881,7 @@ enum station_parameters_apply_mask {
  * @supported_oper_classes_len: number of supported operating classes
  * @opmode_notif: operating mode field from Operating Mode Notification
  * @opmode_notif_used: information if operating mode field is used
+ * @support_p2p_ps: information if station supports P2P PS mechanism
  */
 struct station_parameters {
 	const u8 *supported_rates;
@@ -906,6 +907,7 @@ struct station_parameters {
 	u8 supported_oper_classes_len;
 	u8 opmode_notif;
 	bool opmode_notif_used;
+	int support_p2p_ps;
 };
 
 /**
@@ -1711,7 +1713,7 @@ struct cfg80211_inform_bss {
 };
 
 /**
- * struct cfg80211_bss_ie_data - BSS entry IE data
+ * struct cfg80211_bss_ies - BSS entry IE data
  * @tsf: TSF contained in the frame that carried these IEs
  * @rcu_head: internal use, for freeing
  * @len: length of the IEs
@@ -2021,20 +2023,7 @@ struct cfg80211_bss_selection {
  *	networks.
  * @bss_select: criteria to be used for BSS selection.
  * @prev_bssid: previous BSSID, if not %NULL use reassociate frame
- * @fils_erp_username: EAP re-authentication protocol (ERP) username part of the
- *	NAI or %NULL if not specified. This is used to construct FILS wrapped
- *	data IE.
- * @fils_erp_username_len: Length of @fils_erp_username in octets.
- * @fils_erp_realm: EAP re-authentication protocol (ERP) realm part of NAI or
- *	%NULL if not specified. This specifies the domain name of ER server and
- *	is used to construct FILS wrapped data IE.
- * @fils_erp_realm_len: Length of @fils_erp_realm in octets.
- * @fils_erp_next_seq_num: The next sequence number to use in the FILS ERP
- *	messages. This is also used to construct FILS wrapped data IE.
- * @fils_erp_rrk: ERP re-authentication Root Key (rRK) used to derive additional
- *	keys in FILS or %NULL if not specified.
- * @fils_erp_rrk_len: Length of @fils_erp_rrk in octets.
-*/
+ */
 struct cfg80211_connect_params {
 	struct ieee80211_channel *channel;
 	struct ieee80211_channel *channel_hint;
