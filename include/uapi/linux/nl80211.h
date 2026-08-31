@@ -358,7 +358,7 @@
  * @NL80211_CMD_GET_SCAN: get scan results
  * @NL80211_CMD_TRIGGER_SCAN: trigger a new scan with the given parameters
  *	%NL80211_ATTR_TX_NO_CCK_RATE is used to decide whether to send the
- *	probe requests at CCK rate or not. %NL80211_ATTR_BSSID can be used to
+ *	probe requests at CCK rate or not. %NL80211_ATTR_MAC can be used to
  *	specify a BSSID to scan for; if not included, the wildcard BSSID will
  *	be used.
  * @NL80211_CMD_NEW_SCAN_RESULTS: scan notification (as a reply to
@@ -2026,151 +2026,6 @@ enum nl80211_commands {
  * @NL80211_ATTR_STA_SUPPORT_P2P_PS: whether P2P PS mechanism supported
  *	or not. u8, one of the values of &enum nl80211_sta_p2p_ps_status
  *
- * @NL80211_ATTR_PAD: attribute used for padding for 64-bit alignment
- *
- * @NL80211_ATTR_IFTYPE_EXT_CAPA: Nested attribute of the following attributes:
- *	%NL80211_ATTR_IFTYPE, %NL80211_ATTR_EXT_CAPA,
- *	%NL80211_ATTR_EXT_CAPA_MASK, to specify the extended capabilities per
- *	interface type.
- *
- * @NL80211_ATTR_MU_MIMO_GROUP_DATA: array of 24 bytes that defines a MU-MIMO
- *	groupID for monitor mode.
- *	The first 8 bytes are a mask that defines the membership in each
- *	group (there are 64 groups, group 0 and 63 are reserved),
- *	each bit represents a group and set to 1 for being a member in
- *	that group and 0 for not being a member.
- *	The remaining 16 bytes define the position in each group: 2 bits for
- *	each group.
- *	(smaller group numbers represented on most significant bits and bigger
- *	group numbers on least significant bits.)
- *	This attribute is used only if all interfaces are in monitor mode.
- *	Set this attribute in order to monitor packets using the given MU-MIMO
- *	groupID data.
- *	to turn off that feature set all the bits of the groupID to zero.
- * @NL80211_ATTR_MU_MIMO_FOLLOW_MAC_ADDR: mac address for the sniffer to follow
- *	when using MU-MIMO air sniffer.
- *	to turn that feature off set an invalid mac address
- *	(e.g. FF:FF:FF:FF:FF:FF)
- *
- * @NL80211_ATTR_SCAN_START_TIME_TSF: The time at which the scan was actually
- *	started (u64). The time is the TSF of the BSS the interface that
- *	requested the scan is connected to (if available, otherwise this
- *	attribute must not be included).
- * @NL80211_ATTR_SCAN_START_TIME_TSF_BSSID: The BSS according to which
- *	%NL80211_ATTR_SCAN_START_TIME_TSF is set.
- * @NL80211_ATTR_MEASUREMENT_DURATION: measurement duration in TUs (u16). If
- *	%NL80211_ATTR_MEASUREMENT_DURATION_MANDATORY is not set, this is the
- *	maximum measurement duration allowed. This attribute is used with
- *	measurement requests. It can also be used with %NL80211_CMD_TRIGGER_SCAN
- *	if the scan is used for beacon report radio measurement.
- * @NL80211_ATTR_MEASUREMENT_DURATION_MANDATORY: flag attribute that indicates
- *	that the duration specified with %NL80211_ATTR_MEASUREMENT_DURATION is
- *	mandatory. If this flag is not set, the duration is the maximum duration
- *	and the actual measurement duration may be shorter.
- *
- * @NL80211_ATTR_MESH_PEER_AID: Association ID for the mesh peer (u16). This is
- *	used to pull the stored data for mesh peer in power save state.
- *
- * @NL80211_ATTR_NAN_MASTER_PREF: the master preference to be used by
- *	%NL80211_CMD_START_NAN and optionally with
- *	%NL80211_CMD_CHANGE_NAN_CONFIG. Its type is u8 and it can't be 0.
- *	Also, values 1 and 255 are reserved for certification purposes and
- *	should not be used during a normal device operation.
- * @NL80211_ATTR_NAN_DUAL: NAN dual band operation config (see
- *	&enum nl80211_nan_dual_band_conf). This attribute is used with
- *	%NL80211_CMD_START_NAN and optionally with
- *	%NL80211_CMD_CHANGE_NAN_CONFIG.
- * @NL80211_ATTR_NAN_FUNC: a function that can be added to NAN. See
- *	&enum nl80211_nan_func_attributes for description of this nested
- *	attribute.
- * @NL80211_ATTR_NAN_MATCH: used to report a match. This is a nested attribute.
- *	See &enum nl80211_nan_match_attributes.
- * @NL80211_ATTR_FILS_KEK: KEK for FILS (Re)Association Request/Response frame
- *	protection.
- * @NL80211_ATTR_FILS_NONCES: Nonces (part of AAD) for FILS (Re)Association
- *	Request/Response frame protection. This attribute contains the 16 octet
- *	STA Nonce followed by 16 octets of AP Nonce.
- *
- * @NL80211_ATTR_MULTICAST_TO_UNICAST_ENABLED: Indicates whether or not multicast
- *	packets should be send out as unicast to all stations (flag attribute).
- *
- * @NL80211_ATTR_BSSID: The BSSID of the AP. Note that %NL80211_ATTR_MAC is also
- *	used in various commands/events for specifying the BSSID.
- *
- * @NL80211_ATTR_SCHED_SCAN_RELATIVE_RSSI: Relative RSSI threshold by which
- *	other BSSs has to be better or slightly worse than the current
- *	connected BSS so that they get reported to user space.
- *	This will give an opportunity to userspace to consider connecting to
- *	other matching BSSs which have better or slightly worse RSSI than
- *	the current connected BSS by using an offloaded operation to avoid
- *	unnecessary wakeups.
- *
- * @NL80211_ATTR_SCHED_SCAN_RSSI_ADJUST: When present the RSSI level for BSSs in
- *	the specified band is to be adjusted before doing
- *	%NL80211_ATTR_SCHED_SCAN_RELATIVE_RSSI based comparision to figure out
- *	better BSSs. The attribute value is a packed structure
- *	value as specified by &struct nl80211_bss_select_rssi_adjust.
- *
- * @NL80211_ATTR_TIMEOUT_REASON: The reason for which an operation timed out.
- *	u32 attribute with an &enum nl80211_timeout_reason value. This is used,
- *	e.g., with %NL80211_CMD_CONNECT event.
- *
- * @NL80211_ATTR_FILS_ERP_USERNAME: EAP Re-authentication Protocol (ERP)
- *	username part of NAI used to refer keys rRK and rIK. This is used with
- *	%NL80211_CMD_CONNECT.
- *
- * @NL80211_ATTR_FILS_ERP_REALM: EAP Re-authentication Protocol (ERP) realm part
- *	of NAI specifying the domain name of the ER server. This is used with
- *	%NL80211_CMD_CONNECT.
- *
- * @NL80211_ATTR_FILS_ERP_NEXT_SEQ_NUM: Unsigned 16-bit ERP next sequence number
- *	to use in ERP messages. This is used in generating the FILS wrapped data
- *	for FILS authentication and is used with %NL80211_CMD_CONNECT.
- *
- * @NL80211_ATTR_FILS_ERP_RRK: ERP re-authentication Root Key (rRK) for the
- *	NAI specified by %NL80211_ATTR_FILS_ERP_USERNAME and
- *	%NL80211_ATTR_FILS_ERP_REALM. This is used for generating rIK and rMSK
- *	from successful FILS authentication and is used with
- *	%NL80211_CMD_CONNECT.
- *
- * @NL80211_ATTR_FILS_CACHE_ID: A 2-octet identifier advertized by a FILS AP
- *	identifying the scope of PMKSAs. This is used with
- *	@NL80211_CMD_SET_PMKSA and @NL80211_CMD_DEL_PMKSA.
- *
- * @NL80211_ATTR_PMK: PMK for the PMKSA identified by %NL80211_ATTR_PMKID.
- *	This is used with @NL80211_CMD_SET_PMKSA.
- *
- * @NL80211_ATTR_SCHED_SCAN_MULTI: flag attribute which user-space shall use to
- *	indicate that it supports multiple active scheduled scan requests.
- * @NL80211_ATTR_SCHED_SCAN_MAX_REQS: indicates maximum number of scheduled
- *	scan request that may be active for the device (u32).
- *
- * @NL80211_ATTR_WANT_1X_4WAY_HS: flag attribute which user-space can include
- *	in %NL80211_CMD_CONNECT to indicate that for 802.1X authentication it
- *	wants to use the supported offload of the 4-way handshake.
- * @NL80211_ATTR_PMKR0_NAME: PMK-R0 Name for offloaded FT.
- * @NL80211_ATTR_PORT_AUTHORIZED: flag attribute used in %NL80211_CMD_ROAMED
- *	notification indicating that that 802.1X authentication was done by
- *	the driver or is not needed (because roaming used the Fast Transition
- *	protocol).
- *
- * @NL80211_ATTR_EXTERNAL_AUTH_ACTION: Identify the requested external
- *     authentication operation (u32 attribute with an
- *     &enum nl80211_external_auth_action value). This is used with the
- *     &NL80211_CMD_EXTERNAL_AUTH request event.
- * @NL80211_ATTR_EXTERNAL_AUTH_SUPPORT: Flag attribute indicating that the user
- *	space supports external authentication. This attribute shall be used
- *	with %NL80211_CMD_CONNECT and %NL80211_CMD_START_AP request. The driver
- *	may offload authentication processing to user space if this capability
- *	is indicated in the respective requests from the user space.
- *
- * @NL80211_ATTR_IFTYPE_AKM_SUITES: nested array attribute, with each entry
- *	using attributes from &enum nl80211_iftype_akm_attributes. This
- *	attribute is sent in a response to %NL80211_CMD_GET_WIPHY indicating
- *	supported AKM suites capability per interface. AKMs advertised in
- *	%NL80211_ATTR_AKM_SUITES are default capabilities if AKM suites not
- *	advertised for a specific interface type.
- *
  * @NUM_NL80211_ATTR: total number of nl80211_attrs available
  * @NL80211_ATTR_MAX: highest attribute number currently defined
  * @__NL80211_ATTR_AFTER_LAST: internal use
@@ -2747,6 +2602,20 @@ enum nl80211_sta_flags {
 	/* keep last */
 	__NL80211_STA_FLAG_AFTER_LAST,
 	NL80211_STA_FLAG_MAX = __NL80211_STA_FLAG_AFTER_LAST - 1
+};
+
+/**
+ * enum nl80211_sta_p2p_ps_status - station support of P2P PS
+ *
+ * @NL80211_P2P_PS_UNSUPPORTED: station doesn't support P2P PS mechanism
+ * @@NL80211_P2P_PS_SUPPORTED: station supports P2P PS mechanism
+ * @NUM_NL80211_P2P_PS_STATUS: number of values
+ */
+enum nl80211_sta_p2p_ps_status {
+	NL80211_P2P_PS_UNSUPPORTED = 0,
+	NL80211_P2P_PS_SUPPORTED,
+
+	NUM_NL80211_P2P_PS_STATUS,
 };
 
 #define NL80211_STA_FLAG_MAX_OLD_API	NL80211_STA_FLAG_TDLS_PEER

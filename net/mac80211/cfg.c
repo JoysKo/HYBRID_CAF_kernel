@@ -65,11 +65,13 @@ static int ieee80211_change_iface(struct wiphy *wiphy,
 		return ret;
 
 	if (type == NL80211_IFTYPE_AP_VLAN &&
-	    params && params->use_4addr == 0)
+	    params && params->use_4addr == 0) {
 		RCU_INIT_POINTER(sdata->u.vlan.sta, NULL);
-	else if (type == NL80211_IFTYPE_STATION &&
-		 params && params->use_4addr >= 0)
+		ieee80211_check_fast_rx_iface(sdata);
+	} else if (type == NL80211_IFTYPE_STATION &&
+		   params && params->use_4addr >= 0) {
 		sdata->u.mgd.use_4addr = params->use_4addr;
+	}
 
 	if (sdata->vif.type == NL80211_IFTYPE_MONITOR && flags) {
 		struct ieee80211_local *local = sdata->local;
@@ -732,6 +734,7 @@ static int ieee80211_start_ap(struct wiphy *wiphy, struct net_device *dev,
 	sdata->vif.bss_conf.beacon_int = params->beacon_interval;
 	sdata->vif.bss_conf.dtim_period = params->dtim_period;
 	sdata->vif.bss_conf.enable_beacon = true;
+	sdata->vif.bss_conf.allow_p2p_go_ps = sdata->vif.p2p;
 
 	sdata->vif.bss_conf.ssid_len = params->ssid_len;
 	if (params->ssid_len)
@@ -1158,6 +1161,9 @@ static int sta_apply_parameters(struct ieee80211_local *local,
 					      params->opmode_notif, band);
 	}
 
+	if (params->support_p2p_ps >= 0)
+		sta->sta.support_p2p_ps = params->support_p2p_ps;
+
 	if (ieee80211_vif_is_mesh(&sdata->vif))
 		sta_apply_mesh_params(local, sta, params);
 
@@ -1327,6 +1333,7 @@ static int ieee80211_change_station(struct wiphy *wiphy,
 
 			rcu_assign_pointer(vlansdata->u.vlan.sta, sta);
 			new_4addr = true;
+			__ieee80211_check_fast_rx_iface(vlansdata);
 		}
 
 		if (sta->sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
@@ -1465,7 +1472,7 @@ static void mpath_set_pinfo(struct mesh_path *mpath, u8 *next_hop,
 
 	memset(pinfo, 0, sizeof(*pinfo));
 
-	pinfo->generation = mesh_paths_generation;
+	pinfo->generation = mpath->sdata->u.mesh.mesh_paths_generation;
 
 	pinfo->filled = MPATH_INFO_FRAME_QLEN |
 			MPATH_INFO_SN |
@@ -1543,7 +1550,7 @@ static void mpp_set_pinfo(struct mesh_path *mpath, u8 *mpp,
 	memset(pinfo, 0, sizeof(*pinfo));
 	memcpy(mpp, mpath->mpp, ETH_ALEN);
 
-	pinfo->generation = mpp_paths_generation;
+	pinfo->generation = mpath->sdata->u.mesh.mpp_paths_generation;
 }
 
 static int ieee80211_get_mpp(struct wiphy *wiphy, struct net_device *dev,
@@ -1849,6 +1856,7 @@ static int ieee80211_change_bss(struct wiphy *wiphy,
 			sdata->flags |= IEEE80211_SDATA_DONT_BRIDGE_PACKETS;
 		else
 			sdata->flags &= ~IEEE80211_SDATA_DONT_BRIDGE_PACKETS;
+		ieee80211_check_fast_rx_iface(sdata);
 	}
 
 	if (params->ht_opmode >= 0) {
@@ -2519,7 +2527,7 @@ static bool ieee80211_coalesce_started_roc(struct ieee80211_local *local,
 	return true;
 }
 
-static u64 ieee80211_mgmt_tx_cookie(struct ieee80211_local *local)
+u64 ieee80211_mgmt_tx_cookie(struct ieee80211_local *local)
 {
 	lockdep_assert_held(&local->mtx);
 

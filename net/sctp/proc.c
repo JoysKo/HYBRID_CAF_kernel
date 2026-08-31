@@ -279,6 +279,65 @@ void sctp_eps_proc_exit(struct net *net)
 	remove_proc_entry("eps", net->sctp.proc_net_sctp);
 }
 
+struct sctp_ht_iter {
+	struct seq_net_private p;
+	struct rhashtable_iter hti;
+};
+
+static struct sctp_transport *sctp_transport_get_next(struct seq_file *seq)
+{
+	struct sctp_ht_iter *iter = seq->private;
+	struct sctp_transport *t;
+
+	t = rhashtable_walk_next(&iter->hti);
+	for (; t; t = rhashtable_walk_next(&iter->hti)) {
+		if (IS_ERR(t)) {
+			if (PTR_ERR(t) == -EAGAIN)
+				continue;
+			break;
+		}
+
+		if (net_eq(sock_net(t->asoc->base.sk), seq_file_net(seq)) &&
+		    t->asoc->peer.primary_path == t)
+			break;
+	}
+
+	return t;
+}
+
+static struct sctp_transport *sctp_transport_get_idx(struct seq_file *seq,
+						     loff_t pos)
+{
+	void *obj = SEQ_START_TOKEN;
+
+	while (pos && (obj = sctp_transport_get_next(seq)) && !IS_ERR(obj))
+		pos--;
+
+	return obj;
+}
+
+static int sctp_transport_walk_start(struct seq_file *seq)
+{
+	struct sctp_ht_iter *iter = seq->private;
+	int err;
+
+	err = rhashtable_walk_init(&sctp_transport_hashtable, &iter->hti,
+				   GFP_KERNEL);
+	if (err)
+		return err;
+
+	err = rhashtable_walk_start(&iter->hti);
+
+	return err == -EAGAIN ? 0 : err;
+}
+
+static void sctp_transport_walk_stop(struct seq_file *seq)
+{
+	struct sctp_ht_iter *iter = seq->private;
+
+	rhashtable_walk_stop(&iter->hti);
+	rhashtable_walk_exit(&iter->hti);
+}
 
 static void *sctp_assocs_seq_start(struct seq_file *seq, loff_t *pos)
 {
