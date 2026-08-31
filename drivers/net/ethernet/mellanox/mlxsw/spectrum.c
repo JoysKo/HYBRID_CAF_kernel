@@ -50,7 +50,6 @@
 #include <linux/bitops.h>
 #include <linux/list.h>
 #include <linux/dcbnl.h>
-#include <net/devlink.h>
 #include <net/switchdev.h>
 #include <generated/utsrelease.h>
 
@@ -418,7 +417,7 @@ static netdev_tx_t mlxsw_sp_port_xmit(struct sk_buff *skb,
 	u64 len;
 	int err;
 
-	if (mlxsw_core_skb_transmit_busy(mlxsw_sp, &tx_info))
+	if (mlxsw_core_skb_transmit_busy(mlxsw_sp->core, &tx_info))
 		return NETDEV_TX_BUSY;
 
 	if (unlikely(skb_headroom(skb) < MLXSW_TXHDR_LEN)) {
@@ -447,7 +446,7 @@ static netdev_tx_t mlxsw_sp_port_xmit(struct sk_buff *skb,
 	/* Due to a race we might fail here because of a full queue. In that
 	 * unlikely case we simply drop the packet.
 	 */
-	err = mlxsw_core_skb_transmit(mlxsw_sp, skb, &tx_info);
+	err = mlxsw_core_skb_transmit(mlxsw_sp->core, skb, &tx_info);
 
 	if (!err) {
 		pcpu_stats = this_cpu_ptr(mlxsw_sp_port->pcpu_stats);
@@ -1554,9 +1553,7 @@ static int mlxsw_sp_port_ets_init(struct mlxsw_sp_port *mlxsw_sp_port)
 static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 				  bool split, u8 module, u8 width)
 {
-	struct devlink *devlink = priv_to_devlink(mlxsw_sp->core);
 	struct mlxsw_sp_port *mlxsw_sp_port;
-	struct devlink_port *devlink_port;
 	struct net_device *dev;
 	size_t bytes;
 	int err;
@@ -1608,16 +1605,6 @@ static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	 * headers.
 	 */
 	dev->needed_headroom = MLXSW_TXHDR_LEN;
-
-	devlink_port = &mlxsw_sp_port->devlink_port;
-	if (mlxsw_sp_port->split)
-		devlink_port_split_set(devlink_port, module);
-	err = devlink_port_register(devlink, devlink_port, local_port);
-	if (err) {
-		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to register devlink port\n",
-			mlxsw_sp_port->local_port);
-		goto err_devlink_port_register;
-	}
 
 	err = mlxsw_sp_port_system_port_mapping_set(mlxsw_sp_port);
 	if (err) {
@@ -1681,7 +1668,14 @@ static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 		goto err_register_netdev;
 	}
 
-	devlink_port_type_eth_set(devlink_port, dev);
+	err = mlxsw_core_port_init(mlxsw_sp->core, &mlxsw_sp_port->core_port,
+				   mlxsw_sp_port->local_port, dev,
+				   mlxsw_sp_port->split, module);
+	if (err) {
+		dev_err(mlxsw_sp->bus_info->dev, "Port %d: Failed to init core port\n",
+			mlxsw_sp_port->local_port);
+		goto err_core_port_init;
+	}
 
 	err = mlxsw_sp_port_vlan_init(mlxsw_sp_port);
 	if (err)
@@ -1691,6 +1685,8 @@ static int __mlxsw_sp_port_create(struct mlxsw_sp *mlxsw_sp, u8 local_port,
 	return 0;
 
 err_port_vlan_init:
+	mlxsw_core_port_fini(&mlxsw_sp_port->core_port);
+err_core_port_init:
 	unregister_netdev(dev);
 err_register_netdev:
 err_port_dcb_init:
@@ -1701,8 +1697,6 @@ err_port_mtu_set:
 err_port_speed_by_width_set:
 err_port_swid_set:
 err_port_system_port_mapping_set:
-	devlink_port_unregister(&mlxsw_sp_port->devlink_port);
-err_devlink_port_register:
 err_dev_addr_init:
 	free_percpu(mlxsw_sp_port->pcpu_stats);
 err_alloc_stats:
@@ -1743,16 +1737,13 @@ static void mlxsw_sp_port_vports_fini(struct mlxsw_sp_port *mlxsw_sp_port)
 static void mlxsw_sp_port_remove(struct mlxsw_sp *mlxsw_sp, u8 local_port)
 {
 	struct mlxsw_sp_port *mlxsw_sp_port = mlxsw_sp->ports[local_port];
-	struct devlink_port *devlink_port;
 
 	if (!mlxsw_sp_port)
 		return;
 	mlxsw_sp->ports[local_port] = NULL;
-	devlink_port = &mlxsw_sp_port->devlink_port;
-	devlink_port_type_clear(devlink_port);
+	mlxsw_core_port_fini(&mlxsw_sp_port->core_port);
 	unregister_netdev(mlxsw_sp_port->dev); /* This calls ndo_stop */
 	mlxsw_sp_port_dcb_fini(mlxsw_sp_port);
-	devlink_port_unregister(devlink_port);
 	mlxsw_sp_port_vports_fini(mlxsw_sp_port);
 	mlxsw_sp_port_switchdev_fini(mlxsw_sp_port);
 	mlxsw_sp_port_swid_set(mlxsw_sp_port, MLXSW_PORT_SWID_DISABLED_PORT);
@@ -1811,9 +1802,10 @@ static u8 mlxsw_sp_cluster_base_port_get(u8 local_port)
 	return local_port - offset;
 }
 
-static int mlxsw_sp_port_split(void *priv, u8 local_port, unsigned int count)
+static int mlxsw_sp_port_split(struct mlxsw_core *mlxsw_core, u8 local_port,
+			       unsigned int count)
 {
-	struct mlxsw_sp *mlxsw_sp = priv;
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	struct mlxsw_sp_port *mlxsw_sp_port;
 	u8 width = MLXSW_PORT_MODULE_MAX_WIDTH / count;
 	u8 module, cur_width, base_port;
@@ -1885,9 +1877,9 @@ err_port_create:
 	return err;
 }
 
-static int mlxsw_sp_port_unsplit(void *priv, u8 local_port)
+static int mlxsw_sp_port_unsplit(struct mlxsw_core *mlxsw_core, u8 local_port)
 {
-	struct mlxsw_sp *mlxsw_sp = priv;
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	struct mlxsw_sp_port *mlxsw_sp_port;
 	u8 module, cur_width, base_port;
 	unsigned int count;
@@ -2229,10 +2221,26 @@ static int mlxsw_sp_flood_init(struct mlxsw_sp *mlxsw_sp)
 	return 0;
 }
 
-static int mlxsw_sp_init(void *priv, struct mlxsw_core *mlxsw_core,
+static int mlxsw_sp_lag_init(struct mlxsw_sp *mlxsw_sp)
+{
+	char slcr_pl[MLXSW_REG_SLCR_LEN];
+
+	mlxsw_reg_slcr_pack(slcr_pl, MLXSW_REG_SLCR_LAG_HASH_SMAC |
+				     MLXSW_REG_SLCR_LAG_HASH_DMAC |
+				     MLXSW_REG_SLCR_LAG_HASH_ETHERTYPE |
+				     MLXSW_REG_SLCR_LAG_HASH_VLANID |
+				     MLXSW_REG_SLCR_LAG_HASH_SIP |
+				     MLXSW_REG_SLCR_LAG_HASH_DIP |
+				     MLXSW_REG_SLCR_LAG_HASH_SPORT |
+				     MLXSW_REG_SLCR_LAG_HASH_DPORT |
+				     MLXSW_REG_SLCR_LAG_HASH_IPPROTO);
+	return mlxsw_reg_write(mlxsw_sp->core, MLXSW_REG(slcr), slcr_pl);
+}
+
+static int mlxsw_sp_init(struct mlxsw_core *mlxsw_core,
 			 const struct mlxsw_bus_info *mlxsw_bus_info)
 {
-	struct mlxsw_sp *mlxsw_sp = priv;
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 	int err;
 
 	mlxsw_sp->core = mlxsw_core;
@@ -2295,9 +2303,9 @@ err_ports_create:
 	return err;
 }
 
-static void mlxsw_sp_fini(void *priv)
+static void mlxsw_sp_fini(struct mlxsw_core *mlxsw_core)
 {
-	struct mlxsw_sp *mlxsw_sp = priv;
+	struct mlxsw_sp *mlxsw_sp = mlxsw_core_driver_priv(mlxsw_core);
 
 	mlxsw_sp_switchdev_fini(mlxsw_sp);
 	mlxsw_sp_traps_fini(mlxsw_sp);
