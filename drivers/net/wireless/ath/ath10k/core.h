@@ -604,7 +604,6 @@ enum ath10k_cal_mode {
 	ATH10K_CAL_MODE_DT,
 	ATH10K_PRE_CAL_MODE_FILE,
 	ATH10K_PRE_CAL_MODE_DT,
-	ATH10K_CAL_MODE_EEPROM,
 };
 
 enum ath10k_crypt_mode {
@@ -627,8 +626,6 @@ static inline const char *ath10k_cal_mode_str(enum ath10k_cal_mode mode)
 		return "pre-cal-file";
 	case ATH10K_PRE_CAL_MODE_DT:
 		return "pre-cal-dt";
-	case ATH10K_CAL_MODE_EEPROM:
-		return "eeprom";
 	}
 
 	return "unknown";
@@ -794,11 +791,10 @@ struct ath10k {
 		/* The padding bytes's location is different on various chips */
 		enum ath10k_hw_4addr_pad hw_4addr_pad;
 
-		u32 num_msdu_desc;
-		u32 qcache_active_peers;
 		u32 tx_chain_mask;
 		u32 rx_chain_mask;
 		u32 max_spatial_stream;
+		u32 cal_data_len;
 
 		struct ath10k_hw_params_fw {
 			const char *dir;

@@ -434,11 +434,6 @@ static void wmi_evt_rx_mgmt(struct wil6210_priv *wil, int id, void *d, int len)
 
 		wil_dbg_wmi(wil, "Capability info : 0x%04x\n", cap);
 
-		if (wil->snr_thresh.enabled && snr < wil->snr_thresh.omni) {
-			wil_dbg_wmi(wil, "snr below threshold. dropping\n");
-			return;
-		}
-
 		bss = cfg80211_inform_bss_frame(wiphy, channel, rx_mgmt_frame,
 						d_len, signal, GFP_KERNEL);
 		if (bss) {
@@ -482,8 +477,10 @@ static void wmi_evt_scan_complete(struct wil6210_priv *wil, int id,
 			     wil->scan_request, aborted);
 
 		del_timer_sync(&wil->scan_timer);
+		mutex_lock(&wil->p2p_wdev_mutex);
 		cfg80211_scan_done(wil->scan_request, aborted);
 		wil->radio_wdev = wil->wdev;
+		mutex_unlock(&wil->p2p_wdev_mutex);
 		wil->scan_request = NULL;
 		wake_up_interruptible(&wil->wq);
 		if (wil->p2p.pending_listen_wdev) {
@@ -570,6 +567,14 @@ static void wmi_evt_connect(struct wil6210_priv *wil, int id, void *d, int len)
 			return;
 		}
 		del_timer_sync(&wil->connect_timer);
+	} else if ((wdev->iftype == NL80211_IFTYPE_AP) ||
+		   (wdev->iftype == NL80211_IFTYPE_P2P_GO)) {
+		if (wil->sta[evt->cid].status != wil_sta_unused) {
+			wil_err(wil, "%s: AP: Invalid status %d for CID %d\n",
+				__func__, wil->sta[evt->cid].status, evt->cid);
+			mutex_unlock(&wil->mutex);
+			return;
+		}
 	}
 
 	/* FIXME FW can transmit only ucast frames to peer */
@@ -966,10 +971,10 @@ void wmi_recv_cmd(struct wil6210_priv *wil)
 		      offsetof(struct wil6210_mbox_ring_desc, sync), 0);
 		/* indicate */
 		if ((hdr.type == WIL_MBOX_HDR_TYPE_WMI) &&
-		    (len >= sizeof(struct wil6210_mbox_hdr_wmi))) {
-			struct wil6210_mbox_hdr_wmi *wmi = &evt->event.wmi;
-			u16 id = le16_to_cpu(wmi->id);
-			u32 tstamp = le32_to_cpu(wmi->timestamp);
+		    (len >= sizeof(struct wmi_cmd_hdr))) {
+			struct wmi_cmd_hdr *wmi = &evt->event.wmi;
+			u16 id = le16_to_cpu(wmi->command_id);
+			u32 tstamp = le32_to_cpu(wmi->fw_timestamp);
 			spin_lock_irqsave(&wil->wmi_ev_lock, flags);
 			if (wil->reply_id && wil->reply_id == id) {
 				if (wil->reply_buf) {
@@ -1145,8 +1150,6 @@ int wmi_pcp_start(struct wil6210_priv *wil, int bi, u8 wmi_nettype,
 		.pcp_max_assoc_sta = max_assoc_sta,
 		.hidden_ssid = hidden_ssid,
 		.is_go = is_go,
-		.disable_ap_sme = disable_ap_sme,
-		.abft_len = wil->abft_len,
 	};
 	struct {
 		struct wmi_cmd_hdr wmi;

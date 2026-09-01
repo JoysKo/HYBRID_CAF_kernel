@@ -152,6 +152,9 @@ void ath10k_debug_print_hwfw_info(struct ath10k *ar)
 	if (firmware)
 		crc = crc32_le(0, firmware->data, firmware->size);
 
+	if (ar->firmware)
+		crc = crc32_le(0, ar->firmware->data, ar->firmware->size);
+
 	ath10k_info(ar, "firmware ver %s api %d features %s crc32 %08x\n",
 		    ar->hw->wiphy->fw_version,
 		    ar->fw_api,
@@ -339,7 +342,7 @@ static void ath10k_debug_fw_stats_reset(struct ath10k *ar)
 void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct ath10k_fw_stats stats = {};
-	bool is_start, is_started, is_end, peer_stats_svc;
+	bool is_start, is_started, is_end;
 	size_t num_peers;
 	size_t num_vdevs;
 	int ret;
@@ -368,14 +371,10 @@ void ath10k_debug_fw_stats_process(struct ath10k *ar, struct sk_buff *skb)
 	 *     delivered which is treated as end-of-data and is itself discarded
 	 */
 	if (ath10k_peer_stats_enabled(ar))
-		ath10k_sta_update_rx_duration(ar, &stats);
-
-	peer_stats_svc = test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map);
-	if (peer_stats_svc)
 		ath10k_sta_update_rx_duration(ar, &stats.peers);
 
 	if (ar->debug.fw_stats_done) {
-		if (!peer_stats_svc)
+		if (!ath10k_peer_stats_enabled(ar))
 			ath10k_warn(ar, "received unsolicited stats update event\n");
 
 		goto free;
@@ -1687,8 +1686,11 @@ static int ath10k_debug_cal_data_fetch(struct ath10k *ar)
 
 	lockdep_assert_held(&ar->conf_mutex);
 
-	if (WARN_ON(ar->hw_params.cal_data_len > ATH10K_DEBUG_CAL_DATA_LEN))
-		return -EINVAL;
+	buf = vmalloc(ar->hw_params.cal_data_len);
+	if (!buf) {
+		ret = -ENOMEM;
+		goto err;
+	}
 
 	hi_addr = host_interest_item_address(HI_ITEM(hi_board_data));
 
@@ -1699,7 +1701,7 @@ static int ath10k_debug_cal_data_fetch(struct ath10k *ar)
 		return ret;
 	}
 
-	ret = ath10k_hif_diag_read(ar, le32_to_cpu(addr), ar->debug.cal_data,
+	ret = ath10k_hif_diag_read(ar, le32_to_cpu(addr), buf,
 				   ar->hw_params.cal_data_len);
 	if (ret) {
 		ath10k_warn(ar, "failed to read calibration data: %d\n", ret);
@@ -1731,8 +1733,11 @@ static ssize_t ath10k_debug_cal_data_read(struct file *file,
 					  size_t count, loff_t *ppos)
 {
 	struct ath10k *ar = file->private_data;
+	void *buf = file->private_data;
 
-	mutex_lock(&ar->conf_mutex);
+	return simple_read_from_buffer(user_buf, count, ppos,
+				       buf, ar->hw_params.cal_data_len);
+}
 
 	count = simple_read_from_buffer(user_buf, count, ppos,
 					ar->debug.cal_data,
@@ -2518,7 +2523,7 @@ static ssize_t ath10k_write_peer_stats(struct file *file,
 	struct ath10k *ar = file->private_data;
 	char buf[32];
 	size_t buf_size;
-	int ret;
+	int ret = 0;
 	bool val;
 
 	buf_size = min(count, (sizeof(buf) - 1));
@@ -2538,10 +2543,8 @@ static ssize_t ath10k_write_peer_stats(struct file *file,
 		goto exit;
 	}
 
-	if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val)) {
-		ret = count;
+	if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val))
 		goto exit;
-	}
 
 	if (val)
 		set_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);

@@ -23,8 +23,6 @@ enum wil_platform_event {
 	WIL_PLATFORM_EVT_FW_CRASH = 0,
 	WIL_PLATFORM_EVT_PRE_RESET = 1,
 	WIL_PLATFORM_EVT_FW_RDY = 2,
-	WIL_PLATFORM_EVT_PRE_SUSPEND = 3,
-	WIL_PLATFORM_EVT_POST_SUSPEND = 4,
 };
 
 /**
@@ -37,7 +35,6 @@ struct wil_platform_ops {
 	int (*resume)(void *handle, bool device_powered_on);
 	void (*uninit)(void *handle);
 	int (*notify)(void *handle, enum wil_platform_event evt);
-	bool (*keep_radio_on_during_sleep)(void *handle);
 };
 
 /**

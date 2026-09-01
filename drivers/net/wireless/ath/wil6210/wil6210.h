@@ -161,10 +161,6 @@ struct RGF_ICR {
 #define RGF_USER_USAGE_1		(0x880004)
 #define RGF_USER_USAGE_6		(0x880018)
 	#define BIT_USER_OOB_MODE		BIT(31)
-	#define BIT_USER_OOB_R2_MODE		BIT(30)
-#define RGF_USER_USAGE_8		(0x880020)
-	#define BIT_USER_PREVENT_DEEP_SLEEP	BIT(0)
-	#define BIT_USER_SUPPORT_T_POWER_ON_0	BIT(1)
 #define RGF_USER_HW_MACHINE_STATE	(0x8801dc)
 	#define HW_MACHINE_BOOT_DONE	(0x3fffffd)
 #define RGF_USER_USER_CPU_0		(0x8801e0)
@@ -510,13 +506,9 @@ struct wil_tid_crypto_rx {
 struct wil_p2p_info {
 	struct ieee80211_channel listen_chan;
 	u8 discovery_started;
-	u8 p2p_dev_started;
 	u64 cookie;
-	struct wireless_dev *pending_listen_wdev;
-	unsigned int listen_duration;
 	struct timer_list discovery_timer; /* listen/search duration */
 	struct work_struct discovery_expired_work; /* listen/search expire */
-	struct work_struct delayed_listen_work; /* listen after scan done */
 };
 
 enum wil_sta_status {
@@ -562,8 +554,6 @@ struct wil_sta_info {
 	unsigned long tid_rx_stop_requested[BITS_TO_LONGS(WIL_STA_TID_NUM)];
 	struct wil_tid_crypto_rx tid_crypto_rx[WIL_STA_TID_NUM];
 	struct wil_tid_crypto_rx group_crypto_rx;
-	u8 aid; /* 1-254; 0 if unknown/not reported */
-	bool fst_link_loss;
 };
 
 enum {
@@ -711,11 +701,8 @@ struct wil6210_priv {
 	atomic_t isr_count_rx, isr_count_tx;
 	/* debugfs */
 	struct dentry *debug;
-	struct wil_blob_wrapper blobs[ARRAY_SIZE(fw_mapping)];
+	struct debugfs_blob_wrapper blobs[ARRAY_SIZE(fw_mapping)];
 	u8 discovery_mode;
-	u8 abft_len;
-	u8 wakeup_trigger;
-	struct wil_suspend_stats suspend_stats;
 
 	void *platform_handle;
 	struct wil_platform_ops platform_ops;
@@ -729,35 +716,8 @@ struct wil6210_priv {
 
 	/* P2P_DEVICE vif */
 	struct wireless_dev *p2p_wdev;
-	struct mutex p2p_wdev_mutex; /* protect @p2p_wdev and @scan_request */
+	struct mutex p2p_wdev_mutex; /* protect @p2p_wdev */
 	struct wireless_dev *radio_wdev;
-
-	/* High Access Latency Policy voting */
-	struct wil_halp halp;
-
-	enum wmi_ps_profile_type ps_profile;
-
-	struct wil_ftm_priv ftm;
-	bool tt_data_set;
-	struct wmi_tt_data tt_data;
-	struct {
-		bool enabled;
-		short omni;
-		short direct;
-	} snr_thresh;
-
-	int fw_calib_result;
-
-#ifdef CONFIG_PM
-#ifdef CONFIG_PM_SLEEP
-	struct notifier_block pm_notify;
-#endif /* CONFIG_PM_SLEEP */
-#endif /* CONFIG_PM */
-
-	bool suspend_resp_rcvd;
-	bool suspend_resp_comp;
-	u32 bus_request_kbps;
-	u32 bus_request_kbps_pre_suspend;
 };
 
 #define wil_to_wiphy(i) (i->wdev->wiphy)
@@ -935,22 +895,17 @@ void wil_unmask_irq(struct wil6210_priv *wil);
 void wil_configure_interrupt_moderation(struct wil6210_priv *wil);
 void wil_disable_irq(struct wil6210_priv *wil);
 void wil_enable_irq(struct wil6210_priv *wil);
-void wil6210_mask_halp(struct wil6210_priv *wil);
 
 /* P2P */
-bool wil_p2p_is_social_scan(struct cfg80211_scan_request *request);
 void wil_p2p_discovery_timer_fn(ulong x);
 int wil_p2p_search(struct wil6210_priv *wil,
 		   struct cfg80211_scan_request *request);
-int wil_p2p_listen(struct wil6210_priv *wil, struct wireless_dev *wdev,
-		   unsigned int duration, struct ieee80211_channel *chan,
-		   u64 *cookie);
+int wil_p2p_listen(struct wil6210_priv *wil, unsigned int duration,
+		   struct ieee80211_channel *chan, u64 *cookie);
 u8 wil_p2p_stop_discovery(struct wil6210_priv *wil);
 int wil_p2p_cancel_listen(struct wil6210_priv *wil, u64 cookie);
 void wil_p2p_listen_expired(struct work_struct *work);
 void wil_p2p_search_expired(struct work_struct *work);
-void wil_p2p_stop_radio_operations(struct wil6210_priv *wil);
-void wil_p2p_delayed_listen_work(struct work_struct *work);
 
 /* WMI for P2P */
 int wmi_p2p_cfg(struct wil6210_priv *wil, int channel, int bi);
