@@ -660,6 +660,19 @@ void ath10k_ce_rx_update_write_idx(struct ath10k_ce_pipe *pipe, u32 nentries)
 	dest_ring->write_index = write_index;
 }
 
+int ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx, u32 paddr)
+{
+	struct ath10k *ar = pipe->ar;
+	struct ath10k_ce_ring *dest_ring = pipe->dest_ring;
+	unsigned int nentries_mask = dest_ring->nentries_mask;
+	unsigned int write_index = dest_ring->write_index;
+	u32 ctrl_addr = pipe->ctrl_addr;
+
+	write_index = CE_RING_IDX_ADD(nentries_mask, write_index, nentries);
+	ath10k_ce_dest_ring_write_index_set(ar, ctrl_addr, write_index);
+	dest_ring->write_index = write_index;
+}
+
 int ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx,
 			  dma_addr_t paddr)
 {
@@ -739,7 +752,7 @@ int ath10k_ce_completed_recv_next(struct ath10k_ce_pipe *ce_state,
 	ret = ath10k_ce_completed_recv_next_nolock(ce_state,
 						   per_transfer_contextp,
 						   nbytesp);
-	spin_unlock_bh(&ar_opaque->ce_lock);
+	spin_unlock_bh(&ar_pci->ce_lock);
 
 	return ret;
 }

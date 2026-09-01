@@ -808,7 +808,7 @@ static void ath10k_pci_rx_post_pipe(struct ath10k_pci_pipe *pipe)
 
 	spin_lock_bh(&ar_pci->opaque_ctx.ce_lock);
 	num = __ath10k_ce_rx_num_free_bufs(ce_pipe);
-	spin_unlock_bh(&ar_pci->opaque_ctx.ce_lock);
+	spin_unlock_bh(&ar_pci->ce_lock);
 
 	while (num >= 0) {
 		ret = __ath10k_pci_rx_post_buf(pipe);
@@ -877,7 +877,7 @@ static int ath10k_pci_diag_read_mem(struct ath10k *ar, u32 address, void *data,
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 	int ret = 0;
 	u32 *buf;
-	unsigned int completed_nbytes, alloc_nbytes, remaining_bytes;
+	unsigned int completed_nbytes, orig_nbytes, remaining_bytes;
 	struct ath10k_ce_pipe *ce_diag;
 	/* Host buffer address in CE space */
 	u32 ce_data;

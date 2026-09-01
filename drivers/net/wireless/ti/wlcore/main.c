@@ -244,7 +244,7 @@ static void wl12xx_tx_watchdog_work(struct work_struct *work)
 	struct delayed_work *dwork;
 	struct wl1271 *wl;
 
-	dwork = container_of(work, struct delayed_work, work);
+	dwork = to_delayed_work(work);
 	wl = container_of(dwork, struct wl1271, tx_watchdog_work);
 
 	mutex_lock(&wl->mutex);
@@ -2088,7 +2088,7 @@ static void wlcore_channel_switch_work(struct work_struct *work)
 	struct wl12xx_vif *wlvif;
 	int ret;
 
-	dwork = container_of(work, struct delayed_work, work);
+	dwork = to_delayed_work(work);
 	wlvif = container_of(dwork, struct wl12xx_vif, channel_switch_work);
 	wl = wlvif->wl;
 
@@ -2124,7 +2124,7 @@ static void wlcore_connection_loss_work(struct work_struct *work)
 	struct ieee80211_vif *vif;
 	struct wl12xx_vif *wlvif;
 
-	dwork = container_of(work, struct delayed_work, work);
+	dwork = to_delayed_work(work);
 	wlvif = container_of(dwork, struct wl12xx_vif, connection_loss_work);
 	wl = wlvif->wl;
 
@@ -2153,7 +2153,7 @@ static void wlcore_pending_auth_complete_work(struct work_struct *work)
 	unsigned long time_spare;
 	int ret;
 
-	dwork = container_of(work, struct delayed_work, work);
+	dwork = to_delayed_work(work);
 	wlvif = container_of(dwork, struct wl12xx_vif,
 			     pending_auth_complete_work);
 	wl = wlvif->wl;
@@ -5654,7 +5654,7 @@ static void wlcore_roc_complete_work(struct work_struct *work)
 	struct wl1271 *wl;
 	int ret;
 
-	dwork = container_of(work, struct delayed_work, work);
+	dwork = to_delayed_work(work);
 	wl = container_of(dwork, struct wl1271, roc_complete_work);
 
 	ret = wlcore_roc_completed(wl);

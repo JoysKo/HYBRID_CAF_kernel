@@ -217,7 +217,6 @@ struct bus_opaque {
 	dma_addr_t paddr_rri_on_ddr;
 };
 
-/*==================Send====================*/
 
 /* ath10k_ce_send flags */
 #define CE_SEND_FLAG_BYTE_SWAP 1
@@ -254,13 +253,10 @@ void __ath10k_ce_send_revert(struct ath10k_ce_pipe *pipe);
 
 int ath10k_ce_num_free_src_entries(struct ath10k_ce_pipe *pipe);
 
-/*==================Recv=======================*/
 
 int __ath10k_ce_rx_num_free_bufs(struct ath10k_ce_pipe *pipe);
-int __ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx,
-			    dma_addr_t paddr);
-int ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx,
-			  dma_addr_t paddr);
+int __ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx, u32 paddr);
+int ath10k_ce_rx_post_buf(struct ath10k_ce_pipe *pipe, void *ctx, u32 paddr);
 void ath10k_ce_rx_update_write_idx(struct ath10k_ce_pipe *pipe, u32 nentries);
 
 /* recv flags */
@@ -284,7 +280,6 @@ int ath10k_ce_completed_send_next(struct ath10k_ce_pipe *ce_state,
 int ath10k_ce_completed_send_next_nolock(struct ath10k_ce_pipe *ce_state,
 					 void **per_transfer_contextp);
 
-/*==================CE Engine Initialization=======================*/
 
 int ath10k_ce_init_pipe(struct ath10k *ar, unsigned int ce_id,
 			const struct ce_attr *attr);
@@ -295,7 +290,6 @@ void ath10k_ce_free_pipe(struct ath10k *ar, int ce_id);
 void ce_config_rri_on_ddr(struct ath10k *ar);
 void ce_remove_rri_on_ddr(struct ath10k *ar);
 
-/*==================CE Engine Shutdown=======================*/
 /*
  * Support clean shutdown by allowing the caller to revoke
  * receive buffers.  Target DMA must be stopped before using
@@ -320,7 +314,6 @@ int ath10k_ce_cancel_send_next(struct ath10k_ce_pipe *ce_state,
 			       unsigned int *nbytesp,
 			       unsigned int *transfer_idp);
 
-/*==================CE Interrupt Handlers====================*/
 void ath10k_ce_per_engine_service_any(struct ath10k *ar);
 void ath10k_ce_per_engine_service(struct ath10k *ar, unsigned int ce_id);
 int ath10k_ce_disable_interrupts(struct ath10k *ar);

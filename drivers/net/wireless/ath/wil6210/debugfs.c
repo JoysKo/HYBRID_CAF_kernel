@@ -1758,16 +1758,13 @@ static void wil6210_debugfs_init_isr(struct wil6210_priv *wil,
 
 /* fields in struct wil6210_priv */
 static const struct dbg_off dbg_wil_off[] = {
-	WIL_FIELD(privacy,	0444,		doff_u32),
-	WIL_FIELD(status[0],	0644,	doff_ulong),
-	WIL_FIELD(hw_version,	0444,	doff_x32),
-	WIL_FIELD(recovery_count, 0444,	doff_u32),
-	WIL_FIELD(ap_isolate,	0444,	doff_u32),
-	WIL_FIELD(discovery_mode, 0644,	doff_u8),
-	WIL_FIELD(chip_revision, 0444,	doff_u8),
-	WIL_FIELD(abft_len, 0644,		doff_u8),
-	WIL_FIELD(wakeup_trigger, 0644,		doff_u8),
-	WIL_FIELD(vring_idle_trsh, 0644,	doff_u32),
+	WIL_FIELD(privacy,	S_IRUGO,		doff_u32),
+	WIL_FIELD(status[0],	S_IRUGO | S_IWUSR,	doff_ulong),
+	WIL_FIELD(fw_version,	S_IRUGO,		doff_u32),
+	WIL_FIELD(hw_version,	S_IRUGO,		doff_x32),
+	WIL_FIELD(recovery_count, S_IRUGO,		doff_u32),
+	WIL_FIELD(ap_isolate,	S_IRUGO,		doff_u32),
+	WIL_FIELD(discovery_mode, S_IRUGO | S_IWUSR,	doff_u8),
 	{},
 };
 

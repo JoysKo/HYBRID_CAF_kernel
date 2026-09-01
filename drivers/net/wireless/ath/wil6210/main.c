@@ -27,8 +27,8 @@ bool debug_fw; /* = false; */
 module_param(debug_fw, bool, 0444);
 MODULE_PARM_DESC(debug_fw, " do not perform card reset. For FW debug");
 
-static u8 oob_mode;
-module_param(oob_mode, byte, 0444);
+static bool oob_mode;
+module_param(oob_mode, bool, S_IRUGO);
 MODULE_PARM_DESC(oob_mode,
 		 " enable out of the box (OOB) mode in FW, for diagnostics and certification");
 
@@ -166,8 +166,8 @@ __acquires(&sta->tid_rx_lock) __releases(&sta->tid_rx_lock)
 	struct wil_sta_info *sta = &wil->sta[cid];
 
 	might_sleep();
-	wil_dbg_misc(wil, "disconnect_cid: CID %d, status %d\n",
-		     cid, sta->status);
+	wil_dbg_misc(wil, "%s(CID %d, status %d)\n", __func__, cid,
+		     sta->status);
 	/* inform upper/lower layers */
 	if (sta->status != wil_sta_unused) {
 		if (!from_event)
@@ -527,7 +527,6 @@ int wil_priv_init(struct wil6210_priv *wil)
 	mutex_init(&wil->wmi_mutex);
 	mutex_init(&wil->probe_client_mutex);
 	mutex_init(&wil->p2p_wdev_mutex);
-	mutex_init(&wil->halp.lock);
 
 	init_completion(&wil->wmi_ready);
 	init_completion(&wil->wmi_call);
@@ -625,7 +624,6 @@ void wil_priv_deinit(struct wil6210_priv *wil)
 	cancel_work_sync(&wil->disconnect_worker);
 	cancel_work_sync(&wil->fw_error_worker);
 	cancel_work_sync(&wil->p2p.discovery_expired_work);
-	cancel_work_sync(&wil->p2p.delayed_listen_work);
 	mutex_lock(&wil->mutex);
 	wil6210_disconnect(wil, NULL, WLAN_REASON_DEAUTH_LEAVING, false);
 	mutex_unlock(&wil->mutex);
@@ -648,24 +646,13 @@ static inline void wil_release_cpu(struct wil6210_priv *wil)
 	wil_w(wil, RGF_USER_USER_CPU_0, 1);
 }
 
-static void wil_set_oob_mode(struct wil6210_priv *wil, u8 mode)
+static void wil_set_oob_mode(struct wil6210_priv *wil, bool enable)
 {
-	wil_info(wil, "oob_mode to %d\n", mode);
-	switch (mode) {
-	case 0:
-		wil_c(wil, RGF_USER_USAGE_6, BIT_USER_OOB_MODE |
-		      BIT_USER_OOB_R2_MODE);
-		break;
-	case 1:
-		wil_c(wil, RGF_USER_USAGE_6, BIT_USER_OOB_R2_MODE);
+	wil_info(wil, "%s: enable=%d\n", __func__, enable);
+	if (enable) {
 		wil_s(wil, RGF_USER_USAGE_6, BIT_USER_OOB_MODE);
-		break;
-	case 2:
+	} else {
 		wil_c(wil, RGF_USER_USAGE_6, BIT_USER_OOB_MODE);
-		wil_s(wil, RGF_USER_USAGE_6, BIT_USER_OOB_R2_MODE);
-		break;
-	default:
-		wil_err(wil, "invalid oob_mode: %d\n", mode);
 	}
 }
 
@@ -996,16 +983,13 @@ int wil_reset(struct wil6210_priv *wil, bool load_fw)
 	if (wil->hw_version == HW_VER_UNKNOWN)
 		return -ENODEV;
 
-	wil_dbg_misc(wil, "Prevent DS in BL & mark FW to set T_POWER_ON=0\n");
-	wil_s(wil, RGF_USER_USAGE_8, BIT_USER_PREVENT_DEEP_SLEEP |
-	      BIT_USER_SUPPORT_T_POWER_ON_0);
-
 	if (wil->platform_ops.notify) {
 		rc = wil->platform_ops.notify(wil->platform_handle,
 					      WIL_PLATFORM_EVT_PRE_RESET);
 		if (rc)
-			wil_err(wil, "PRE_RESET platform notify failed, rc %d\n",
-				rc);
+			wil_err(wil,
+				"%s: PRE_RESET platform notify failed, rc %d\n",
+				__func__, rc);
 	}
 
 	set_bit(wil_status_resetting, wil->status);
@@ -1087,28 +1071,18 @@ int wil_reset(struct wil6210_priv *wil, bool load_fw)
 		/* check FW is responsive */
 		rc = wmi_echo(wil);
 		if (rc) {
-			wil_err(wil, "wmi_echo failed, rc %d\n", rc);
+			wil_err(wil, "%s: wmi_echo failed, rc %d\n",
+				__func__, rc);
 			return rc;
 		}
-
-		wil_collect_fw_info(wil);
-
-		if (wil->ps_profile != WMI_PS_PROFILE_TYPE_DEFAULT)
-			wil_ps_update(wil, wil->ps_profile);
-
-		if (wil->tt_data_set)
-			wmi_set_tt_cfg(wil, &wil->tt_data);
-
-		if (wil->snr_thresh.enabled)
-			wmi_set_snr_thresh(wil, wil->snr_thresh.omni,
-					   wil->snr_thresh.direct);
 
 		if (wil->platform_ops.notify) {
 			rc = wil->platform_ops.notify(wil->platform_handle,
 						      WIL_PLATFORM_EVT_FW_RDY);
 			if (rc) {
-				wil_err(wil, "FW_RDY notify failed, rc %d\n",
-					rc);
+				wil_err(wil,
+					"%s: FW_RDY notify failed, rc %d\n",
+					__func__, rc);
 				rc = 0;
 			}
 		}
@@ -1217,7 +1191,15 @@ int __wil_down(struct wil6210_priv *wil)
 	}
 	wil_enable_irq(wil);
 
-	wil_ftm_stop_operations(wil);
+	(void)wil_p2p_stop_discovery(wil);
+
+	if (wil->scan_request) {
+		wil_dbg_misc(wil, "Abort scan_request 0x%p\n",
+			     wil->scan_request);
+		del_timer_sync(&wil->scan_timer);
+		cfg80211_scan_done(wil->scan_request, true);
+		wil->scan_request = NULL;
+	}
 
 	if (test_bit(wil_status_fwconnected, wil->status) ||
 	    test_bit(wil_status_fwconnecting, wil->status)) {

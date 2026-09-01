@@ -49,7 +49,7 @@ static void __ath10k_htt_tx_txq_recalc(struct ieee80211_hw *hw,
 				       struct ieee80211_txq *txq)
 {
 	struct ath10k *ar = hw->priv;
-	struct ath10k_sta *arsta;
+	struct ath10k_sta *arsta = (void *)txq->sta->drv_priv;
 	struct ath10k_vif *arvif = (void *)txq->vif->drv_priv;
 	unsigned long frame_cnt;
 	unsigned long byte_cnt;
@@ -67,12 +67,10 @@ static void __ath10k_htt_tx_txq_recalc(struct ieee80211_hw *hw,
 	if (ar->htt.tx_q_state.mode != HTT_TX_MODE_SWITCH_PUSH_PULL)
 		return;
 
-	if (txq->sta) {
-		arsta = (void *)txq->sta->drv_priv;
+	if (txq->sta)
 		peer_id = arsta->peer_id;
-	} else {
+	else
 		peer_id = arvif->peer_id;
-	}
 
 	tid = txq->tid;
 	bit = BIT(peer_id % 32);
@@ -362,7 +360,17 @@ int ath10k_htt_tx_alloc(struct ath10k_htt *htt)
 		goto free_frag_desc;
 	}
 
+	size = roundup_pow_of_two(htt->max_num_pending_tx);
+	ret = kfifo_alloc(&htt->txdone_fifo, size, GFP_KERNEL);
+	if (ret) {
+		ath10k_err(ar, "failed to alloc txdone fifo: %d\n", ret);
+		goto free_txq;
+	}
+
 	return 0;
+
+free_txq:
+	ath10k_htt_tx_free_txq(htt);
 
 free_frag_desc:
 	ath10k_htt_tx_free_cont_frag_desc(htt);
@@ -411,6 +419,8 @@ void ath10k_htt_tx_free(struct ath10k_htt *htt)
 
 	ath10k_htt_tx_free_txq(htt);
 	ath10k_htt_tx_free_cont_frag_desc(htt);
+	WARN_ON(!kfifo_is_empty(&htt->txdone_fifo));
+	kfifo_free(&htt->txdone_fifo);
 }
 
 void ath10k_htt_htc_tx_complete(struct ath10k *ar, struct sk_buff *skb)

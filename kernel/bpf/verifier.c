@@ -127,6 +127,21 @@
  * are set to NOT_INIT to indicate that they are no longer readable.
  */
 
+/* types of values stored in eBPF registers */
+enum bpf_reg_type;
+struct reg_state;
+enum bpf_stack_slot_type;
+
+#define BPF_REG_SIZE 8	/* size of eBPF register in bytes */
+
+/* state of the program:
+ * type of all registers and stack info
+ */
+struct verifier_state;
+
+/* linked list of verifier states used to prune search */
+struct verifier_state_list;
+
 /* verifier_state + insn_idx are pushed to stack when branch is encountered */
 struct verifier_stack_elem {
 	/* verifer state is 'st'

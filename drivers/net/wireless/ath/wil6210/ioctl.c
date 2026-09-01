@@ -228,9 +228,6 @@ int wil_ioctl(struct wil6210_priv *wil, void __user *data, int cmd)
 	case WIL_IOCTL_MEMIO_BLOCK:
 		ret = wil_ioc_memio_block(wil, data);
 		break;
-	case (SIOCDEVPRIVATE + 1):
-		ret = wil_ioc_android(wil, data);
-		break;
 	default:
 		wil_dbg_ioctl(wil, "Unsupported IOCTL 0x%04x\n", cmd);
 		return -ENOIOCTLCMD;
