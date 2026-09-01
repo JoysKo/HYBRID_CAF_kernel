@@ -1270,6 +1270,8 @@ static struct usb_function *f_midi_alloc(struct usb_function_instance *fi)
 
 	spin_lock_init(&midi->transmit_lock);
 
+	spin_lock_init(&midi->transmit_lock);
+
 	++opts->refcnt;
 	mutex_unlock(&opts->lock);
 

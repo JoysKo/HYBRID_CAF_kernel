@@ -1131,6 +1131,22 @@ static int init_subsystems(void)
 	hyp_cpu_pm_init();
 
 	/*
+	 * Register CPU Hotplug notifier
+	 */
+	cpu_notifier_register_begin();
+	err = __register_cpu_notifier(&hyp_init_cpu_nb);
+	cpu_notifier_register_done();
+	if (err) {
+		kvm_err("Cannot register KVM init CPU notifier (%d)\n", err);
+		return err;
+	}
+
+	/*
+	 * Register CPU lower-power notifier
+	 */
+	hyp_cpu_pm_init();
+
+	/*
 	 * Init HYP view of VGIC
 	 */
 	err = kvm_vgic_hyp_init();

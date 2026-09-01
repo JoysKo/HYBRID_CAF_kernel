@@ -182,7 +182,7 @@ static int dwc3_core_reset(struct dwc3 *dwc)
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_RESET_EVENT, 0);
 	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_RESET_EVENT, 0);
 
-	return 0;
+	return -ETIMEDOUT;
 }
 
 /**
