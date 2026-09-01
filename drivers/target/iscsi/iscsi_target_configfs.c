@@ -1276,6 +1276,16 @@ static void lio_target_add_wwn_groups(struct se_wwn *wwn)
 {
 	struct iscsi_tiqn *tiqn = container_of(wwn, struct iscsi_tiqn, tiqn_wwn);
 
+	pr_debug("LIO_Target_ConfigFS: REGISTER -> %s\n", tiqn->tiqn);
+	pr_debug("LIO_Target_ConfigFS: REGISTER -> Allocated Node:"
+			" %s\n", name);
+	return &tiqn->tiqn_wwn;
+}
+
+static void lio_target_add_wwn_groups(struct se_wwn *wwn)
+{
+	struct iscsi_tiqn *tiqn = container_of(wwn, struct iscsi_tiqn, tiqn_wwn);
+
 	config_group_init_type_name(&tiqn->tiqn_stat_grps.iscsi_instance_group,
 			"iscsi_instance", &iscsi_stat_instance_cit);
 	config_group_init_type_name(&tiqn->tiqn_stat_grps.iscsi_sess_err_group,
