@@ -103,8 +103,8 @@ static int dsa_slave_open(struct net_device *dev)
 			goto clear_promisc;
 	}
 
-	if (ds->drv->port_stp_update)
-		ds->drv->port_stp_update(ds, p->port, stp_state);
+	if (ds->drv->port_stp_state_set)
+		ds->drv->port_stp_state_set(ds, p->port, stp_state);
 
 	if (p->phy)
 		phy_start(p->phy);
@@ -146,8 +146,8 @@ static int dsa_slave_close(struct net_device *dev)
 	if (ds->drv->port_disable)
 		ds->drv->port_disable(ds, p->port, p->phy);
 
-	if (ds->drv->port_stp_update)
-		ds->drv->port_stp_update(ds, p->port, BR_STATE_DISABLED);
+	if (ds->drv->port_stp_state_set)
+		ds->drv->port_stp_state_set(ds, p->port, BR_STATE_DISABLED);
 
 	return 0;
 }
@@ -210,20 +210,15 @@ static int dsa_slave_port_vlan_add(struct net_device *dev,
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
-	int err;
 
 	if (switchdev_trans_ph_prepare(trans)) {
 		if (!ds->drv->port_vlan_prepare || !ds->drv->port_vlan_add)
 			return -EOPNOTSUPP;
 
-		err = ds->drv->port_vlan_prepare(ds, p->port, vlan, trans);
-		if (err)
-			return err;
-	} else {
-		err = ds->drv->port_vlan_add(ds, p->port, vlan, trans);
-		if (err)
-			return err;
+		return ds->drv->port_vlan_prepare(ds, p->port, vlan, trans);
 	}
+
+	ds->drv->port_vlan_add(ds, p->port, vlan, trans);
 
 	return 0;
 }
@@ -259,17 +254,17 @@ static int dsa_slave_port_fdb_add(struct net_device *dev,
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
-	int ret;
 
-	if (!ds->drv->port_fdb_prepare || !ds->drv->port_fdb_add)
-		return -EOPNOTSUPP;
+	if (switchdev_trans_ph_prepare(trans)) {
+		if (!ds->drv->port_fdb_prepare || !ds->drv->port_fdb_add)
+			return -EOPNOTSUPP;
 
-	if (switchdev_trans_ph_prepare(trans))
-		ret = ds->drv->port_fdb_prepare(ds, p->port, fdb, trans);
-	else
-		ret = ds->drv->port_fdb_add(ds, p->port, fdb, trans);
+		return ds->drv->port_fdb_prepare(ds, p->port, fdb, trans);
+	}
 
-	return ret;
+	ds->drv->port_fdb_add(ds, p->port, fdb, trans);
+
+	return 0;
 }
 
 static int dsa_slave_port_fdb_del(struct net_device *dev,
@@ -308,16 +303,19 @@ static int dsa_slave_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return -EOPNOTSUPP;
 }
 
-static int dsa_slave_stp_update(struct net_device *dev, u8 state)
+static int dsa_slave_stp_state_set(struct net_device *dev,
+				   const struct switchdev_attr *attr,
+				   struct switchdev_trans *trans)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	struct dsa_switch *ds = p->parent;
-	int ret = -EOPNOTSUPP;
 
-	if (ds->drv->port_stp_update)
-		ret = ds->drv->port_stp_update(ds, p->port, state);
+	if (switchdev_trans_ph_prepare(trans))
+		return ds->drv->port_stp_state_set ? 0 : -EOPNOTSUPP;
 
-	return ret;
+	ds->drv->port_stp_state_set(ds, p->port, attr->u.stp_state);
+
+	return 0;
 }
 
 static int dsa_slave_vlan_filtering(struct net_device *dev,
@@ -342,17 +340,11 @@ static int dsa_slave_port_attr_set(struct net_device *dev,
 				   const struct switchdev_attr *attr,
 				   struct switchdev_trans *trans)
 {
-	struct dsa_slave_priv *p = netdev_priv(dev);
-	struct dsa_switch *ds = p->parent;
 	int ret;
 
 	switch (attr->id) {
 	case SWITCHDEV_ATTR_ID_PORT_STP_STATE:
-		if (switchdev_trans_ph_prepare(trans))
-			ret = ds->drv->port_stp_update ? 0 : -EOPNOTSUPP;
-		else
-			ret = ds->drv->port_stp_update(ds, p->port,
-						       attr->u.stp_state);
+		ret = dsa_slave_stp_state_set(dev, attr, trans);
 		break;
 	case SWITCHDEV_ATTR_ID_BRIDGE_VLAN_FILTERING:
 		ret = dsa_slave_vlan_filtering(dev, attr, trans);
@@ -471,7 +463,8 @@ static void dsa_slave_bridge_port_leave(struct net_device *dev)
 	/* Port left the bridge, put in BR_STATE_DISABLED by the bridge layer,
 	 * so allow it to be in BR_STATE_FORWARDING to be kept functional
 	 */
-	dsa_slave_stp_update(dev, BR_STATE_FORWARDING);
+	if (ds->drv->port_stp_state_set)
+		ds->drv->port_stp_state_set(ds, p->port, BR_STATE_FORWARDING);
 }
 
 static int dsa_slave_port_attr_get(struct net_device *dev,
