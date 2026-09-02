@@ -206,6 +206,11 @@ static inline ssize_t vhci_get_user(struct vhci_data *data,
 	case HCI_VENDOR_PKT:
 		cancel_delayed_work_sync(&data->open_timeout);
 
+		if (data->hdev) {
+			kfree_skb(skb);
+			return -EBADFD;
+		}
+
 		opcode = *((__u8 *) skb->data);
 		skb_pull(skb, 1);
 
