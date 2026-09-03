@@ -241,7 +241,7 @@ static void refresh_scan(void *user_void, u8 all, bool direct_scan)
 			struct ieee80211_channel *channel;
 
 			if (network_info) {
-				freq = ieee80211_channel_to_frequency((s32)network_info->ch, IEEE80211_BAND_2GHZ);
+				freq = ieee80211_channel_to_frequency((s32)network_info->ch, NL80211_BAND_2GHZ);
 				channel = ieee80211_get_channel(wiphy, freq);
 
 				rssi = get_rssi_avg(network_info);
@@ -418,7 +418,7 @@ static void CfgScanResult(enum scan_event scan_event,
 				return;
 
 			if (network_info) {
-				s32Freq = ieee80211_channel_to_frequency((s32)network_info->ch, IEEE80211_BAND_2GHZ);
+				s32Freq = ieee80211_channel_to_frequency((s32)network_info->ch, NL80211_BAND_2GHZ);
 				channel = ieee80211_get_channel(wiphy, s32Freq);
 
 				if (!channel)
