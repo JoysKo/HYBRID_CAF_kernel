@@ -49,7 +49,8 @@ void unregister_switch_driver(struct dsa_switch_driver *drv)
 EXPORT_SYMBOL_GPL(unregister_switch_driver);
 
 static struct dsa_switch_driver *
-dsa_switch_probe(struct device *host_dev, int sw_addr, char **_name)
+dsa_switch_probe(struct device *parent, struct device *host_dev, int sw_addr,
+		 char **_name, void **priv)
 {
 	struct dsa_switch_driver *ret;
 	struct list_head *list;
@@ -64,7 +65,7 @@ dsa_switch_probe(struct device *host_dev, int sw_addr, char **_name)
 
 		drv = list_entry(list, struct dsa_switch_driver, list);
 
-		name = drv->probe(host_dev, sw_addr);
+		name = drv->probe(parent, host_dev, sw_addr, priv);
 		if (name != NULL) {
 			ret = drv;
 			break;
@@ -243,7 +244,7 @@ static int dsa_switch_setup_one(struct dsa_switch *ds, struct device *parent)
 		} else if (!strcmp(name, "dsa")) {
 			ds->dsa_port_mask |= 1 << i;
 		} else {
-			ds->phys_port_mask |= 1 << i;
+			ds->enabled_port_mask |= 1 << i;
 		}
 		valid_name_found = true;
 	}
@@ -256,7 +257,7 @@ static int dsa_switch_setup_one(struct dsa_switch *ds, struct device *parent)
 	/* Make the built-in MII bus mask match the number of ports,
 	 * switch drivers can override this later
 	 */
-	ds->phys_mii_mask = ds->phys_port_mask;
+	ds->phys_mii_mask = ds->enabled_port_mask;
 
 	/*
 	 * If the CPU connects to this switch, set the switch tree
@@ -322,7 +323,7 @@ static int dsa_switch_setup_one(struct dsa_switch *ds, struct device *parent)
 	 * Create network devices for physical switch ports.
 	 */
 	for (i = 0; i < DSA_MAX_PORTS; i++) {
-		if (!(ds->phys_port_mask & (1 << i)))
+		if (!(ds->enabled_port_mask & (1 << i)))
 			continue;
 
 		ret = dsa_slave_create(ds, parent, i, pd->port_names[i]);
@@ -381,11 +382,12 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	struct dsa_switch *ds;
 	int ret;
 	char *name;
+	void *priv;
 
 	/*
 	 * Probe for switch model.
 	 */
-	drv = dsa_switch_probe(host_dev, pd->sw_addr, &name);
+	drv = dsa_switch_probe(parent, host_dev, pd->sw_addr, &name, &priv);
 	if (drv == NULL) {
 		netdev_err(dst->master_netdev, "[%d]: could not detect attached switch\n",
 			   index);
@@ -398,7 +400,7 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	/*
 	 * Allocate and initialise switch state.
 	 */
-	ds = devm_kzalloc(parent, sizeof(*ds) + drv->priv_size, GFP_KERNEL);
+	ds = devm_kzalloc(parent, sizeof(*ds), GFP_KERNEL);
 	if (ds == NULL)
 		return ERR_PTR(-ENOMEM);
 
@@ -406,6 +408,7 @@ dsa_switch_setup(struct dsa_switch_tree *dst, int index,
 	ds->index = index;
 	ds->pd = pd;
 	ds->drv = drv;
+	ds->priv = priv;
 	ds->tag_protocol = drv->tag_protocol;
 	ds->master_dev = host_dev;
 
@@ -430,7 +433,7 @@ static void dsa_switch_destroy(struct dsa_switch *ds)
 
 	/* Destroy network devices for physical switch ports. */
 	for (port = 0; port < DSA_MAX_PORTS; port++) {
-		if (!(ds->phys_port_mask & (1 << port)))
+		if (!(ds->enabled_port_mask & (1 << port)))
 			continue;
 
 		if (!ds->ports[port])
