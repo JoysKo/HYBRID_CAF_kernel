@@ -165,6 +165,13 @@ struct bpf_call_arg_meta {
 #define BPF_COMPLEXITY_LIMIT_INSNS	98304
 #define BPF_COMPLEXITY_LIMIT_STACK	1024
 
+struct bpf_call_arg_meta {
+	struct bpf_map *map_ptr;
+	bool raw_mode;
+	int regno;
+	int access_size;
+};
+
 /* verbose verifier prints what it's seeing
  * bpf_check() is called under lock, so no race to access these global vars
  */
