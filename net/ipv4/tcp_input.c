@@ -6035,11 +6035,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		goto discard;
 
 	case TCP_SYN_SENT:
-<<<<<<< ours
-		tcp_mstamp_refresh(tp);
-=======
 		tp->rx_opt.saw_tstamp = 0;
->>>>>>> theirs
+		tcp_mstamp_refresh(tp);
 		queued = tcp_rcv_synsent_state_process(sk, skb, th);
 		if (queued >= 0)
 			return queued;
@@ -6051,11 +6048,8 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 		return 0;
 	}
 
-<<<<<<< ours
 	tcp_mstamp_refresh(tp);
-=======
 	tp->rx_opt.saw_tstamp = 0;
->>>>>>> theirs
 	req = tp->fastopen_rsk;
 	if (req) {
 		WARN_ON_ONCE(sk->sk_state != TCP_SYN_RECV &&
