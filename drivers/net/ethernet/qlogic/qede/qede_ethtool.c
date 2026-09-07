@@ -366,6 +366,315 @@ int qede_change_mtu(struct net_device *ndev, int new_mtu)
 	return 0;
 }
 
+static void qede_get_channels(struct net_device *dev,
+			      struct ethtool_channels *channels)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+
+	channels->max_combined = QEDE_MAX_RSS_CNT(edev);
+	channels->combined_count = QEDE_RSS_CNT(edev);
+}
+
+static int qede_set_channels(struct net_device *dev,
+			     struct ethtool_channels *channels)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+
+	DP_VERBOSE(edev, (NETIF_MSG_IFUP | NETIF_MSG_IFDOWN),
+		   "set-channels command parameters: rx = %d, tx = %d, other = %d, combined = %d\n",
+		   channels->rx_count, channels->tx_count,
+		   channels->other_count, channels->combined_count);
+
+	/* We don't support separate rx / tx, nor `other' channels. */
+	if (channels->rx_count || channels->tx_count ||
+	    channels->other_count || (channels->combined_count == 0) ||
+	    (channels->combined_count > QEDE_MAX_RSS_CNT(edev))) {
+		DP_VERBOSE(edev, (NETIF_MSG_IFUP | NETIF_MSG_IFDOWN),
+			   "command parameters not supported\n");
+		return -EINVAL;
+	}
+
+	/* Check if there was a change in the active parameters */
+	if (channels->combined_count == QEDE_RSS_CNT(edev)) {
+		DP_VERBOSE(edev, (NETIF_MSG_IFUP | NETIF_MSG_IFDOWN),
+			   "No change in active parameters\n");
+		return 0;
+	}
+
+	/* We need the number of queues to be divisible between the hwfns */
+	if (channels->combined_count % edev->dev_info.common.num_hwfns) {
+		DP_VERBOSE(edev, (NETIF_MSG_IFUP | NETIF_MSG_IFDOWN),
+			   "Number of channels must be divisable by %04x\n",
+			   edev->dev_info.common.num_hwfns);
+		return -EINVAL;
+	}
+
+	/* Set number of queues and reload if necessary */
+	edev->req_rss = channels->combined_count;
+	if (netif_running(dev))
+		qede_reload(edev, NULL, NULL);
+
+	return 0;
+}
+
+static int qede_set_phys_id(struct net_device *dev,
+			    enum ethtool_phys_id_state state)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+	u8 led_state = 0;
+
+	switch (state) {
+	case ETHTOOL_ID_ACTIVE:
+		return 1;	/* cycle on/off once per second */
+
+	case ETHTOOL_ID_ON:
+		led_state = QED_LED_MODE_ON;
+		break;
+
+	case ETHTOOL_ID_OFF:
+		led_state = QED_LED_MODE_OFF;
+		break;
+
+	case ETHTOOL_ID_INACTIVE:
+		led_state = QED_LED_MODE_RESTORE;
+		break;
+	}
+
+	edev->ops->common->set_led(edev->cdev, led_state);
+
+	return 0;
+}
+
+static int qede_get_rss_flags(struct qede_dev *edev, struct ethtool_rxnfc *info)
+{
+	info->data = RXH_IP_SRC | RXH_IP_DST;
+
+	switch (info->flow_type) {
+	case TCP_V4_FLOW:
+	case TCP_V6_FLOW:
+		info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		break;
+	case UDP_V4_FLOW:
+		if (edev->rss_params.rss_caps & QED_RSS_IPV4_UDP)
+			info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		break;
+	case UDP_V6_FLOW:
+		if (edev->rss_params.rss_caps & QED_RSS_IPV6_UDP)
+			info->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
+		break;
+	case IPV4_FLOW:
+	case IPV6_FLOW:
+		break;
+	default:
+		info->data = 0;
+		break;
+	}
+
+	return 0;
+}
+
+static int qede_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *info,
+			  u32 *rules __always_unused)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+
+	switch (info->cmd) {
+	case ETHTOOL_GRXRINGS:
+		info->data = edev->num_rss;
+		return 0;
+	case ETHTOOL_GRXFH:
+		return qede_get_rss_flags(edev, info);
+	default:
+		DP_ERR(edev, "Command parameters not supported\n");
+		return -EOPNOTSUPP;
+	}
+}
+
+static int qede_set_rss_flags(struct qede_dev *edev, struct ethtool_rxnfc *info)
+{
+	struct qed_update_vport_params vport_update_params;
+	u8 set_caps = 0, clr_caps = 0;
+
+	DP_VERBOSE(edev, QED_MSG_DEBUG,
+		   "Set rss flags command parameters: flow type = %d, data = %llu\n",
+		   info->flow_type, info->data);
+
+	switch (info->flow_type) {
+	case TCP_V4_FLOW:
+	case TCP_V6_FLOW:
+		/* For TCP only 4-tuple hash is supported */
+		if (info->data ^ (RXH_IP_SRC | RXH_IP_DST |
+				  RXH_L4_B_0_1 | RXH_L4_B_2_3)) {
+			DP_INFO(edev, "Command parameters not supported\n");
+			return -EINVAL;
+		}
+		return 0;
+	case UDP_V4_FLOW:
+		/* For UDP either 2-tuple hash or 4-tuple hash is supported */
+		if (info->data == (RXH_IP_SRC | RXH_IP_DST |
+				   RXH_L4_B_0_1 | RXH_L4_B_2_3)) {
+			set_caps = QED_RSS_IPV4_UDP;
+			DP_VERBOSE(edev, QED_MSG_DEBUG,
+				   "UDP 4-tuple enabled\n");
+		} else if (info->data == (RXH_IP_SRC | RXH_IP_DST)) {
+			clr_caps = QED_RSS_IPV4_UDP;
+			DP_VERBOSE(edev, QED_MSG_DEBUG,
+				   "UDP 4-tuple disabled\n");
+		} else {
+			return -EINVAL;
+		}
+		break;
+	case UDP_V6_FLOW:
+		/* For UDP either 2-tuple hash or 4-tuple hash is supported */
+		if (info->data == (RXH_IP_SRC | RXH_IP_DST |
+				   RXH_L4_B_0_1 | RXH_L4_B_2_3)) {
+			set_caps = QED_RSS_IPV6_UDP;
+			DP_VERBOSE(edev, QED_MSG_DEBUG,
+				   "UDP 4-tuple enabled\n");
+		} else if (info->data == (RXH_IP_SRC | RXH_IP_DST)) {
+			clr_caps = QED_RSS_IPV6_UDP;
+			DP_VERBOSE(edev, QED_MSG_DEBUG,
+				   "UDP 4-tuple disabled\n");
+		} else {
+			return -EINVAL;
+		}
+		break;
+	case IPV4_FLOW:
+	case IPV6_FLOW:
+		/* For IP only 2-tuple hash is supported */
+		if (info->data ^ (RXH_IP_SRC | RXH_IP_DST)) {
+			DP_INFO(edev, "Command parameters not supported\n");
+			return -EINVAL;
+		}
+		return 0;
+	case SCTP_V4_FLOW:
+	case AH_ESP_V4_FLOW:
+	case AH_V4_FLOW:
+	case ESP_V4_FLOW:
+	case SCTP_V6_FLOW:
+	case AH_ESP_V6_FLOW:
+	case AH_V6_FLOW:
+	case ESP_V6_FLOW:
+	case IP_USER_FLOW:
+	case ETHER_FLOW:
+		/* RSS is not supported for these protocols */
+		if (info->data) {
+			DP_INFO(edev, "Command parameters not supported\n");
+			return -EINVAL;
+		}
+		return 0;
+	default:
+		return -EINVAL;
+	}
+
+	/* No action is needed if there is no change in the rss capability */
+	if (edev->rss_params.rss_caps == ((edev->rss_params.rss_caps &
+					   ~clr_caps) | set_caps))
+		return 0;
+
+	/* Update internal configuration */
+	edev->rss_params.rss_caps = (edev->rss_params.rss_caps & ~clr_caps) |
+				    set_caps;
+	edev->rss_params_inited |= QEDE_RSS_CAPS_INITED;
+
+	/* Re-configure if possible */
+	if (netif_running(edev->ndev)) {
+		memset(&vport_update_params, 0, sizeof(vport_update_params));
+		vport_update_params.update_rss_flg = 1;
+		vport_update_params.vport_id = 0;
+		memcpy(&vport_update_params.rss_params, &edev->rss_params,
+		       sizeof(vport_update_params.rss_params));
+		return edev->ops->vport_update(edev->cdev,
+					       &vport_update_params);
+	}
+
+	return 0;
+}
+
+static int qede_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *info)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+
+	switch (info->cmd) {
+	case ETHTOOL_SRXFH:
+		return qede_set_rss_flags(edev, info);
+	default:
+		DP_INFO(edev, "Command parameters not supported\n");
+		return -EOPNOTSUPP;
+	}
+}
+
+static u32 qede_get_rxfh_indir_size(struct net_device *dev)
+{
+	return QED_RSS_IND_TABLE_SIZE;
+}
+
+static u32 qede_get_rxfh_key_size(struct net_device *dev)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+
+	return sizeof(edev->rss_params.rss_key);
+}
+
+static int qede_get_rxfh(struct net_device *dev, u32 *indir, u8 *key, u8 *hfunc)
+{
+	struct qede_dev *edev = netdev_priv(dev);
+	int i;
+
+	if (hfunc)
+		*hfunc = ETH_RSS_HASH_TOP;
+
+	if (!indir)
+		return 0;
+
+	for (i = 0; i < QED_RSS_IND_TABLE_SIZE; i++)
+		indir[i] = edev->rss_params.rss_ind_table[i];
+
+	if (key)
+		memcpy(key, edev->rss_params.rss_key,
+		       qede_get_rxfh_key_size(dev));
+
+	return 0;
+}
+
+static int qede_set_rxfh(struct net_device *dev, const u32 *indir,
+			 const u8 *key, const u8 hfunc)
+{
+	struct qed_update_vport_params vport_update_params;
+	struct qede_dev *edev = netdev_priv(dev);
+	int i;
+
+	if (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP)
+		return -EOPNOTSUPP;
+
+	if (!indir && !key)
+		return 0;
+
+	if (indir) {
+		for (i = 0; i < QED_RSS_IND_TABLE_SIZE; i++)
+			edev->rss_params.rss_ind_table[i] = indir[i];
+		edev->rss_params_inited |= QEDE_RSS_INDIR_INITED;
+	}
+
+	if (key) {
+		memcpy(&edev->rss_params.rss_key, key,
+		       qede_get_rxfh_key_size(dev));
+		edev->rss_params_inited |= QEDE_RSS_KEY_INITED;
+	}
+
+	if (netif_running(edev->ndev)) {
+		memset(&vport_update_params, 0, sizeof(vport_update_params));
+		vport_update_params.update_rss_flg = 1;
+		vport_update_params.vport_id = 0;
+		memcpy(&vport_update_params.rss_params, &edev->rss_params,
+		       sizeof(vport_update_params.rss_params));
+		return edev->ops->vport_update(edev->cdev,
+					       &vport_update_params);
+	}
+
+	return 0;
+}
+
 static const struct ethtool_ops qede_ethtool_ops = {
 	.get_settings = qede_get_settings,
 	.set_settings = qede_set_settings,
@@ -376,7 +685,14 @@ static const struct ethtool_ops qede_ethtool_ops = {
 	.get_strings = qede_get_strings,
 	.get_ethtool_stats = qede_get_ethtool_stats,
 	.get_sset_count = qede_get_sset_count,
-
+	.get_rxnfc = qede_get_rxnfc,
+	.set_rxnfc = qede_set_rxnfc,
+	.get_rxfh_indir_size = qede_get_rxfh_indir_size,
+	.get_rxfh_key_size = qede_get_rxfh_key_size,
+	.get_rxfh = qede_get_rxfh,
+	.set_rxfh = qede_set_rxfh,
+	.get_channels = qede_get_channels,
+	.set_channels = qede_set_channels,
 };
 
 void qede_set_ethtool_ops(struct net_device *dev)
