@@ -433,6 +433,22 @@ u64 bpf_event_output(struct bpf_map *map, u64 flags, void *meta, u64 meta_size,
 	return __bpf_perf_event_output(regs, map, flags, &raw);
 }
 
+static const struct bpf_func_proto bpf_event_output_proto = {
+	.func		= bpf_event_output,
+	.gpl_only	= true,
+	.ret_type	= RET_INTEGER,
+	.arg1_type	= ARG_PTR_TO_CTX,
+	.arg2_type	= ARG_CONST_MAP_PTR,
+	.arg3_type	= ARG_ANYTHING,
+	.arg4_type	= ARG_PTR_TO_STACK,
+	.arg5_type	= ARG_CONST_STACK_SIZE,
+};
+
+const struct bpf_func_proto *bpf_get_event_output_proto(void)
+{
+	return &bpf_event_output_proto;
+}
+
 BPF_CALL_0(bpf_get_current_task)
 {
 	return (long) current;

@@ -233,4 +233,33 @@ static inline u16 ethtool_adv_to_mmd_eee_adv_t(u32 adv)
 	return reg;
 }
 
+int mdiobus_read(struct mii_bus *bus, int addr, u32 regnum);
+int mdiobus_read_nested(struct mii_bus *bus, int addr, u32 regnum);
+int mdiobus_write(struct mii_bus *bus, int addr, u32 regnum, u16 val);
+int mdiobus_write_nested(struct mii_bus *bus, int addr, u32 regnum, u16 val);
+
+int mdiobus_register_device(struct mdio_device *mdiodev);
+int mdiobus_unregister_device(struct mdio_device *mdiodev);
+bool mdiobus_is_registered_device(struct mii_bus *bus, int addr);
+struct phy_device *mdiobus_get_phy(struct mii_bus *bus, int addr);
+
+/**
+ * module_mdio_driver() - Helper macro for registering mdio drivers
+ *
+ * Helper macro for MDIO drivers which do not do anything special in module
+ * init/exit. Each module may only use this macro once, and calling it
+ * replaces module_init() and module_exit().
+ */
+#define mdio_module_driver(_mdio_driver)				\
+static int __init mdio_module_init(void)				\
+{									\
+	return mdio_driver_register(&_mdio_driver);			\
+}									\
+module_init(mdio_module_init);						\
+static void __exit mdio_module_exit(void)				\
+{									\
+	mdio_driver_unregister(&_mdio_driver);				\
+}									\
+module_exit(mdio_module_exit)
+
 #endif /* __LINUX_MDIO_H__ */
