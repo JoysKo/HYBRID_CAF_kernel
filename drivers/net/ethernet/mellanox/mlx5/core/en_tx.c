@@ -54,10 +54,11 @@ void mlx5e_send_nop(struct mlx5e_sq *sq, bool notify_hw)
 
 	sq->skb[pi] = NULL;
 	sq->pc++;
+	sq->stats.nop++;
 
 	if (notify_hw) {
 		cseg->fm_ce_se = MLX5_WQE_CTRL_CQ_UPDATE;
-		mlx5e_tx_notify_hw(sq, wqe, 0);
+		mlx5e_tx_notify_hw(sq, &wqe->ctrl, 0);
 	}
 }
 
@@ -293,7 +294,7 @@ static netdev_tx_t mlx5e_sq_xmit(struct mlx5e_sq *sq, struct sk_buff *skb)
 			bf_sz = wi->num_wqebbs << 3;
 
 		cseg->fm_ce_se = MLX5_WQE_CTRL_CQ_UPDATE;
-		mlx5e_tx_notify_hw(sq, wqe, bf_sz);
+		mlx5e_tx_notify_hw(sq, &wqe->ctrl, bf_sz);
 	}
 
 	/* fill sq edge with nops to avoid wqe wrap around */
@@ -373,7 +374,6 @@ bool mlx5e_poll_tx_cq(struct mlx5e_cq *cq, int napi_budget)
 			skb = sq->skb[ci];
 
 			if (unlikely(!skb)) { /* nop */
-				sq->stats.nop++;
 				sqcc++;
 				continue;
 			}
