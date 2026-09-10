@@ -2704,6 +2704,8 @@ static bool tcp_collapse_retrans(struct sock *sk, struct sk_buff *skb)
 
 	tcp_adjust_pcount(sk, next_skb, tcp_skb_pcount(next_skb));
 
+	tcp_skb_collapse_tstamp(skb, next_skb);
+
 	sk_wmem_free_skb(sk, next_skb);
 	return true;
 }

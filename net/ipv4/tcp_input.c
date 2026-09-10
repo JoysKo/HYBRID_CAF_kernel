@@ -1366,6 +1366,7 @@ static bool tcp_shifted_skb(struct sock *sk, struct sk_buff *skb,
 	if (unlikely(TCP_SKB_CB(prev)->tx.delivered_mstamp))
 		TCP_SKB_CB(prev)->tx.delivered_mstamp = 0;
 
+	tcp_skb_collapse_tstamp(prev, skb);
 	tcp_unlink_write_queue(skb, sk);
 	sk_wmem_free_skb(sk, skb);
 

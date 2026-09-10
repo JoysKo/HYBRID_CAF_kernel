@@ -816,6 +816,21 @@ static void qede_recycle_rx_bd_ring(struct qede_rx_queue *rxq,
 	}
 }
 
+/* In case of allocation failures reuse buffers
+ * from consumer index to produce buffers for firmware
+ */
+static void qede_recycle_rx_bd_ring(struct qede_rx_queue *rxq,
+				    struct qede_dev *edev, u8 count)
+{
+	struct sw_rx_data *curr_cons;
+
+	for (; count > 0; count--) {
+		curr_cons = &rxq->sw_rx_ring[rxq->sw_rx_cons & NUM_RX_BDS_MAX];
+		qede_reuse_page(edev, rxq, curr_cons);
+		qede_rx_bd_ring_consume(rxq);
+	}
+}
+
 static inline int qede_realloc_rx_buffer(struct qede_dev *edev,
 					 struct qede_rx_queue *rxq,
 					 struct sw_rx_data *curr_cons)

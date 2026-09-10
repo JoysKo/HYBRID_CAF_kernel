@@ -399,6 +399,16 @@ void sctp_generate_heartbeat_event(unsigned long data)
 	if (transport->dead)
 		goto out_unlock;
 
+	/* Check if we should still send the heartbeat or reschedule */
+	elapsed = jiffies - transport->last_time_sent;
+	timeout = sctp_transport_timeout(transport);
+	if (elapsed < timeout) {
+		elapsed = timeout - elapsed;
+		if (!mod_timer(&transport->hb_timer, jiffies + elapsed))
+			sctp_transport_hold(transport);
+		goto out_unlock;
+	}
+
 	error = sctp_do_sm(net, SCTP_EVENT_T_TIMEOUT,
 			   SCTP_ST_TIMEOUT(SCTP_EVENT_TIMEOUT_HEARTBEAT),
 			   asoc->state, asoc->ep, asoc,

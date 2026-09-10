@@ -68,6 +68,7 @@ LIST_HEAD(gpio_chips);
 static void gpiochip_free_hogs(struct gpio_chip *chip);
 static void gpiochip_irqchip_remove(struct gpio_chip *gpiochip);
 
+static bool gpiolib_initialized;
 
 static inline void desc_set_label(struct gpio_desc *d, const char *label)
 {
@@ -438,6 +439,8 @@ static void gpiodevice_release(struct device *dev)
 
 	list_del(&gdev->list);
 	ida_simple_remove(&gpio_ida, gdev->id);
+	kfree(gdev->label);
+	kfree(gdev->descs);
 	kfree(gdev);
 }
 
@@ -505,6 +508,9 @@ static void gpiochip_setup_devs(void)
  * can be freely used, the chip->parent device must be registered before
  * the gpio framework's arch_initcall().  Otherwise sysfs initialization
  * for GPIOs will fail rudely.
+ *
+ * gpiochip_add_data() must only be called after gpiolib initialization,
+ * ie after core_initcall().
  *
  * If chip->base is negative, this requests dynamic assignment of
  * a range of valid GPIOs.
@@ -2201,9 +2207,11 @@ static struct gpio_desc *of_find_gpio(struct device *dev, const char *con_id,
 	return desc;
 }
 
-static struct gpio_desc *acpi_find_gpio(struct device *dev, const char *con_id,
+static struct gpio_desc *acpi_find_gpio(struct device *dev,
+					const char *con_id,
 					unsigned int idx,
-					enum gpio_lookup_flags *flags)
+					enum gpiod_flags flags,
+					enum gpio_lookup_flags *lookupflags)
 {
 	struct acpi_device *adev = ACPI_COMPANION(dev);
 	struct acpi_gpio_info info;
@@ -2234,10 +2242,16 @@ static struct gpio_desc *acpi_find_gpio(struct device *dev, const char *con_id,
 		desc = acpi_get_gpiod_by_index(adev, NULL, idx, &info);
 		if (IS_ERR(desc))
 			return desc;
+
+		if ((flags == GPIOD_OUT_LOW || flags == GPIOD_OUT_HIGH) &&
+		    info.gpioint) {
+			dev_dbg(dev, "refusing GpioInt() entry when doing GPIOD_OUT_* lookup\n");
+			return ERR_PTR(-ENOENT);
+		}
 	}
 
 	if (info.polarity == GPIO_ACTIVE_LOW)
-		*flags |= GPIO_ACTIVE_LOW;
+		*lookupflags |= GPIO_ACTIVE_LOW;
 
 	return desc;
 }
@@ -2495,7 +2509,7 @@ struct gpio_desc *__must_check gpiod_get_index(struct device *dev,
 			desc = of_find_gpio(dev, con_id, idx, &lookupflags);
 		} else if (ACPI_COMPANION(dev)) {
 			dev_dbg(dev, "using ACPI for GPIO lookup\n");
-			desc = acpi_find_gpio(dev, con_id, idx, &lookupflags);
+			desc = acpi_find_gpio(dev, con_id, idx, flags, &lookupflags);
 		}
 	}
 
