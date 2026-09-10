@@ -1133,9 +1133,7 @@ static int init_subsystems(void)
 	/*
 	 * Register CPU Hotplug notifier
 	 */
-	cpu_notifier_register_begin();
-	err = __register_cpu_notifier(&hyp_init_cpu_nb);
-	cpu_notifier_register_done();
+	err = register_cpu_notifier(&hyp_init_cpu_nb);
 	if (err) {
 		kvm_err("Cannot register KVM init CPU notifier (%d)\n", err);
 		return err;

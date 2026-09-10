@@ -2198,22 +2198,6 @@ int mv88e6xxx_port_bridge_join(struct dsa_switch *ds, int port,
 
 	mutex_lock(&ps->smi_mutex);
 
-	/* Get or create the bridge FID and assign it to the port */
-	for (i = 0; i < ps->info->num_ports; ++i)
-		if (ps->ports[i].bridge_dev == bridge)
-			break;
-
-	if (i < ps->info->num_ports)
-		err = _mv88e6xxx_port_fid_get(ds, i, &fid);
-	else
-		err = _mv88e6xxx_fid_new(ds, &fid);
-	if (err)
-		goto unlock;
-
-	err = _mv88e6xxx_port_fid_set(ds, port, fid);
-	if (err)
-		goto unlock;
-
 	/* Assign the bridge and remap each port's VLANTable */
 	ps->ports[port].bridge_dev = bridge;
 
