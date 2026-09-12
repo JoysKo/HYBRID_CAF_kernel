@@ -1091,15 +1091,66 @@ static void netvsc_link_change(struct work_struct *w)
 	rdev = net_device->extension;
 	net = net_device->ndev;
 
-	if (rdev->link_state) {
-		netif_carrier_off(net);
-		notify = false;
-	} else {
-		netif_carrier_on(net);
-		notify = true;
-		if (rdev->link_change) {
-			rdev->link_change = false;
-			refresh = true;
+	next_reconfig = ndev_ctx->last_reconfig + LINKCHANGE_INT;
+	if (time_is_after_jiffies(next_reconfig)) {
+		/* link_watch only sends one notification with current state
+		 * per second, avoid doing reconfig more frequently. Handle
+		 * wrap around.
+		 */
+		delay = next_reconfig - jiffies;
+		delay = delay < LINKCHANGE_INT ? delay : LINKCHANGE_INT;
+		schedule_delayed_work(&ndev_ctx->dwork, delay);
+		return;
+	}
+	ndev_ctx->last_reconfig = jiffies;
+
+	spin_lock_irqsave(&ndev_ctx->lock, flags);
+	if (!list_empty(&ndev_ctx->reconfig_events)) {
+		event = list_first_entry(&ndev_ctx->reconfig_events,
+					 struct netvsc_reconfig, list);
+		list_del(&event->list);
+		reschedule = !list_empty(&ndev_ctx->reconfig_events);
+	}
+	spin_unlock_irqrestore(&ndev_ctx->lock, flags);
+
+	if (!event)
+		return;
+
+	rtnl_lock();
+
+	switch (event->event) {
+		/* Only the following events are possible due to the check in
+		 * netvsc_linkstatus_callback()
+		 */
+	case RNDIS_STATUS_MEDIA_CONNECT:
+		if (rdev->link_state) {
+			rdev->link_state = false;
+			netif_carrier_on(net);
+			netif_tx_wake_all_queues(net);
+		} else {
+			notify = true;
+		}
+		kfree(event);
+		break;
+	case RNDIS_STATUS_MEDIA_DISCONNECT:
+		if (!rdev->link_state) {
+			rdev->link_state = true;
+			netif_carrier_off(net);
+			netif_tx_stop_all_queues(net);
+		}
+		kfree(event);
+		break;
+	case RNDIS_STATUS_NETWORK_CHANGE:
+		/* Only makes sense if carrier is present */
+		if (!rdev->link_state) {
+			rdev->link_state = true;
+			netif_carrier_off(net);
+			netif_tx_stop_all_queues(net);
+			event->event = RNDIS_STATUS_MEDIA_CONNECT;
+			spin_lock_irqsave(&ndev_ctx->lock, flags);
+			list_add(&event->list, &ndev_ctx->reconfig_events);
+			spin_unlock_irqrestore(&ndev_ctx->lock, flags);
+			reschedule = true;
 		}
 	}
 
