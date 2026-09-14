@@ -29,6 +29,19 @@ struct lowpan_frag_queue {
 	struct inet_frag_queue	q;
 };
 
+static inline u32 ieee802154_addr_hash(const struct ieee802154_addr *a)
+{
+	switch (a->mode) {
+	case IEEE802154_ADDR_LONG:
+		return (((__force u64)a->extended_addr) >> 32) ^
+			(((__force u64)a->extended_addr) & 0xffffffff);
+	case IEEE802154_ADDR_SHORT:
+		return (__force u32)(a->short_addr + (a->pan_id << 16));
+	default:
+		return 0;
+	}
+}
+
 /* private device info */
 struct lowpan_dev_info {
 	struct net_device	*wdev; /* wpan device ptr */

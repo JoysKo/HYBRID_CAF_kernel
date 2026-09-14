@@ -1083,6 +1083,11 @@ static int nl802154_set_pan_id(struct sk_buff *skb, struct genl_info *info)
 	if (netif_running(dev))
 		return -EBUSY;
 
+	if (wpan_dev->lowpan_dev) {
+		if (netif_running(wpan_dev->lowpan_dev))
+			return -EBUSY;
+	}
+
 	/* don't change address fields on monitor */
 	if (wpan_dev->iftype == NL802154_IFTYPE_MONITOR ||
 	    !info->attrs[NL802154_ATTR_PAN_ID])
@@ -1113,6 +1118,11 @@ static int nl802154_set_short_addr(struct sk_buff *skb, struct genl_info *info)
 	/* conflict here while tx/rx calls */
 	if (netif_running(dev))
 		return -EBUSY;
+
+	if (wpan_dev->lowpan_dev) {
+		if (netif_running(wpan_dev->lowpan_dev))
+			return -EBUSY;
+	}
 
 	/* don't change address fields on monitor */
 	if (wpan_dev->iftype == NL802154_IFTYPE_MONITOR ||
