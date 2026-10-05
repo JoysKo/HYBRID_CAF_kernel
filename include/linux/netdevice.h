@@ -106,7 +106,6 @@ enum netdev_tx {
 	__NETDEV_TX_MIN	 = INT_MIN,	/* make sure enum is signed */
 	NETDEV_TX_OK	 = 0x00,	/* driver took care of packet */
 	NETDEV_TX_BUSY	 = 0x10,	/* driver tx path was busy*/
-	NETDEV_TX_LOCKED = 0x20,	/* driver tx lock was already taken */
 };
 typedef enum netdev_tx netdev_tx_t;
 
@@ -841,7 +840,6 @@ struct tc_to_netdev {
  *	the queue before that can happen; it's for obsolete devices and weird
  *	corner cases, but the stack really does a non-trivial amount
  *	of useless work if you return NETDEV_TX_BUSY.
- *        (can also return NETDEV_TX_LOCKED iff NETIF_F_LLTX)
  *	Required; cannot be NULL.
  *
  * u16 (*ndo_select_queue)(struct net_device *dev, struct sk_buff *skb,
@@ -2720,7 +2718,6 @@ struct softnet_data {
 	/* stats */
 	unsigned int		processed;
 	unsigned int		time_squeeze;
-	unsigned int		cpu_collision;
 	unsigned int		received_rps;
 	unsigned int		gro_coalesced;
 

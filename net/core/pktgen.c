@@ -3485,7 +3485,6 @@ xmit_more:
 				     pkt_dev->odevname, ret);
 		pkt_dev->errors++;
 		/* fallthru */
-	case NETDEV_TX_LOCKED:
 	case NETDEV_TX_BUSY:
 		/* Retry it next time */
 		atomic_dec(&(pkt_dev->skb->users));
