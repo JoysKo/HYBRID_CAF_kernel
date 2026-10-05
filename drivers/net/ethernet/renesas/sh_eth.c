@@ -1280,7 +1280,7 @@ ring_free:
 	return -ENOMEM;
 }
 
-static int sh_eth_dev_init(struct net_device *ndev, bool start)
+static int sh_eth_dev_init(struct net_device *ndev)
 {
 	struct sh_eth_private *mdp = netdev_priv(ndev);
 	int ret;
@@ -1330,10 +1330,8 @@ static int sh_eth_dev_init(struct net_device *ndev, bool start)
 		     RFLR);
 
 	sh_eth_modify(ndev, EESR, 0, 0);
-	if (start) {
-		mdp->irq_enabled = true;
-		sh_eth_write(ndev, mdp->cd->eesipr_value, EESIPR);
-	}
+	mdp->irq_enabled = true;
+	sh_eth_write(ndev, mdp->cd->eesipr_value, EESIPR);
 
 	/* PAUSE Prohibition */
 	val = (sh_eth_read(ndev, ECMR) & ECMR_DM) |
@@ -1348,8 +1346,7 @@ static int sh_eth_dev_init(struct net_device *ndev, bool start)
 	sh_eth_write(ndev, mdp->cd->ecsr_value, ECSR);
 
 	/* E-MAC Interrupt Enable register */
-	if (start)
-		sh_eth_write(ndev, mdp->cd->ecsipr_value, ECSIPR);
+	sh_eth_write(ndev, mdp->cd->ecsipr_value, ECSIPR);
 
 	/* Set MAC address */
 	update_mac_address(ndev);
@@ -1362,10 +1359,8 @@ static int sh_eth_dev_init(struct net_device *ndev, bool start)
 	if (mdp->cd->tpauser)
 		sh_eth_write(ndev, TPAUSER_UNLIMITED, TPAUSER);
 
-	if (start) {
-		/* Setting the Rx mode will start the Rx process. */
-		sh_eth_write(ndev, EDRRR_R, EDRRR);
-	}
+	/* Setting the Rx mode will start the Rx process. */
+	sh_eth_write(ndev, EDRRR_R, EDRRR);
 
 	return ret;
 }
@@ -2254,7 +2249,7 @@ static int sh_eth_set_ringparam(struct net_device *ndev,
 				   __func__);
 			return ret;
 		}
-		ret = sh_eth_dev_init(ndev, true);
+		ret = sh_eth_dev_init(ndev);
 		if (ret < 0) {
 			netdev_err(ndev, "%s: sh_eth_dev_init failed.\n",
 				   __func__);
@@ -2306,7 +2301,7 @@ static int sh_eth_open(struct net_device *ndev)
 		goto out_free_irq;
 
 	/* device init */
-	ret = sh_eth_dev_init(ndev, true);
+	ret = sh_eth_dev_init(ndev);
 	if (ret)
 		goto out_free_irq;
 
@@ -2359,7 +2354,7 @@ static void sh_eth_tx_timeout(struct net_device *ndev)
 	}
 
 	/* device init */
-	sh_eth_dev_init(ndev, true);
+	sh_eth_dev_init(ndev);
 
 	netif_start_queue(ndev);
 }
