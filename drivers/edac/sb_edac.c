@@ -367,6 +367,16 @@ struct sbridge_pvt {
 	bool			is_mirrored, is_lockstep, is_close_pg;
 	bool			is_chan_hash;
 
+	/* Fifo double buffers */
+	struct mce		mce_entry[MCE_LOG_LEN];
+	struct mce		mce_outentry[MCE_LOG_LEN];
+
+	/* Fifo in/out counters */
+	unsigned		mce_in, mce_out;
+
+	/* Count indicator to show errors not got */
+	unsigned		mce_overrun;
+
 	/* Memory description */
 	u64			tolm, tohm;
 	struct knl_pvt knl;

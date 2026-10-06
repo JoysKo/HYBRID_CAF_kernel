@@ -470,6 +470,7 @@ static int __snd_hdac_regmap_read_raw(struct hdac_device *codec,
 	err = reg_raw_read(codec, reg, val, uncached);
 	if (err == -EAGAIN) {
 		err = snd_hdac_power_up_pm(codec);
+
 		if (err >= 0)
 			err = reg_raw_read(codec, reg, val, uncached);
 		snd_hdac_power_down_pm(codec);

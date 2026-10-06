@@ -500,10 +500,6 @@ __i915_gem_userptr_get_pages_worker(struct work_struct *_work)
 		pvec = drm_malloc_ab(npages, sizeof(struct page *));
 	if (pvec != NULL) {
 		struct mm_struct *mm = obj->userptr.mm->mm;
-		unsigned int flags = 0;
-
-		if (!obj->userptr.read_only)
-			flags |= FOLL_WRITE;
 
 		ret = -EFAULT;
 		if (atomic_inc_not_zero(&mm->mm_users)) {
