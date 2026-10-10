@@ -200,8 +200,8 @@ static void ip_expire(unsigned long arg)
 		goto out;
 
 	ipq_kill(qp);
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMTIMEOUT);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMTIMEOUT);
 
 	if (!(qp->q.flags & INET_FRAG_FIRST_IN))
 		goto out;
@@ -308,7 +308,7 @@ static int ip_frag_too_far(struct ipq *qp)
 		struct net *net;
 
 		net = container_of(qp->q.net, struct net, ipv4.frags);
-		IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+		__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	}
 
 	return rc;
@@ -500,7 +500,7 @@ static int ip_frag_queue(struct ipq *qp, struct sk_buff *skb)
 
 discard_qp:
 	inet_frag_kill(&qp->q);
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASM_OVERLAPS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASM_OVERLAPS);
 err:
 	kfree_skb(skb);
 	return err;
@@ -652,7 +652,7 @@ static int ip_frag_reasm(struct ipq *qp, struct sk_buff *skb,
 
 	ip_send_check(iph);
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMOKS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMOKS);
 	qp->q.fragments = NULL;
 	qp->q.rb_fragments = RB_ROOT;
 	qp->q.fragments_tail = NULL;
@@ -666,7 +666,7 @@ out_nomem:
 out_oversize:
 	net_info_ratelimited("Oversized IP packet from %pI4\n", &qp->q.key.v4.saddr);
 out_fail:
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	return err;
 }
 
@@ -677,7 +677,7 @@ int ip_defrag(struct net *net, struct sk_buff *skb, u32 user)
 	int vif = l3mdev_master_ifindex_rcu(dev);
 	struct ipq *qp;
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMREQDS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMREQDS);
 	skb_orphan(skb);
 
 	/* Lookup (or create) queue header */
@@ -694,7 +694,7 @@ int ip_defrag(struct net *net, struct sk_buff *skb, u32 user)
 		return ret;
 	}
 
-	IP_INC_STATS_BH(net, IPSTATS_MIB_REASMFAILS);
+	__IP_INC_STATS(net, IPSTATS_MIB_REASMFAILS);
 	kfree_skb(skb);
 	return -ENOMEM;
 }

@@ -459,7 +459,7 @@ struct dst_entry *inet_csk_route_req(const struct sock *sk,
 route_err:
 	ip_rt_put(rt);
 no_route:
-	IP_INC_STATS_BH(net, IPSTATS_MIB_OUTNOROUTES);
+	__IP_INC_STATS(net, IPSTATS_MIB_OUTNOROUTES);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(inet_csk_route_req);
@@ -495,7 +495,7 @@ struct dst_entry *inet_csk_route_child_sock(const struct sock *sk,
 route_err:
 	ip_rt_put(rt);
 no_route:
-	IP_INC_STATS_BH(net, IPSTATS_MIB_OUTNOROUTES);
+	__IP_INC_STATS(net, IPSTATS_MIB_OUTNOROUTES);
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(inet_csk_route_child_sock);
