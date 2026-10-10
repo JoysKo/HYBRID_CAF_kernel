@@ -1171,6 +1171,344 @@ static int mlx5_ib_dealloc_pd(struct ib_pd *pd)
 	return 0;
 }
 
+static bool outer_header_zero(u32 *match_criteria)
+{
+	int size = MLX5_ST_SZ_BYTES(fte_match_param);
+	char *outer_headers_c = MLX5_ADDR_OF(fte_match_param, match_criteria,
+					     outer_headers);
+
+	return outer_headers_c[0] == 0 && !memcmp(outer_headers_c,
+						  outer_headers_c + 1,
+						  size - 1);
+}
+
+static int parse_flow_attr(u32 *match_c, u32 *match_v,
+			   union ib_flow_spec *ib_spec)
+{
+	void *outer_headers_c = MLX5_ADDR_OF(fte_match_param, match_c,
+					     outer_headers);
+	void *outer_headers_v = MLX5_ADDR_OF(fte_match_param, match_v,
+					     outer_headers);
+	switch (ib_spec->type) {
+	case IB_FLOW_SPEC_ETH:
+		if (ib_spec->size != sizeof(ib_spec->eth))
+			return -EINVAL;
+
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_c,
+					     dmac_47_16),
+				ib_spec->eth.mask.dst_mac);
+		ether_addr_copy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_v,
+					     dmac_47_16),
+				ib_spec->eth.val.dst_mac);
+
+		if (ib_spec->eth.mask.vlan_tag) {
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+				 vlan_tag, 1);
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+				 vlan_tag, 1);
+
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+				 first_vid, ntohs(ib_spec->eth.mask.vlan_tag));
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+				 first_vid, ntohs(ib_spec->eth.val.vlan_tag));
+
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+				 first_cfi,
+				 ntohs(ib_spec->eth.mask.vlan_tag) >> 12);
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+				 first_cfi,
+				 ntohs(ib_spec->eth.val.vlan_tag) >> 12);
+
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+				 first_prio,
+				 ntohs(ib_spec->eth.mask.vlan_tag) >> 13);
+			MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+				 first_prio,
+				 ntohs(ib_spec->eth.val.vlan_tag) >> 13);
+		}
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+			 ethertype, ntohs(ib_spec->eth.mask.ether_type));
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+			 ethertype, ntohs(ib_spec->eth.val.ether_type));
+		break;
+	case IB_FLOW_SPEC_IPV4:
+		if (ib_spec->size != sizeof(ib_spec->ipv4))
+			return -EINVAL;
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c,
+			 ethertype, 0xffff);
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v,
+			 ethertype, ETH_P_IP);
+
+		memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_c,
+				    src_ipv4_src_ipv6.ipv4_layout.ipv4),
+		       &ib_spec->ipv4.mask.src_ip,
+		       sizeof(ib_spec->ipv4.mask.src_ip));
+		memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_v,
+				    src_ipv4_src_ipv6.ipv4_layout.ipv4),
+		       &ib_spec->ipv4.val.src_ip,
+		       sizeof(ib_spec->ipv4.val.src_ip));
+		memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_c,
+				    dst_ipv4_dst_ipv6.ipv4_layout.ipv4),
+		       &ib_spec->ipv4.mask.dst_ip,
+		       sizeof(ib_spec->ipv4.mask.dst_ip));
+		memcpy(MLX5_ADDR_OF(fte_match_set_lyr_2_4, outer_headers_v,
+				    dst_ipv4_dst_ipv6.ipv4_layout.ipv4),
+		       &ib_spec->ipv4.val.dst_ip,
+		       sizeof(ib_spec->ipv4.val.dst_ip));
+		break;
+	case IB_FLOW_SPEC_TCP:
+		if (ib_spec->size != sizeof(ib_spec->tcp_udp))
+			return -EINVAL;
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, ip_protocol,
+			 0xff);
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, ip_protocol,
+			 IPPROTO_TCP);
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, tcp_sport,
+			 ntohs(ib_spec->tcp_udp.mask.src_port));
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, tcp_sport,
+			 ntohs(ib_spec->tcp_udp.val.src_port));
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, tcp_dport,
+			 ntohs(ib_spec->tcp_udp.mask.dst_port));
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, tcp_dport,
+			 ntohs(ib_spec->tcp_udp.val.dst_port));
+		break;
+	case IB_FLOW_SPEC_UDP:
+		if (ib_spec->size != sizeof(ib_spec->tcp_udp))
+			return -EINVAL;
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, ip_protocol,
+			 0xff);
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, ip_protocol,
+			 IPPROTO_UDP);
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, udp_sport,
+			 ntohs(ib_spec->tcp_udp.mask.src_port));
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, udp_sport,
+			 ntohs(ib_spec->tcp_udp.val.src_port));
+
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_c, udp_dport,
+			 ntohs(ib_spec->tcp_udp.mask.dst_port));
+		MLX5_SET(fte_match_set_lyr_2_4, outer_headers_v, udp_dport,
+			 ntohs(ib_spec->tcp_udp.val.dst_port));
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/* If a flow could catch both multicast and unicast packets,
+ * it won't fall into the multicast flow steering table and this rule
+ * could steal other multicast packets.
+ */
+static bool flow_is_multicast_only(struct ib_flow_attr *ib_attr)
+{
+	struct ib_flow_spec_eth *eth_spec;
+
+	if (ib_attr->type != IB_FLOW_ATTR_NORMAL ||
+	    ib_attr->size < sizeof(struct ib_flow_attr) +
+	    sizeof(struct ib_flow_spec_eth) ||
+	    ib_attr->num_of_specs < 1)
+		return false;
+
+	eth_spec = (struct ib_flow_spec_eth *)(ib_attr + 1);
+	if (eth_spec->type != IB_FLOW_SPEC_ETH ||
+	    eth_spec->size != sizeof(*eth_spec))
+		return false;
+
+	return is_multicast_ether_addr(eth_spec->mask.dst_mac) &&
+	       is_multicast_ether_addr(eth_spec->val.dst_mac);
+}
+
+static bool is_valid_attr(struct ib_flow_attr *flow_attr)
+{
+	union ib_flow_spec *ib_spec = (union ib_flow_spec *)(flow_attr + 1);
+	bool has_ipv4_spec = false;
+	bool eth_type_ipv4 = true;
+	unsigned int spec_index;
+
+	/* Validate that ethertype is correct */
+	for (spec_index = 0; spec_index < flow_attr->num_of_specs; spec_index++) {
+		if (ib_spec->type == IB_FLOW_SPEC_ETH &&
+		    ib_spec->eth.mask.ether_type) {
+			if (!((ib_spec->eth.mask.ether_type == htons(0xffff)) &&
+			      ib_spec->eth.val.ether_type == htons(ETH_P_IP)))
+				eth_type_ipv4 = false;
+		} else if (ib_spec->type == IB_FLOW_SPEC_IPV4) {
+			has_ipv4_spec = true;
+		}
+		ib_spec = (void *)ib_spec + ib_spec->size;
+	}
+	return !has_ipv4_spec || eth_type_ipv4;
+}
+
+static void put_flow_table(struct mlx5_ib_dev *dev,
+			   struct mlx5_ib_flow_prio *prio, bool ft_added)
+{
+	prio->refcount -= !!ft_added;
+	if (!prio->refcount) {
+		mlx5_destroy_flow_table(prio->flow_table);
+		prio->flow_table = NULL;
+	}
+}
+
+static int mlx5_ib_destroy_flow(struct ib_flow *flow_id)
+{
+	struct mlx5_ib_dev *dev = to_mdev(flow_id->qp->device);
+	struct mlx5_ib_flow_handler *handler = container_of(flow_id,
+							  struct mlx5_ib_flow_handler,
+							  ibflow);
+	struct mlx5_ib_flow_handler *iter, *tmp;
+
+	mutex_lock(&dev->flow_db.lock);
+
+	list_for_each_entry_safe(iter, tmp, &handler->list, list) {
+		mlx5_del_flow_rule(iter->rule);
+		list_del(&iter->list);
+		kfree(iter);
+	}
+
+	mlx5_del_flow_rule(handler->rule);
+	put_flow_table(dev, &dev->flow_db.prios[handler->prio], true);
+	mutex_unlock(&dev->flow_db.lock);
+
+	kfree(handler);
+
+	return 0;
+}
+
+static int ib_prio_to_core_prio(unsigned int priority, bool dont_trap)
+{
+	priority *= 2;
+	if (!dont_trap)
+		priority++;
+	return priority;
+}
+
+#define MLX5_FS_MAX_TYPES	 10
+#define MLX5_FS_MAX_ENTRIES	 32000UL
+static struct mlx5_ib_flow_prio *get_flow_table(struct mlx5_ib_dev *dev,
+						struct ib_flow_attr *flow_attr)
+{
+	bool dont_trap = flow_attr->flags & IB_FLOW_ATTR_FLAGS_DONT_TRAP;
+	struct mlx5_flow_namespace *ns = NULL;
+	struct mlx5_ib_flow_prio *prio;
+	struct mlx5_flow_table *ft;
+	int num_entries;
+	int num_groups;
+	int priority;
+	int err = 0;
+
+	if (flow_attr->type == IB_FLOW_ATTR_NORMAL) {
+		if (flow_is_multicast_only(flow_attr) &&
+		    !dont_trap)
+			priority = MLX5_IB_FLOW_MCAST_PRIO;
+		else
+			priority = ib_prio_to_core_prio(flow_attr->priority,
+							dont_trap);
+		ns = mlx5_get_flow_namespace(dev->mdev,
+					     MLX5_FLOW_NAMESPACE_BYPASS);
+		num_entries = MLX5_FS_MAX_ENTRIES;
+		num_groups = MLX5_FS_MAX_TYPES;
+		prio = &dev->flow_db.prios[priority];
+	} else if (flow_attr->type == IB_FLOW_ATTR_ALL_DEFAULT ||
+		   flow_attr->type == IB_FLOW_ATTR_MC_DEFAULT) {
+		ns = mlx5_get_flow_namespace(dev->mdev,
+					     MLX5_FLOW_NAMESPACE_LEFTOVERS);
+		build_leftovers_ft_param(&priority,
+					 &num_entries,
+					 &num_groups);
+		prio = &dev->flow_db.prios[MLX5_IB_FLOW_LEFTOVERS_PRIO];
+	}
+
+	if (!ns)
+		return ERR_PTR(-ENOTSUPP);
+
+	ft = prio->flow_table;
+	if (!ft) {
+		ft = mlx5_create_auto_grouped_flow_table(ns, priority,
+							 num_entries,
+							 num_groups,
+							 0);
+
+		if (!IS_ERR(ft)) {
+			prio->refcount = 0;
+			prio->flow_table = ft;
+		} else {
+			err = PTR_ERR(ft);
+		}
+	}
+
+	return err ? ERR_PTR(err) : prio;
+}
+
+static struct mlx5_ib_flow_handler *create_flow_rule(struct mlx5_ib_dev *dev,
+						     struct mlx5_ib_flow_prio *ft_prio,
+						     struct ib_flow_attr *flow_attr,
+						     struct mlx5_flow_destination *dst)
+{
+	struct mlx5_flow_table	*ft = ft_prio->flow_table;
+	struct mlx5_ib_flow_handler *handler;
+	void *ib_flow = flow_attr + 1;
+	u8 match_criteria_enable = 0;
+	unsigned int spec_index;
+	u32 *match_c;
+	u32 *match_v;
+	u32 action;
+	int err = 0;
+
+	if (!is_valid_attr(flow_attr))
+		return ERR_PTR(-EINVAL);
+
+	match_c = kzalloc(MLX5_ST_SZ_BYTES(fte_match_param), GFP_KERNEL);
+	match_v = kzalloc(MLX5_ST_SZ_BYTES(fte_match_param), GFP_KERNEL);
+	handler = kzalloc(sizeof(*handler), GFP_KERNEL);
+	if (!handler || !match_c || !match_v) {
+		err = -ENOMEM;
+		goto free;
+	}
+
+	INIT_LIST_HEAD(&handler->list);
+
+	for (spec_index = 0; spec_index < flow_attr->num_of_specs; spec_index++) {
+		err = parse_flow_attr(match_c, match_v, ib_flow);
+		if (err < 0)
+			goto free;
+
+		ib_flow += ((union ib_flow_spec *)ib_flow)->size;
+	}
+
+	/* Outer header support only */
+	match_criteria_enable = (!outer_header_zero(match_c)) << 0;
+	action = dst ? MLX5_FLOW_CONTEXT_ACTION_FWD_DEST :
+		MLX5_FLOW_CONTEXT_ACTION_FWD_NEXT_PRIO;
+	handler->rule = mlx5_add_flow_rule(ft, match_criteria_enable,
+					   match_c, match_v,
+					   action,
+					   MLX5_FS_DEFAULT_FLOW_TAG,
+					   dst);
+
+	if (IS_ERR(handler->rule)) {
+		err = PTR_ERR(handler->rule);
+		goto free;
+	}
+
+	handler->prio = ft_prio - dev->flow_db.prios;
+
+	ft_prio->flow_table = ft;
+free:
+	if (err)
+		kfree(handler);
+	kfree(match_c);
+	kfree(match_v);
+	return err ? ERR_PTR(err) : handler;
+}
+
 static struct mlx5_ib_flow_handler *create_dont_trap_rule(struct mlx5_ib_dev *dev,
 							  struct mlx5_ib_flow_prio *ft_prio,
 							  struct ib_flow_attr *flow_attr,
