@@ -991,3 +991,45 @@ qed_mcp_send_drv_version(struct qed_hwfn *p_hwfn,
 
 	return rc;
 }
+
+int qed_mcp_bist_register_test(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
+{
+	u32 drv_mb_param = 0, rsp, param;
+	int rc = 0;
+
+	drv_mb_param = (DRV_MB_PARAM_BIST_REGISTER_TEST <<
+			DRV_MB_PARAM_BIST_TEST_INDEX_SHIFT);
+
+	rc = qed_mcp_cmd(p_hwfn, p_ptt, DRV_MSG_CODE_BIST_TEST,
+			 drv_mb_param, &rsp, &param);
+
+	if (rc)
+		return rc;
+
+	if (((rsp & FW_MSG_CODE_MASK) != FW_MSG_CODE_OK) ||
+	    (param != DRV_MB_PARAM_BIST_RC_PASSED))
+		rc = -EAGAIN;
+
+	return rc;
+}
+
+int qed_mcp_bist_clock_test(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt)
+{
+	u32 drv_mb_param, rsp, param;
+	int rc = 0;
+
+	drv_mb_param = (DRV_MB_PARAM_BIST_CLOCK_TEST <<
+			DRV_MB_PARAM_BIST_TEST_INDEX_SHIFT);
+
+	rc = qed_mcp_cmd(p_hwfn, p_ptt, DRV_MSG_CODE_BIST_TEST,
+			 drv_mb_param, &rsp, &param);
+
+	if (rc)
+		return rc;
+
+	if (((rsp & FW_MSG_CODE_MASK) != FW_MSG_CODE_OK) ||
+	    (param != DRV_MB_PARAM_BIST_RC_PASSED))
+		rc = -EAGAIN;
+
+	return rc;
+}
