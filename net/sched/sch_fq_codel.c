@@ -177,6 +177,7 @@ static unsigned int fq_codel_drop(struct Qdisc *sch, unsigned int max_packets)
 
 	flow->dropped += i;
 	q->backlogs[idx] -= len;
+
 	q->memory_usage -= mem;
 	sch->qstats.drops += i;
 	sch->qstats.backlog -= len;
