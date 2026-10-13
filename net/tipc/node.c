@@ -1,7 +1,7 @@
 /*
  * net/tipc/node.c: TIPC node management routines
  *
- * Copyright (c) 2000-2006, 2012-2015, Ericsson AB
+ * Copyright (c) 2000-2006, 2012-2016, Ericsson AB
  * Copyright (c) 2005-2006, 2010-2014, Wind River Systems
  * All rights reserved.
  *
@@ -84,6 +84,46 @@ struct tipc_sock_conn {
 	struct list_head list;
 };
 
+static struct tipc_link *node_active_link(struct tipc_node *n, int sel)
+{
+	int bearer_id = n->active_links[sel & 1];
+
+	if (unlikely(bearer_id == INVALID_BEARER_ID))
+		return NULL;
+
+	return n->links[bearer_id].link;
+}
+
+int tipc_node_get_mtu(struct net *net, u32 addr, u32 sel)
+{
+	struct tipc_node *n;
+	int bearer_id;
+	unsigned int mtu = MAX_MSG_SIZE;
+
+	n = tipc_node_find(net, addr);
+	if (unlikely(!n))
+		return mtu;
+
+	bearer_id = n->active_links[sel & 1];
+	if (likely(bearer_id != INVALID_BEARER_ID))
+		mtu = n->links[bearer_id].mtu;
+	tipc_node_put(n);
+	return mtu;
+}
+
+u16 tipc_node_get_capabilities(struct net *net, u32 addr)
+{
+	struct tipc_node *n;
+	u16 caps;
+
+	n = tipc_node_find(net, addr);
+	if (unlikely(!n))
+		return TIPC_NODE_CAPABILITIES;
+	caps = n->capabilities;
+	tipc_node_put(n);
+	return caps;
+}
+
 /*
  * A trivial power-of-two bitmask technique is used for speed, since this
  * operation is done for every incoming TIPC packet. The number of hash table
@@ -144,8 +184,11 @@ struct tipc_node *tipc_node_create(struct net *net, u32 addr, u16 capabilities)
 
 	spin_lock_bh(&tn->node_list_lock);
 	n_ptr = tipc_node_find(net, addr);
-	if (n_ptr)
+	if (n_ptr) {
+		/* Same node may come back with new capabilities */
+		n_ptr->capabilities = capabilities;
 		goto exit;
+	}
 	n_ptr = kzalloc(sizeof(*n_ptr), GFP_ATOMIC);
 	if (!n_ptr) {
 		pr_warn("Node creation failed, no memory\n");
