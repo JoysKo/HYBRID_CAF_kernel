@@ -342,8 +342,6 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.cal_data_len = 12064,
 		.fw = {
 			.dir = QCA4019_HW_1_0_FW_DIR,
-			.fw = QCA4019_HW_1_0_FW_FILE,
-			.otp = QCA4019_HW_1_0_OTP_FILE,
 			.board = QCA4019_HW_1_0_BOARD_DATA_FILE,
 			.board_size = QCA4019_BOARD_DATA_SZ,
 			.board_ext_size = QCA4019_BOARD_EXT_DATA_SZ,
@@ -764,7 +762,7 @@ static int ath10k_download_and_run_otp(struct ath10k *ar)
 
 	if (!ar->running_fw->fw_file.otp_data ||
 	    !ar->running_fw->fw_file.otp_len) {
-		ath10k_warn(ar, "Not running otp, calibration will be incorrect (otp-data %pK otp_len %zd)!\n",
+		ath10k_warn(ar, "Not running otp, calibration will be incorrect (otp-data %p otp_len %zd)!\n",
 			    ar->running_fw->fw_file.otp_data,
 			    ar->running_fw->fw_file.otp_len);
 		return 0;
@@ -810,7 +808,7 @@ static int ath10k_download_fw(struct ath10k *ar)
 	data = ar->running_fw->fw_file.firmware_data;
 	data_len = ar->running_fw->fw_file.firmware_len;
 
-	ret = ath10k_swap_code_seg_configure(ar, &ar->running_fw->fw_file);
+	ret = ath10k_swap_code_seg_configure(ar);
 	if (ret) {
 		ath10k_err(ar, "failed to configure fw code swap: %d\n",
 			   ret);
@@ -818,7 +816,7 @@ static int ath10k_download_fw(struct ath10k *ar)
 	}
 
 	ath10k_dbg(ar, ATH10K_DBG_BOOT,
-		   "boot uploading firmware image %pK len %d\n",
+		   "boot uploading firmware image %p len %d\n",
 		   data, data_len);
 
 	ret = ath10k_bmi_fast_download(ar, address, data, data_len);
@@ -1245,7 +1243,7 @@ int ath10k_core_fetch_firmware_api_n(struct ath10k *ar, const char *name,
 			}
 
 			ath10k_dbg_dump(ar, ATH10K_DBG_BOOT, "features", "",
-					fw_file->fw_features,
+					ar->running_fw->fw_file.fw_features,
 					sizeof(fw_file->fw_features));
 			break;
 		case ATH10K_FW_IE_FW_IMAGE:
@@ -1308,14 +1306,12 @@ int ath10k_core_fetch_firmware_api_n(struct ath10k *ar, const char *name,
 		data += ie_len;
 	}
 
-	if (ar->is_bmi) {
-		if (!fw_file->firmware_data ||
-		    !fw_file->firmware_len) {
-			ath10k_warn(ar, "No ATH10K_FW_IE_FW_IMAGE found from '%s/%s', skipping\n",
-				    ar->hw_params.fw.dir, name);
-			ret = -ENOMEDIUM;
-			goto err;
-		}
+	if (!fw_file->firmware_data ||
+	    !fw_file->firmware_len) {
+		ath10k_warn(ar, "No ATH10K_FW_IE_FW_IMAGE found from '%s/%s', skipping\n",
+			    ar->hw_params.fw.dir, name);
+		ret = -ENOMEDIUM;
+		goto err;
 	}
 
 	return 0;
@@ -1377,32 +1373,6 @@ static int ath10k_core_fetch_firmware_files(struct ath10k *ar)
 	ret = ath10k_core_fetch_firmware_api_n(ar, ATH10K_FW_API2_FILE,
 					       &ar->normal_mode_fw.fw_file);
 	if (ret)
-		return ret;
-
-success:
-	ath10k_dbg(ar, ATH10K_DBG_BOOT, "using fw api %d\n", ar->fw_api);
-
-	return 0;
-}
-
-static int ath10k_core_pre_cal_download(struct ath10k *ar)
-{
-	int ret;
-
-	ret = ath10k_download_cal_file(ar, ar->pre_cal_file);
-	if (ret == 0) {
-		ar->cal_mode = ATH10K_PRE_CAL_MODE_FILE;
-		goto success;
-	}
-
-	ath10k_dbg(ar, ATH10K_DBG_BOOT,
-		   "boot did not find a pre calibration file, try DT next: %d\n",
-		   ret);
-
-	ret = ath10k_download_cal_dt(ar, "qcom,ath10k-pre-calibration-data");
-	if (ret) {
-		ath10k_dbg(ar, ATH10K_DBG_BOOT,
-			   "unable to load pre cal data from DT: %d\n", ret);
 		return ret;
 	}
 	ar->cal_mode = ATH10K_PRE_CAL_MODE_DT;
@@ -1813,7 +1783,7 @@ static int ath10k_core_init_firmware_features(struct ath10k *ar)
 		ar->max_spatial_stream = ar->hw_params.max_spatial_stream;
 
 		if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-			     ar->fw_features))
+			     fw_file->fw_features))
 			ar->htt.max_num_pending_tx = TARGET_10_4_NUM_MSDU_DESC_PFC;
 		else
 			ar->htt.max_num_pending_tx = TARGET_10_4_NUM_MSDU_DESC;
@@ -1851,55 +1821,6 @@ static int ath10k_core_init_firmware_features(struct ath10k *ar)
 	return 0;
 }
 
-static int ath10k_core_reset_rx_filter(struct ath10k *ar)
-{
-	int ret;
-	int vdev_id;
-	int vdev_type;
-	int vdev_subtype;
-	const u8 *vdev_addr;
-
-	vdev_id = 0;
-	vdev_type = WMI_VDEV_TYPE_STA;
-	vdev_subtype = ath10k_wmi_get_vdev_subtype(ar, WMI_VDEV_SUBTYPE_NONE);
-	vdev_addr = ar->mac_addr;
-
-	ret = ath10k_wmi_vdev_create(ar, vdev_id, vdev_type, vdev_subtype,
-				     vdev_addr);
-	if (ret) {
-		ath10k_err(ar, "failed to create dummy vdev: %d\n", ret);
-		return ret;
-	}
-
-	ret = ath10k_wmi_vdev_delete(ar, vdev_id);
-	if (ret) {
-		ath10k_err(ar, "failed to delete dummy vdev: %d\n", ret);
-		return ret;
-	}
-
-	/* WMI and HTT may use separate HIF pipes and are not guaranteed to be
-	 * serialized properly implicitly.
-	 *
-	 * Moreover (most) WMI commands have no explicit acknowledges. It is
-	 * possible to infer it implicitly by poking firmware with echo
-	 * command - getting a reply means all preceding comments have been
-	 * (mostly) processed.
-	 *
-	 * In case of vdev create/delete this is sufficient.
-	 *
-	 * Without this it's possible to end up with a race when HTT Rx ring is
-	 * started before vdev create/delete hack is complete allowing a short
-	 * window of opportunity to receive (and Tx ACK) a bunch of frames.
-	 */
-	ret = ath10k_wmi_barrier(ar);
-	if (ret) {
-		ath10k_err(ar, "failed to ping firmware: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
 int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 		      const struct ath10k_fw_components *fw)
 {
@@ -1912,18 +1833,30 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 
 	ar->running_fw = fw;
 
+	ath10k_bmi_start(ar);
+
 	if (ar->is_bmi) {
 
 		ath10k_bmi_start(ar);
 
-		if (ath10k_init_configure_target(ar)) {
-			status = -EINVAL;
+	/* Some of of qca988x solutions are having global reset issue
+	 * during target initialization. Bypassing PLL setting before
+	 * downloading firmware and letting the SoC run on REF_CLK is
+	 * fixing the problem. Corresponding firmware change is also needed
+	 * to set the clock source once the target is initialized.
+	 */
+	if (test_bit(ATH10K_FW_FEATURE_SUPPORTS_SKIP_CLOCK_INIT,
+		     ar->running_fw->fw_file.fw_features)) {
+		status = ath10k_bmi_write32(ar, hi_skip_clock_init, 1);
+		if (status) {
+			ath10k_err(ar, "could not write to skip_clock_init: %d\n",
+				   status);
 			goto err;
 		}
 
-		status = ath10k_download_cal_data(ar);
-		if (status)
-			goto err;
+	status = ath10k_download_fw(ar);
+	if (status)
+		goto err;
 
 		/* Some of of qca988x solutions are having global reset issue
 		 * during target initialization. Bypassing PLL setting before
@@ -2050,8 +1983,7 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 		if (ath10k_peer_stats_enabled(ar))
 			val = WMI_10_4_PEER_STATS;
 
-		status = ath10k_wmi_ext_resource_config(ar,
-							WMI_HOST_PLATFORM_HIGH_PERF, val);
+		status = ath10k_mac_ext_resource_config(ar, val);
 		if (status) {
 			ath10k_err(ar,
 				   "failed to send ext resource cfg command : %d\n",
@@ -2215,10 +2147,10 @@ static int ath10k_core_probe_fw(struct ath10k *ar)
 	}
 
 	BUILD_BUG_ON(sizeof(ar->hw->wiphy->fw_version) !=
-			sizeof(ar->normal_mode_fw.fw_file.fw_version));
-	memcpy(ar->hw->wiphy->fw_version,
-	       ar->normal_mode_fw.fw_file.fw_version,
+		     sizeof(ar->normal_mode_fw.fw_file.fw_version));
+	memcpy(ar->hw->wiphy->fw_version, ar->normal_mode_fw.fw_file.fw_version,
 	       sizeof(ar->hw->wiphy->fw_version));
+
 	ath10k_debug_print_hwfw_info(ar);
 
 	ret = ath10k_core_pre_cal_download(ar);

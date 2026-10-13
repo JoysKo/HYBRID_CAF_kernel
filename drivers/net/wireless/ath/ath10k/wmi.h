@@ -183,6 +183,9 @@ enum wmi_service {
 	WMI_SERVICE_MESH_NON_11S,
 	WMI_SERVICE_PEER_STATS,
 	WMI_SERVICE_RESTRT_CHNL_SUPPORT,
+	WMI_SERVICE_TX_MODE_PUSH_ONLY,
+	WMI_SERVICE_TX_MODE_PUSH_PULL,
+	WMI_SERVICE_TX_MODE_DYNAMIC,
 
 	/* keep last */
 	WMI_SERVICE_MAX,
@@ -305,6 +308,9 @@ enum wmi_10_4_service {
 	WMI_10_4_SERVICE_RESTRT_CHNL_SUPPORT,
 	WMI_10_4_SERVICE_PEER_STATS,
 	WMI_10_4_SERVICE_MESH_11S,
+	WMI_10_4_SERVICE_TX_MODE_PUSH_ONLY,
+	WMI_10_4_SERVICE_TX_MODE_PUSH_PULL,
+	WMI_10_4_SERVICE_TX_MODE_DYNAMIC,
 };
 
 static inline char *wmi_service_name(int service_id)
@@ -399,6 +405,9 @@ static inline char *wmi_service_name(int service_id)
 	SVCSTR(WMI_SERVICE_MESH_NON_11S);
 	SVCSTR(WMI_SERVICE_PEER_STATS);
 	SVCSTR(WMI_SERVICE_RESTRT_CHNL_SUPPORT);
+	SVCSTR(WMI_SERVICE_TX_MODE_PUSH_ONLY);
+	SVCSTR(WMI_SERVICE_TX_MODE_PUSH_PULL);
+	SVCSTR(WMI_SERVICE_TX_MODE_DYNAMIC);
 	default:
 		return NULL;
 	}
@@ -646,6 +655,12 @@ static inline void wmi_10_4_svc_map(const __le32 *in, unsigned long *out,
 	       WMI_SERVICE_PEER_STATS, len);
 	SVCMAP(WMI_10_4_SERVICE_MESH_11S,
 	       WMI_SERVICE_MESH_11S, len);
+	SVCMAP(WMI_10_4_SERVICE_TX_MODE_PUSH_ONLY,
+	       WMI_SERVICE_TX_MODE_PUSH_ONLY, len);
+	SVCMAP(WMI_10_4_SERVICE_TX_MODE_PUSH_PULL,
+	       WMI_SERVICE_TX_MODE_PUSH_PULL, len);
+	SVCMAP(WMI_10_4_SERVICE_TX_MODE_DYNAMIC,
+	       WMI_SERVICE_TX_MODE_DYNAMIC, len);
 }
 
 #undef SVCMAP
@@ -5421,7 +5436,7 @@ enum wmi_sta_ps_param_pspoll_count {
 #define WMI_UAPSD_AC_TYPE_TRIG 1
 
 #define WMI_UAPSD_AC_BIT_MASK(ac, type) \
-	(type == WMI_UAPSD_AC_TYPE_DELI ? 1 << (ac << 1) : 1 << ((ac << 1) + 1))
+	((type ==  WMI_UAPSD_AC_TYPE_DELI) ? (1 << (ac << 1)) : (1 << ((ac << 1) + 1)))
 
 enum wmi_sta_ps_param_uapsd {
 	WMI_STA_PS_UAPSD_AC0_DELIVERY_EN = (1 << 0),

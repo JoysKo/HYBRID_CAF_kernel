@@ -136,7 +136,6 @@ struct ath_pktlog_rx_info {
 
 /* FIXME: How to calculate the buffer size sanely? */
 #define ATH10K_FW_STATS_BUF_SIZE (1024 * 1024)
-#define ATH10K_DATAPATH_BUF_SIZE (1024 * 1024)
 
 extern unsigned int ath10k_debug_mask;
 

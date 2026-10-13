@@ -152,8 +152,9 @@ void ath10k_debug_print_hwfw_info(struct ath10k *ar)
 	if (firmware)
 		crc = crc32_le(0, firmware->data, firmware->size);
 
-	if (ar->firmware)
-		crc = crc32_le(0, ar->firmware->data, ar->firmware->size);
+	firmware = ar->normal_mode_fw.fw_file.firmware;
+	if (firmware)
+		crc = crc32_le(0, firmware->data, firmware->size);
 
 	ath10k_info(ar, "firmware ver %s api %d features %s crc32 %08x\n",
 		    ar->hw->wiphy->fw_version,
@@ -2435,7 +2436,7 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	struct ath10k *ar = file->private_data;
 	char buf[32];
 	size_t buf_size;
-	int ret = 0;
+	int ret;
 	bool val;
 	u32 pdev_param;
 
@@ -2456,27 +2457,9 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 		goto exit;
 	}
 
-	if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags) ^ val))
-		goto exit;
-	}
-
 	if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags) ^ val)) {
 		ret = count;
 		goto exit;
-	}
-
-	pdev_param = ar->wmi.pdev_param->enable_btcoex;
-	if (test_bit(ATH10K_FW_FEATURE_BTCOEX_PARAM,
-		     ar->running_fw->fw_file.fw_features)) {
-		ret = ath10k_wmi_pdev_set_param(ar, pdev_param, val);
-		if (ret) {
-			ath10k_warn(ar, "failed to enable btcoex: %d\n", ret);
-			ret = count;
-			goto exit;
-		}
-	} else {
-		ath10k_info(ar, "restarting firmware due to btcoex change");
-		queue_work(ar->workqueue, &ar->restart_work);
 	}
 
 	if (val)
@@ -2523,7 +2506,7 @@ static ssize_t ath10k_write_peer_stats(struct file *file,
 	struct ath10k *ar = file->private_data;
 	char buf[32];
 	size_t buf_size;
-	int ret = 0;
+	int ret;
 	bool val;
 
 	buf_size = min(count, (sizeof(buf) - 1));
@@ -2543,8 +2526,10 @@ static ssize_t ath10k_write_peer_stats(struct file *file,
 		goto exit;
 	}
 
-	if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val))
+	if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val)) {
+		ret = count;
 		goto exit;
+	}
 
 	if (val)
 		set_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);

@@ -137,13 +137,6 @@ static int ath10k_tm_cmd_get_version(struct ath10k *ar, struct nlattr *tb[])
 		return ret;
 	}
 
-	ret = nla_put_u32(skb, ATH10K_TM_ATTR_WMI_OP_VERSION,
-			  ar->normal_mode_fw.fw_file.wmi_op_version);
-	if (ret) {
-		kfree_skb(skb);
-		return ret;
-	}
-
 	return cfg80211_testmode_reply(skb);
 }
 
@@ -181,15 +174,8 @@ static int ath10k_tm_fetch_utf_firmware_api_1(struct ath10k *ar,
 static int ath10k_tm_fetch_firmware(struct ath10k *ar)
 {
 	struct ath10k_fw_components *utf_mode_fw;
-	struct ath10k_fw_file *fw_file;
 	int ret;
 
-	if (!ar->is_bmi) {
-		fw_file = &ar->testmode.utf_mode_fw.fw_file;
-		fw_file->wmi_op_version = ATH10K_FW_WMI_OP_VERSION_TLV;
-		fw_file->htt_op_version = ATH10K_FW_HTT_OP_VERSION_TLV;
-		return 0;
-	}
 	ret = ath10k_core_fetch_firmware_api_n(ar, ATH10K_FW_UTF_API2_FILE,
 					       &ar->testmode.utf_mode_fw.fw_file);
 	if (ret == 0) {
@@ -306,11 +292,6 @@ err_power_down:
 	ath10k_hif_power_down(ar);
 
 err_release_utf_mode_fw:
-	if (ar->testmode.utf_mode_fw.fw_file.codeswap_data &&
-	    ar->testmode.utf_mode_fw.fw_file.codeswap_len)
-		ath10k_swap_code_seg_release(ar,
-					     &ar->testmode.utf_mode_fw.fw_file);
-
 	release_firmware(ar->testmode.utf_mode_fw.fw_file.firmware);
 	ar->testmode.utf_mode_fw.fw_file.firmware = NULL;
 
@@ -332,11 +313,6 @@ static void __ath10k_tm_cmd_utf_stop(struct ath10k *ar)
 	ar->testmode.utf_monitor = false;
 
 	spin_unlock_bh(&ar->data_lock);
-
-	if (ar->testmode.utf_mode_fw.fw_file.codeswap_data &&
-	    ar->testmode.utf_mode_fw.fw_file.codeswap_len)
-		ath10k_swap_code_seg_release(ar,
-					     &ar->testmode.utf_mode_fw.fw_file);
 
 	release_firmware(ar->testmode.utf_mode_fw.fw_file.firmware);
 	ar->testmode.utf_mode_fw.fw_file.firmware = NULL;

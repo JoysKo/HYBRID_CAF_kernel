@@ -60,11 +60,8 @@ struct ath10k_swap_code_seg_info {
 	dma_addr_t paddr[ATH10K_SWAP_CODE_SEG_NUM_SUPPORTED];
 };
 
-int ath10k_swap_code_seg_configure(struct ath10k *ar,
-				   const struct ath10k_fw_file *fw_file);
-void ath10k_swap_code_seg_release(struct ath10k *ar,
-				  struct ath10k_fw_file *fw_file);
-int ath10k_swap_code_seg_init(struct ath10k *ar,
-			      struct ath10k_fw_file *fw_file);
+int ath10k_swap_code_seg_configure(struct ath10k *ar);
+void ath10k_swap_code_seg_release(struct ath10k *ar);
+int ath10k_swap_code_seg_init(struct ath10k *ar);
 
 #endif

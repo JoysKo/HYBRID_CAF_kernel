@@ -1511,6 +1511,8 @@ void ath10k_pci_kill_tasklet(struct ath10k *ar)
 {
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 
+	tasklet_kill(&ar_pci->intr_tq);
+
 	del_timer_sync(&ar_pci->rx_post_retry);
 }
 
@@ -2773,9 +2775,12 @@ static irqreturn_t ath10k_pci_interrupt_handler(int irq, void *arg)
 		return IRQ_NONE;
 	}
 
-	if ((ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY) &&
-	    !ath10k_pci_irq_pending(ar))
-		return IRQ_NONE;
+	if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY) {
+		if (!ath10k_pci_irq_pending(ar))
+			return IRQ_NONE;
+
+		ath10k_pci_disable_and_clear_legacy_irq(ar);
+	}
 
 	ath10k_pci_disable_and_clear_legacy_irq(ar);
 	ath10k_pci_irq_msi_fw_mask(ar);
@@ -2799,28 +2804,9 @@ static int ath10k_pci_napi_poll(struct napi_struct *ctx, int budget)
 
 	ath10k_ce_per_engine_service_any(ar);
 
-	done = ath10k_htt_txrx_compl_task(ar, budget);
-
-	if (done < budget) {
-		napi_complete(ctx);
-		/* In case of MSI, it is possible that interrupts are received
-		 * while NAPI poll is inprogress. So pending interrupts that are
-		 * received after processing all copy engine pipes by NAPI poll
-		 * will not be handled again. This is causing failure to
-		 * complete boot sequence in x86 platform. So before enabling
-		 * interrupts safer to check for pending interrupts for
-		 * immediate servicing.
-		 */
-		if (CE_INTERRUPT_SUMMARY(ar, ar_opaque)) {
-			napi_reschedule(ctx);
-			goto out;
-		}
+	/* Re-enable legacy irq that was disabled in the irq handler */
+	if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY)
 		ath10k_pci_enable_legacy_irq(ar);
-		ath10k_pci_irq_msi_fw_unmask(ar);
-	}
-
-out:
-	return done;
 }
 
 static int ath10k_pci_request_irq_msi(struct ath10k *ar)
@@ -2880,8 +2866,9 @@ static void ath10k_pci_free_irq(struct ath10k *ar)
 
 void ath10k_pci_init_irq_tasklets(struct ath10k *ar)
 {
-	netif_napi_add(&ar->napi_dev, &ar->napi, ath10k_pci_napi_poll,
-		       ATH10K_NAPI_BUDGET);
+	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
+
+	tasklet_init(&ar_pci->intr_tq, ath10k_pci_tasklet, (unsigned long)ar);
 }
 
 static int ath10k_pci_init_irq(struct ath10k *ar)

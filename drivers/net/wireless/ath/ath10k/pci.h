@@ -161,6 +161,12 @@ struct ath10k_bus_ops {
 	int (*get_num_banks)(struct ath10k *ar);
 };
 
+enum ath10k_pci_irq_mode {
+	ATH10K_PCI_IRQ_AUTO = 0,
+	ATH10K_PCI_IRQ_LEGACY = 1,
+	ATH10K_PCI_IRQ_MSI = 2,
+};
+
 struct ath10k_pci {
 	struct bus_opaque opaque_ctx;
 	struct pci_dev *pdev;
@@ -171,6 +177,8 @@ struct ath10k_pci {
 
 	/* Operating interrupt mode */
 	enum ath10k_pci_irq_mode oper_irq_mode;
+
+	struct tasklet_struct intr_tq;
 
 	struct ath10k_pci_pipe pipe_info[CE_COUNT_MAX];
 

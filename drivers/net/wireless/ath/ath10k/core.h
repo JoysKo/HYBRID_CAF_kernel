@@ -360,8 +360,7 @@ struct ath10k_sta {
 #endif
 };
 
-#define ATH10K_VDEV_SETUP_TIMEOUT_HZ	(5 * HZ)
-#define ATH10K_VDEV_DELETE_TIMEOUT_HZ	(5 * HZ)
+#define ATH10K_VDEV_SETUP_TIMEOUT_HZ (5 * HZ)
 
 enum ath10k_beacon_state {
 	ATH10K_BEACON_SCHEDULED = 0,
@@ -659,10 +658,6 @@ enum ath10k_tx_pause_reason {
 	ATH10K_TX_PAUSE_MAX,
 };
 
-struct fw_flag {
-	u32 flags;
-};
-
 struct ath10k_fw_file {
 	const struct firmware *firmware;
 
@@ -681,15 +676,6 @@ struct ath10k_fw_file {
 
 	const void *codeswap_data;
 	size_t codeswap_len;
-
-	/* The original idea of struct ath10k_fw_file was that it only
-	 * contains struct firmware and pointers to various parts (actual
-	 * firmware binary, otp, metadata etc) of the file. This seg_info
-	 * is actually created separate but as this is used similarly as
-	 * the other firmware components it's more convenient to have it
-	 * here.
-	 */
-	struct ath10k_swap_code_seg_info *firmware_swap_code_seg_info;
 };
 
 struct ath10k_fw_components {
@@ -698,20 +684,6 @@ struct ath10k_fw_components {
 	size_t board_len;
 
 	struct ath10k_fw_file fw_file;
-};
-
-struct datapath_rx_stats {
-	u32 no_of_packets;
-	u32 short_gi_pkts;
-	u32 ht_rate_indx[ATH10K_RX_HT_MCS_MAX + 1];
-	u32 vht_rate_indx[ATH10K_RX_VHT_MCS_MAX + 1];
-	u32 ht_rate_packets;
-	u32 vht_rate_packets;
-	u32 legacy_pkt;
-	u32 nss[ATH10K_RX_NSS_MAX + 1];
-	u32 num_pkts_40Mhz;
-	u32 num_pkts_80Mhz;
-	u32 band[ATH10K_BAND_MAX + 1];
 };
 
 struct ath10k {
@@ -740,7 +712,7 @@ struct ath10k {
 	u32 max_spatial_stream;
 	/* protected by conf_mutex */
 	bool ani_enabled;
-	bool sifs_burst_enabled;
+
 	bool p2p;
 
 	struct {
@@ -798,17 +770,11 @@ struct ath10k {
 
 		struct ath10k_hw_params_fw {
 			const char *dir;
-			const char *fw;
-			const char *otp;
 			const char *board;
 			size_t board_size;
 			size_t board_ext_size;
 		} fw;
 	} hw_params;
-
-	const struct firmware *board;
-	const void *board_data;
-	size_t board_len;
 
 	/* contains the firmware images used with ATH10K_FIRMWARE_MODE_NORMAL */
 	struct ath10k_fw_components normal_mode_fw;
@@ -820,6 +786,10 @@ struct ath10k {
 
 	const struct firmware *pre_cal_file;
 	const struct firmware *cal_file;
+
+	struct {
+		struct ath10k_swap_code_seg_info *firmware_swap_code_seg_info;
+	} swap;
 
 	struct {
 		u32 vendor;
