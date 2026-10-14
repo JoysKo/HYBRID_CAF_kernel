@@ -499,6 +499,14 @@ struct mlx5_priv {
 	struct list_head        dev_list;
 	struct list_head        ctx_list;
 	spinlock_t              ctx_lock;
+
+	struct mlx5_eswitch     *eswitch;
+	struct mlx5_core_sriov	sriov;
+	unsigned long		pci_dev_data;
+	struct mlx5_flow_root_namespace *root_ns;
+	struct mlx5_flow_root_namespace *fdb_root_ns;
+	struct mlx5_flow_root_namespace *esw_egress_root_ns;
+	struct mlx5_flow_root_namespace *esw_ingress_root_ns;
 };
 
 enum mlx5_device_state {

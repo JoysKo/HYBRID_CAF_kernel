@@ -1318,6 +1318,40 @@ enum mlx5_cap_type {
 #define MLX5_CAP_FLOWTABLE_MAX(mdev, cap) \
 	MLX5_GET(flow_table_nic_cap, mdev->hca_caps_max[MLX5_CAP_FLOW_TABLE], cap)
 
+#define MLX5_CAP_ESW_FLOWTABLE(mdev, cap) \
+	MLX5_GET(flow_table_eswitch_cap, \
+		 mdev->hca_caps_cur[MLX5_CAP_ESWITCH_FLOW_TABLE], cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_MAX(mdev, cap) \
+	MLX5_GET(flow_table_eswitch_cap, \
+		 mdev->hca_caps_max[MLX5_CAP_ESWITCH_FLOW_TABLE], cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_FDB(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE(mdev, flow_table_properties_nic_esw_fdb.cap)
+
+#define MLX5_CAP_ESW_FLOWTABLE_FDB_MAX(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE_MAX(mdev, flow_table_properties_nic_esw_fdb.cap)
+
+#define MLX5_CAP_ESW_EGRESS_ACL(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE(mdev, flow_table_properties_esw_acl_egress.cap)
+
+#define MLX5_CAP_ESW_EGRESS_ACL_MAX(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE_MAX(mdev, flow_table_properties_esw_acl_egress.cap)
+
+#define MLX5_CAP_ESW_INGRESS_ACL(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE(mdev, flow_table_properties_esw_acl_ingress.cap)
+
+#define MLX5_CAP_ESW_INGRESS_ACL_MAX(mdev, cap) \
+	MLX5_CAP_ESW_FLOWTABLE_MAX(mdev, flow_table_properties_esw_acl_ingress.cap)
+
+#define MLX5_CAP_ESW(mdev, cap) \
+	MLX5_GET(e_switch_cap, \
+		 mdev->hca_caps_cur[MLX5_CAP_ESWITCH], cap)
+
+#define MLX5_CAP_ESW_MAX(mdev, cap) \
+	MLX5_GET(e_switch_cap, \
+		 mdev->hca_caps_max[MLX5_CAP_ESWITCH], cap)
+
 #define MLX5_CAP_ODP(mdev, cap)\
 	MLX5_GET(odp_cap, mdev->hca_caps_cur[MLX5_CAP_ODP], cap)
 
