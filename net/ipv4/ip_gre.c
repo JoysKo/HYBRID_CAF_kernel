@@ -424,7 +424,7 @@ static void gre_fb_xmit(struct sk_buff *skb, struct net_device *dev,
 
 	flags = tun_info->key.tun_flags & (TUNNEL_CSUM | TUNNEL_KEY);
 	gre_build_header(skb, tunnel_hlen, flags, proto,
-		     tunnel_id_to_key(tun_info->key.tun_id), 0);
+			 tunnel_id_to_key(tun_info->key.tun_id), 0);
 
 	df = key->tun_flags & TUNNEL_DONT_FRAGMENT ?  htons(IP_DF) : 0;
 	err = iptunnel_xmit(skb->sk, rt, skb, fl.saddr,

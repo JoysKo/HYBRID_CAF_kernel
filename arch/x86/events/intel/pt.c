@@ -179,23 +179,6 @@ static int __init pt_pmu_hw_init(void)
 	int ret;
 	long i;
 
-	rdmsrl(MSR_PLATFORM_INFO, reg);
-	pt_pmu.max_nonturbo_ratio = (reg & 0xff00) >> 8;
-
-	/*
-	 * if available, read in TSC to core crystal clock ratio,
-	 * otherwise, zero for numerator stands for "not enumerated"
-	 * as per SDM
-	 */
-	if (boot_cpu_data.cpuid_level >= CPUID_TSC_LEAF) {
-		u32 eax, ebx, ecx, edx;
-
-		cpuid(CPUID_TSC_LEAF, &eax, &ebx, &ecx, &edx);
-
-		pt_pmu.tsc_art_num = ebx;
-		pt_pmu.tsc_art_den = eax;
-	}
-
 	if (boot_cpu_has(X86_FEATURE_VMX)) {
 		/*
 		 * Intel SDM, 36.5 "Tracing post-VMXON" says that
@@ -1229,6 +1212,10 @@ static void pt_event_start(struct perf_event *event, int mode)
 	if (READ_ONCE(pt->vmx_on))
 		return;
 
+	if (!buf || pt_buffer_is_full(buf, pt)) {
+		event->hw.state = PERF_HES_STOPPED;
+		return;
+
 	buf = perf_aux_output_begin(&pt->handle, event);
 	if (!buf)
 		goto fail_stop;
@@ -1262,7 +1249,7 @@ static void pt_event_stop(struct perf_event *event, int mode)
 	 * Protect against the PMI racing with disabling wrmsr,
 	 * see comment in intel_pt_interrupt().
 	 */
-	WRITE_ONCE(pt->handle_nmi, 0);
+	ACCESS_ONCE(pt->handle_nmi) = 0;
 
 	pt_config_stop(event);
 

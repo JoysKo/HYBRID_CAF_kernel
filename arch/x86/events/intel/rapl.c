@@ -822,10 +822,39 @@ static int __init rapl_pmu_init(void)
 	if (!id)
 		return -ENODEV;
 
-	rapl_init = (struct intel_rapl_init_fun *)id->driver_data;
-	apply_quirk = rapl_init->apply_quirk;
-	rapl_cntr_mask = rapl_init->cntr_mask;
-	rapl_pmu_events_group.attrs = rapl_init->attrs;
+	switch (boot_cpu_data.x86_model) {
+	case 42: /* Sandy Bridge */
+	case 58: /* Ivy Bridge */
+		rapl_cntr_mask = RAPL_IDX_CLN;
+		rapl_pmu_events_group.attrs = rapl_events_cln_attr;
+		break;
+	case 63: /* Haswell-Server */
+	case 79: /* Broadwell-Server */
+		apply_quirk = true;
+		rapl_cntr_mask = RAPL_IDX_SRV;
+		rapl_pmu_events_group.attrs = rapl_events_srv_attr;
+		break;
+	case 60: /* Haswell */
+	case 69: /* Haswell-Celeron */
+	case 70: /* Haswell GT3e */
+	case 61: /* Broadwell */
+	case 71: /* Broadwell-H */
+		rapl_cntr_mask = RAPL_IDX_HSW;
+		rapl_pmu_events_group.attrs = rapl_events_hsw_attr;
+		break;
+	case 45: /* Sandy Bridge-EP */
+	case 62: /* IvyTown */
+		rapl_cntr_mask = RAPL_IDX_SRV;
+		rapl_pmu_events_group.attrs = rapl_events_srv_attr;
+		break;
+	case 87: /* Knights Landing */
+		apply_quirk = true;
+		rapl_cntr_mask = RAPL_IDX_KNL;
+		rapl_pmu_events_group.attrs = rapl_events_knl_attr;
+		break;
+	default:
+		return -ENODEV;
+	}
 
 	ret = rapl_check_hw_unit(apply_quirk);
 	if (ret)
