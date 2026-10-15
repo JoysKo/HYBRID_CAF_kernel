@@ -242,7 +242,7 @@ void hdd_event_eapol_log(struct sk_buff *skb, enum qdf_proto_dir dir)
  * As of the 4.7 kernel, net_device->trans_start is removed. Create shims to
  * support compiling against older versions of the kernel.
  */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 7, 0))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 10))
 static inline void netif_trans_update(struct net_device *dev)
 {
 	dev->trans_start = jiffies;

@@ -862,7 +862,7 @@ static netdev_tx_t rndis_ipa_start_xmit(struct sk_buff *skb,
 	netdev_tx_t status = NETDEV_TX_BUSY;
 	struct rndis_ipa_dev *rndis_ipa_ctx = netdev_priv(net);
 
-	net->trans_start = jiffies;
+	netif_trans_update(net);
 
 	RNDIS_IPA_DEBUG("Tx, len=%d, skb->protocol=%d, outstanding=%d\n",
 		skb->len, skb->protocol,

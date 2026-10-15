@@ -1100,7 +1100,7 @@ void hns_nic_net_reinit(struct net_device *netdev)
 {
 	struct hns_nic_priv *priv = netdev_priv(netdev);
 
-	priv->netdev->trans_start = jiffies;
+	netif_trans_update(priv->netdev);
 	while (test_and_set_bit(NIC_STATE_REINITING, &priv->state))
 		usleep_range(1000, 2000);
 
@@ -1197,9 +1197,14 @@ static netdev_tx_t hns_nic_net_xmit(struct sk_buff *skb,
 	struct hns_nic_priv *priv = netdev_priv(ndev);
 
 	assert(skb->queue_mapping < ndev->ae_handle->q_num);
-
-	return hns_nic_net_xmit_hw(ndev, skb,
-				   &tx_ring_data(priv, skb->queue_mapping));
+	ret = hns_nic_net_xmit_hw(ndev, skb,
+				  &tx_ring_data(priv, skb->queue_mapping));
+	if (ret == NETDEV_TX_OK) {
+		netif_trans_update(ndev);
+		ndev->stats.tx_bytes += skb->len;
+		ndev->stats.tx_packets++;
+	}
+	return (netdev_tx_t)ret;
 }
 
 static int hns_nic_change_mtu(struct net_device *ndev, int new_mtu)
@@ -1420,7 +1425,7 @@ static void hns_nic_reset_subtask(struct hns_nic_priv *priv)
 
 	rtnl_lock();
 	/* put off any impending NetWatchDogTimeout */
-	priv->netdev->trans_start = jiffies;
+	netif_trans_update(priv->netdev);
 
 	if (type == HNAE_PORT_DEBUG)
 		hns_nic_net_reinit(priv->netdev);

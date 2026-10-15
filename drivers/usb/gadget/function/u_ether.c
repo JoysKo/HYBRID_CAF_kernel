@@ -555,7 +555,7 @@ static void tx_complete(struct usb_ep *ep, struct usb_request *req)
 					spin_lock(&dev->req_lock);
 					dev->no_tx_req_used++;
 					spin_unlock(&dev->req_lock);
-					net->trans_start = jiffies;
+					netif_trans_update(net);
 				}
 			} else {
 				spin_lock(&dev->req_lock);
@@ -759,7 +759,7 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		DBG(dev, "tx queue err %d\n", retval);
 		break;
 	case 0:
-		net->trans_start = jiffies;
+		netif_trans_update(net);
 		atomic_inc(&dev->tx_qlen);
 	}
 

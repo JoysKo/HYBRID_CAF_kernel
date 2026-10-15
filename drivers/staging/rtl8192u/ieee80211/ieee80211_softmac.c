@@ -249,7 +249,7 @@ inline void softmac_mgmt_xmit(struct sk_buff *skb, struct ieee80211_device *ieee
 				ieee->seq_ctrl[0]++;
 
 			/* avoid watchdog triggers */
-			ieee->dev->trans_start = jiffies;
+			netif_trans_update(ieee->dev);
 			ieee->softmac_data_hard_start_xmit(skb,ieee->dev,ieee->basic_rate);
 			//dev_kfree_skb_any(skb);//edit by thomas
 		}
@@ -302,7 +302,7 @@ inline void softmac_ps_mgmt_xmit(struct sk_buff *skb, struct ieee80211_device *i
 			ieee->seq_ctrl[0]++;
 
 		/* avoid watchdog triggers */
-		ieee->dev->trans_start = jiffies;
+		netif_trans_update(ieee->dev);
 		ieee->softmac_data_hard_start_xmit(skb,ieee->dev,ieee->basic_rate);
 
 	}else{
@@ -1735,7 +1735,7 @@ static short ieee80211_sta_ps_sleep(struct ieee80211_device *ieee, u32 *time_h,
 	if(dtim & ((IEEE80211_DTIM_UCAST | IEEE80211_DTIM_MBCAST)& ieee->ps))
 		return 2;
 
-	if(!time_after(jiffies, ieee->dev->trans_start + MSECS(timeout)))
+	if(!time_after(jiffies, dev_trans_start(ieee->dev) + MSECS(timeout)))
 		return 0;
 
 	if(!time_after(jiffies, ieee->last_rx_ps_time + MSECS(timeout)))
@@ -2202,7 +2202,7 @@ static void ieee80211_resume_tx(struct ieee80211_device *ieee)
 				ieee->dev, ieee->rate);
 				//(i+1)<ieee->tx_pending.txb->nr_frags);
 			ieee->stats.tx_packets++;
-			ieee->dev->trans_start = jiffies;
+			netif_trans_update(ieee->dev);
 		}
 	}
 

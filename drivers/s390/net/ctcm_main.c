@@ -642,7 +642,7 @@ static void ctcmpc_send_sweep_req(struct channel *rch)
 
 	kfree(header);
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	skb_queue_tail(&ch->sweep_queue, sweep_skb);
 
 	fsm_addtimer(&ch->sweep_timer, 100, CTC_EVENT_RSWEEP_TIMER, ch);
@@ -904,7 +904,7 @@ static netdev_tx_t ctcm_tx(struct sk_buff *skb, struct net_device *dev)
 	if (ctcm_test_and_set_busy(dev))
 		return NETDEV_TX_BUSY;
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	if (ctcm_transmit_skb(priv->channel[CTCM_WRITE], skb) != 0)
 		return NETDEV_TX_BUSY;
 	return NETDEV_TX_OK;
@@ -987,7 +987,7 @@ static netdev_tx_t ctcmpc_tx(struct sk_buff *skb, struct net_device *dev)
 					goto done;
 	}
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	if (ctcmpc_transmit_skb(priv->channel[CTCM_WRITE], skb) != 0) {
 		CTCM_DBF_TEXT_(MPC_ERROR, CTC_DBF_ERROR,
 			"%s(%s): device error - dropped",
